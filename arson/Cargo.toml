@@ -11,3 +11,4 @@ license.workspace = true
 publish = false
 
 [dependencies]
+thiserror = "1.0.65"

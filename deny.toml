@@ -4,6 +4,7 @@ allow = [
     "Apache-2.0",
     "LGPL-3.0",
     "MIT",
+    "Unicode-DFS-2016",
 ]
 
 [licenses.private]
