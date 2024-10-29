@@ -5,16 +5,22 @@ use crate::{Error, Symbol};
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub enum NodeType {
-    Integer,
-    Float,
-    String,
-    Symbol,
+macro_rules! define_node_types {
+    ($($type:ident($value:ty)$(,)?)+) => {
+        /// The type of value contained within a node.
+        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+        pub enum NodeType {
+            $($type,)+
+        }
+
+        #[derive(Debug, Clone)]
+        pub enum Node {
+            $($type($value),)+
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum Node {
+define_node_types! {
     Integer(NodeInteger),
     Float(NodeFloat),
     String(String),
