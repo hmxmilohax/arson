@@ -31,15 +31,17 @@ define_node_types! {
 /// Used to prevent desyncs between the match arm and the [`Error::TypeMismatch::expected`] field.
 macro_rules! evaluate_single_type {
     ($node:ident, $type:ident) => {
-        match $node {
-            Node::$type(value) => Ok(value),
-            _ => return Err(Error::TypeMismatch { expected: NodeType::$type, actual: $node.get_type() }),
-        }
+        evaluate_single_type!($node, $type, value => value)
     };
-    ($node:ident, *$type:ident) => {
+    ($node:ident, $type:ident, $value:ident => $expr:expr) => {
         match $node {
-            Node::$type(value) => Ok(*value),
-            _ => return Err(Error::TypeMismatch { expected: NodeType::$type, actual: $node.get_type() }),
+            Node::$type($value) => Ok($expr),
+            _ => {
+                return Err(Error::TypeMismatch {
+                    expected: NodeType::$type,
+                    actual: $node.get_type(),
+                })
+            },
         }
     };
 }
@@ -63,7 +65,7 @@ impl Node {
     }
 
     pub const fn integer_strict(&self) -> Result<NodeInteger, Error> {
-        evaluate_single_type!(self, *Integer)
+        evaluate_single_type!(self, Integer, value => *value)
     }
 
     pub const fn float(&self) -> Result<NodeFloat, Error> {
@@ -75,7 +77,7 @@ impl Node {
     }
 
     pub const fn float_strict(&self) -> Result<NodeFloat, Error> {
-        evaluate_single_type!(self, *Float)
+        evaluate_single_type!(self, Float, value => *value)
     }
 
     pub const fn symbol(&self) -> Result<&Symbol, Error> {
@@ -89,24 +91,24 @@ impl Node {
 
 macro_rules! impl_from {
     ($variant:ident, $from_type:ty) => {
-        impl From<$from_type> for Node {
-            fn from(value: $from_type) -> Self {
-                Node::$variant(value)
-            }
-        }
+        impl_from!($variant, $from_type, value => value);
     };
-    ($variant:ident, $from_type:ty as $cast:ty) => {
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
         impl From<$from_type> for Node {
-            fn from(value: $from_type) -> Self {
-                Node::$variant(value as $cast)
+            fn from($value: $from_type) -> Self {
+                Node::$variant($expr)
             }
         }
     };
 }
 
 impl_from!(Integer, NodeInteger);
-impl_from!(Integer, i32 as NodeInteger);
 impl_from!(Float, NodeFloat);
-impl_from!(Float, f32 as NodeFloat);
 impl_from!(Symbol, Symbol);
 impl_from!(String, String);
+
+impl_from!(Integer, i32, value => value as NodeInteger);
+impl_from!(Float, f32, value => value as NodeFloat);
+impl_from!(Symbol, &Symbol, value => value.clone());
+impl_from!(String, &String, value => value.clone());
+impl_from!(String, &str, value => value.to_owned());
