@@ -28,12 +28,9 @@ define_node_types! {
 }
 
 /// Helper macro for evaluating whether a node matches a single type.
-/// Used to prevent desyncs between the match arm and the [`Error::TypeMismatch::expected`] field.
-macro_rules! evaluate_single_type {
-    ($node:ident, $type:ident) => {
-        evaluate_single_type!($node, $type, value => value)
-    };
-    ($node:ident, $type:ident, $value:ident => $expr:expr) => {
+/// Used to prevent desyncs between match arms and error information.
+macro_rules! evaluate_type {
+    ($node:ident, $type:ident($value:ident) => $expr:expr) => {
         match $node {
             Node::$type($value) => Ok($expr),
             _ => {
@@ -44,10 +41,21 @@ macro_rules! evaluate_single_type {
             },
         }
     };
+    ($node:ident; $($type:ident($value:ident) => $expr:expr$(,)?)+) => {
+        match $node {
+            $(Node::$type($value) => Ok($expr),)+
+            _ => {
+                return Err(Error::UnhandledType {
+                    expected: vec![$(NodeType::$type,)+],
+                    actual: $node.get_type(),
+                })
+            },
+        }
+    };
 }
 
 impl Node {
-    pub const fn get_type(&self) -> NodeType {
+    pub fn get_type(&self) -> NodeType {
         match self {
             Self::Integer(_) => NodeType::Integer,
             Self::Float(_) => NodeType::Float,
@@ -56,36 +64,36 @@ impl Node {
         }
     }
 
-    pub const fn integer(&self) -> Result<NodeInteger, Error> {
-        match self {
-            Self::Integer(value) => Ok(*value),
-            Self::Float(value) => Ok(*value as NodeInteger),
-            _ => Err(Error::unhandled(self)),
+    pub fn integer(&self) -> Result<NodeInteger, Error> {
+        evaluate_type! {
+            self;
+            Integer(value) => *value,
+            Float(value) => *value as NodeInteger,
         }
     }
 
-    pub const fn integer_strict(&self) -> Result<NodeInteger, Error> {
-        evaluate_single_type!(self, Integer, value => *value)
+    pub fn integer_strict(&self) -> Result<NodeInteger, Error> {
+        evaluate_type!(self, Integer(value) => *value)
     }
 
-    pub const fn float(&self) -> Result<NodeFloat, Error> {
-        match self {
-            Self::Integer(value) => Ok(*value as NodeFloat),
-            Self::Float(value) => Ok(*value),
-            _ => Err(Error::unhandled(self)),
+    pub fn float(&self) -> Result<NodeFloat, Error> {
+        evaluate_type! {
+            self;
+            Integer(value) => *value as NodeFloat,
+            Float(value) => *value,
         }
     }
 
-    pub const fn float_strict(&self) -> Result<NodeFloat, Error> {
-        evaluate_single_type!(self, Float, value => *value)
+    pub fn float_strict(&self) -> Result<NodeFloat, Error> {
+        evaluate_type!(self, Float(value) => *value)
     }
 
-    pub const fn symbol(&self) -> Result<&Symbol, Error> {
-        evaluate_single_type!(self, Symbol)
+    pub fn symbol(&self) -> Result<&Symbol, Error> {
+        evaluate_type!(self, Symbol(value) => value)
     }
 
-    pub const fn string(&self) -> Result<&String, Error> {
-        evaluate_single_type!(self, String)
+    pub fn string(&self) -> Result<&String, Error> {
+        evaluate_type!(self, String(value) => value)
     }
 }
 

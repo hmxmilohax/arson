@@ -1,20 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{Node, NodeType};
+use crate::NodeType;
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Type mismatch: expected {expected:?}, got {actual:?}")]
     TypeMismatch { expected: NodeType, actual: NodeType },
-    #[error("Unhandled type {0:?}")]
-    UnhandledType(NodeType),
+    #[error("Type mismatch: expected one of {expected:?}, got {actual:?}")]
+    UnhandledType { expected: Vec<NodeType>, actual: NodeType },
     #[error("{0}")]
     Failure(String),
-}
-
-impl Error {
-    pub const fn unhandled(node: &Node) -> Self {
-        Self::UnhandledType(node.get_type())
-    }
 }
