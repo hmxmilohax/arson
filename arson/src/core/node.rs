@@ -4,6 +4,11 @@ use std::rc::Rc;
 
 use crate::{Error, Symbol};
 
+/// A function which is callable by a [`NodeCommand`].
+pub type HandleFn = fn(args: &NodeArray) -> HandleResult;
+/// The result of a [`HandleFn`].
+pub type HandleResult = Result<Node, Error>;
+
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
 
@@ -28,7 +33,10 @@ define_node_types! {
     String(String),
     Symbol(Symbol),
 
+    Function(HandleFn),
+
     Array(Rc<NodeArray>),
+    Command(Rc<NodeCommand>),
 }
 
 /// Helper macro for evaluating whether a node matches a single type.
@@ -66,7 +74,10 @@ impl Node {
             Self::String(_) => NodeType::String,
             Self::Symbol(_) => NodeType::Symbol,
 
+            Self::Function(_) => NodeType::Function,
+
             Self::Array(_) => NodeType::Array,
+            Self::Command(_) => NodeType::Command,
         }
     }
 
@@ -102,8 +113,16 @@ impl Node {
         evaluate_type!(self, String(value) => value)
     }
 
+    pub fn function(&self) -> Result<HandleFn, Error> {
+        evaluate_type!(self, Function(value) => *value)
+    }
+
     pub fn array(&self) -> Result<&Rc<NodeArray>, Error> {
         evaluate_type!(self, Array(value) => value)
+    }
+
+    pub fn command(&self) -> Result<&Rc<NodeCommand>, Error> {
+        evaluate_type!(self, Command(value) => value)
     }
 }
 
@@ -190,7 +209,28 @@ impl NodeArray {
         self.node(index)?.string()
     }
 
+    pub fn function(&self, index: usize) -> Result<HandleFn, Error> {
+        self.node(index)?.function()
+    }
+
     pub fn array(&self, index: usize) -> Result<&Rc<NodeArray>, Error> {
         self.node(index)?.array()
+    }
+
+    pub fn command(&self, index: usize) -> Result<&Rc<NodeCommand>, Error> {
+        self.node(index)?.command()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeCommand {
+    nodes: NodeArray,
+}
+
+impl std::ops::Deref for NodeCommand {
+    type Target = NodeArray;
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
     }
 }
