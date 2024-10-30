@@ -1,0 +1,10 @@
+[licenses]
+unused-allowed-license = "allow"
+allow = [
+    "Apache-2.0",
+    "LGPL-3.0",
+    "MIT",
+]
+
+[licenses.private]
+ignore = true

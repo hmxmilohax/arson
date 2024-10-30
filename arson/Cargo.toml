@@ -1,0 +1,13 @@
+[package]
+name = "arson"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+# Due to the proprietary origins of the language this library seeks to implement,
+# it's probably best not to allow it to be published to any registries.
+# Additionally, the name conflicts with existing packages, and so a different
+# name would need to be picked in the case where it does get published.
+publish = false
+
+[dependencies]
