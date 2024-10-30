@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::rc::Rc;
+
 use crate::{Error, Symbol};
 
 pub type NodeInteger = i64;
@@ -25,6 +27,8 @@ define_node_types! {
     Float(NodeFloat),
     String(String),
     Symbol(Symbol),
+
+    Array(Rc<NodeArray>),
 }
 
 /// Helper macro for evaluating whether a node matches a single type.
@@ -61,6 +65,8 @@ impl Node {
             Self::Float(_) => NodeType::Float,
             Self::String(_) => NodeType::String,
             Self::Symbol(_) => NodeType::Symbol,
+
+            Self::Array(_) => NodeType::Array,
         }
     }
 
@@ -95,6 +101,10 @@ impl Node {
     pub fn string(&self) -> Result<&String, Error> {
         evaluate_type!(self, String(value) => value)
     }
+
+    pub fn array(&self) -> Result<&Rc<NodeArray>, Error> {
+        evaluate_type!(self, Array(value) => value)
+    }
 }
 
 macro_rules! impl_from {
@@ -120,3 +130,67 @@ impl_from!(Float, f32, value => value as NodeFloat);
 impl_from!(Symbol, &Symbol, value => value.clone());
 impl_from!(String, &String, value => value.clone());
 impl_from!(String, &str, value => value.to_owned());
+
+#[derive(Debug, Clone)]
+pub struct NodeArray {
+    nodes: Vec<Node>,
+}
+
+impl NodeArray {
+    pub fn new() -> Self {
+        Self { nodes: Vec::new() }
+    }
+
+    pub fn push(&mut self, node: Node) {
+        self.nodes.push(node)
+    }
+
+    pub fn pop(&mut self) -> Option<Node> {
+        self.nodes.pop()
+    }
+
+    pub fn insert(&mut self, index: usize, node: Node) {
+        self.nodes.insert(index, node)
+    }
+
+    pub fn remove(&mut self, index: usize) -> Node {
+        self.nodes.remove(index)
+    }
+
+    pub fn node(&self, index: usize) -> Result<&Node, Error> {
+        match self.nodes.get(index) {
+            Some(value) => Ok(value),
+            None => Err(Error::IndexOutOfRange { index, range: 0..self.nodes.len() }),
+        }
+    }
+
+    pub fn node_mut(&mut self, index: usize) -> Result<&mut Node, Error> {
+        //? workaround for mutable borrow rules
+        let range = 0..self.nodes.len();
+
+        match self.nodes.get_mut(index) {
+            Some(value) => Ok(value),
+            None => Err(Error::IndexOutOfRange { index, range }),
+        }
+    }
+
+    pub fn integer(&self, index: usize) -> Result<NodeInteger, Error> {
+        self.node(index)?.integer()
+    }
+
+    pub fn float(&self, index: usize) -> Result<NodeFloat, Error> {
+        self.node(index)?.float()
+    }
+
+    pub fn symbol(&self, index: usize) -> Result<&Symbol, Error> {
+        self.node(index)?.symbol()
+    }
+
+    pub fn string(&self, index: usize) -> Result<&String, Error> {
+        self.node(index)?.string()
+    }
+
+    pub fn array(&self, index: usize) -> Result<&Rc<NodeArray>, Error> {
+        self.node(index)?.array()
+    }
+}
