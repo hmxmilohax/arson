@@ -13,21 +13,24 @@ pub type NodeInteger = i64;
 pub type NodeFloat = f64;
 
 macro_rules! define_node_types {
-    ($($type:ident($value:ty)$(,)?)+) => {
+    ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
         /// The type of value contained within a node.
-        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Hash)]
         pub enum NodeType {
-            $($type,)+
+            $($(#[$attr])* $type,)+
         }
 
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Default)]
         pub enum Node {
-            $($type($value),)+
+            $($(#[$attr])* $type$(($value))?,)+
         }
     }
 }
 
 define_node_types! {
+    #[default]
+    Unhandled,
+
     Integer(NodeInteger),
     Float(NodeFloat),
     String(String),
@@ -70,6 +73,8 @@ macro_rules! evaluate_type {
 impl Node {
     pub fn get_type(&self) -> NodeType {
         match self {
+            Self::Unhandled => NodeType::Unhandled,
+
             Self::Integer(_) => NodeType::Integer,
             Self::Float(_) => NodeType::Float,
             Self::String(_) => NodeType::String,
