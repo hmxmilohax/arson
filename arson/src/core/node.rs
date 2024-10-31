@@ -115,7 +115,15 @@ impl Node {
         evaluate_type!(self, String(value) => value)
     }
 
+    pub fn string_mut(&mut self) -> Result<&mut String, Error> {
+        evaluate_type!(self, String(value) => value)
+    }
+
     pub fn object(&self) -> Result<&Rc<dyn Object>, Error> {
+        evaluate_type!(self, Object(value) => value)
+    }
+
+    pub fn object_mut(&mut self) -> Result<&mut Rc<dyn Object>, Error> {
         evaluate_type!(self, Object(value) => value)
     }
 
@@ -127,7 +135,15 @@ impl Node {
         evaluate_type!(self, Array(value) => value)
     }
 
+    pub fn array_mut(&mut self) -> Result<&mut Rc<NodeArray>, Error> {
+        evaluate_type!(self, Array(value) => value)
+    }
+
     pub fn command(&self) -> Result<&Rc<NodeCommand>, Error> {
+        evaluate_type!(self, Command(value) => value)
+    }
+
+    pub fn command_mut(&mut self) -> Result<&mut Rc<NodeCommand>, Error> {
         evaluate_type!(self, Command(value) => value)
     }
 }
@@ -215,8 +231,16 @@ impl NodeArray {
         self.node(index)?.string()
     }
 
+    pub fn string_mut(&mut self, index: usize) -> Result<&mut String, Error> {
+        self.node_mut(index)?.string_mut()
+    }
+
     pub fn object(&self, index: usize) -> Result<&Rc<dyn Object>, Error> {
         self.node(index)?.object()
+    }
+
+    pub fn object_mut(&mut self, index: usize) -> Result<&mut Rc<dyn Object>, Error> {
+        self.node_mut(index)?.object_mut()
     }
 
     pub fn function(&self, index: usize) -> Result<HandleFn, Error> {
@@ -227,8 +251,16 @@ impl NodeArray {
         self.node(index)?.array()
     }
 
+    pub fn array_mut(&mut self, index: usize) -> Result<&mut Rc<NodeArray>, Error> {
+        self.node_mut(index)?.array_mut()
+    }
+
     pub fn command(&self, index: usize) -> Result<&Rc<NodeCommand>, Error> {
         self.node(index)?.command()
+    }
+
+    pub fn command_mut(&mut self, index: usize) -> Result<&mut Rc<NodeCommand>, Error> {
+        self.node_mut(index)?.command_mut()
     }
 }
 
@@ -242,5 +274,11 @@ impl std::ops::Deref for NodeCommand {
 
     fn deref(&self) -> &Self::Target {
         &self.nodes
+    }
+}
+
+impl std::ops::DerefMut for NodeCommand {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.nodes
     }
 }
