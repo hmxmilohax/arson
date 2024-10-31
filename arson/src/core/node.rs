@@ -7,7 +7,7 @@ use super::{Context, Error, Object, Symbol};
 /// A function which is callable by a [`NodeCommand`].
 pub type HandleFn = fn(context: &mut Context, args: &NodeArray) -> HandleResult;
 /// The result of a [`HandleFn`].
-pub type HandleResult = Result<Node, Error>;
+pub type HandleResult = crate::Result<Node>;
 
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
@@ -83,7 +83,7 @@ impl Node {
         }
     }
 
-    pub fn integer(&self) -> Result<NodeInteger, Error> {
+    pub fn integer(&self) -> crate::Result<NodeInteger> {
         evaluate_type! {
             self;
             Integer(value) => *value,
@@ -91,11 +91,11 @@ impl Node {
         }
     }
 
-    pub fn integer_strict(&self) -> Result<NodeInteger, Error> {
+    pub fn integer_strict(&self) -> crate::Result<NodeInteger> {
         evaluate_type!(self, Integer(value) => *value)
     }
 
-    pub fn float(&self) -> Result<NodeFloat, Error> {
+    pub fn float(&self) -> crate::Result<NodeFloat> {
         evaluate_type! {
             self;
             Integer(value) => *value as NodeFloat,
@@ -103,47 +103,47 @@ impl Node {
         }
     }
 
-    pub fn float_strict(&self) -> Result<NodeFloat, Error> {
+    pub fn float_strict(&self) -> crate::Result<NodeFloat> {
         evaluate_type!(self, Float(value) => *value)
     }
 
-    pub fn symbol(&self) -> Result<&Symbol, Error> {
+    pub fn symbol(&self) -> crate::Result<&Symbol> {
         evaluate_type!(self, Symbol(value) => value)
     }
 
-    pub fn string(&self) -> Result<&String, Error> {
+    pub fn string(&self) -> crate::Result<&String> {
         evaluate_type!(self, String(value) => value)
     }
 
-    pub fn string_mut(&mut self) -> Result<&mut String, Error> {
+    pub fn string_mut(&mut self) -> crate::Result<&mut String> {
         evaluate_type!(self, String(value) => value)
     }
 
-    pub fn object(&self) -> Result<&Rc<dyn Object>, Error> {
+    pub fn object(&self) -> crate::Result<&Rc<dyn Object>> {
         evaluate_type!(self, Object(value) => value)
     }
 
-    pub fn object_mut(&mut self) -> Result<&mut Rc<dyn Object>, Error> {
+    pub fn object_mut(&mut self) -> crate::Result<&mut Rc<dyn Object>> {
         evaluate_type!(self, Object(value) => value)
     }
 
-    pub fn function(&self) -> Result<HandleFn, Error> {
+    pub fn function(&self) -> crate::Result<HandleFn> {
         evaluate_type!(self, Function(value) => *value)
     }
 
-    pub fn array(&self) -> Result<&Rc<NodeArray>, Error> {
+    pub fn array(&self) -> crate::Result<&Rc<NodeArray>> {
         evaluate_type!(self, Array(value) => value)
     }
 
-    pub fn array_mut(&mut self) -> Result<&mut Rc<NodeArray>, Error> {
+    pub fn array_mut(&mut self) -> crate::Result<&mut Rc<NodeArray>> {
         evaluate_type!(self, Array(value) => value)
     }
 
-    pub fn command(&self) -> Result<&Rc<NodeCommand>, Error> {
+    pub fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
         evaluate_type!(self, Command(value) => value)
     }
 
-    pub fn command_mut(&mut self) -> Result<&mut Rc<NodeCommand>, Error> {
+    pub fn command_mut(&mut self) -> crate::Result<&mut Rc<NodeCommand>> {
         evaluate_type!(self, Command(value) => value)
     }
 }
@@ -205,14 +205,14 @@ impl NodeArray {
         self.nodes.remove(index)
     }
 
-    pub fn node(&self, index: usize) -> Result<&Node, Error> {
+    pub fn node(&self, index: usize) -> crate::Result<&Node> {
         match self.nodes.get(index) {
             Some(value) => Ok(value),
             None => Err(Error::IndexOutOfRange { index, range: 0..self.nodes.len() }),
         }
     }
 
-    pub fn node_mut(&mut self, index: usize) -> Result<&mut Node, Error> {
+    pub fn node_mut(&mut self, index: usize) -> crate::Result<&mut Node> {
         //? workaround for mutable borrow rules
         let range = 0..self.nodes.len();
 
@@ -222,51 +222,51 @@ impl NodeArray {
         }
     }
 
-    pub fn integer(&self, index: usize) -> Result<NodeInteger, Error> {
+    pub fn integer(&self, index: usize) -> crate::Result<NodeInteger> {
         self.node(index)?.integer()
     }
 
-    pub fn float(&self, index: usize) -> Result<NodeFloat, Error> {
+    pub fn float(&self, index: usize) -> crate::Result<NodeFloat> {
         self.node(index)?.float()
     }
 
-    pub fn symbol(&self, index: usize) -> Result<&Symbol, Error> {
+    pub fn symbol(&self, index: usize) -> crate::Result<&Symbol> {
         self.node(index)?.symbol()
     }
 
-    pub fn string(&self, index: usize) -> Result<&String, Error> {
+    pub fn string(&self, index: usize) -> crate::Result<&String> {
         self.node(index)?.string()
     }
 
-    pub fn string_mut(&mut self, index: usize) -> Result<&mut String, Error> {
+    pub fn string_mut(&mut self, index: usize) -> crate::Result<&mut String> {
         self.node_mut(index)?.string_mut()
     }
 
-    pub fn object(&self, index: usize) -> Result<&Rc<dyn Object>, Error> {
+    pub fn object(&self, index: usize) -> crate::Result<&Rc<dyn Object>> {
         self.node(index)?.object()
     }
 
-    pub fn object_mut(&mut self, index: usize) -> Result<&mut Rc<dyn Object>, Error> {
+    pub fn object_mut(&mut self, index: usize) -> crate::Result<&mut Rc<dyn Object>> {
         self.node_mut(index)?.object_mut()
     }
 
-    pub fn function(&self, index: usize) -> Result<HandleFn, Error> {
+    pub fn function(&self, index: usize) -> crate::Result<HandleFn> {
         self.node(index)?.function()
     }
 
-    pub fn array(&self, index: usize) -> Result<&Rc<NodeArray>, Error> {
+    pub fn array(&self, index: usize) -> crate::Result<&Rc<NodeArray>> {
         self.node(index)?.array()
     }
 
-    pub fn array_mut(&mut self, index: usize) -> Result<&mut Rc<NodeArray>, Error> {
+    pub fn array_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeArray>> {
         self.node_mut(index)?.array_mut()
     }
 
-    pub fn command(&self, index: usize) -> Result<&Rc<NodeCommand>, Error> {
+    pub fn command(&self, index: usize) -> crate::Result<&Rc<NodeCommand>> {
         self.node(index)?.command()
     }
 
-    pub fn command_mut(&mut self, index: usize) -> Result<&mut Rc<NodeCommand>, Error> {
+    pub fn command_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeCommand>> {
         self.node_mut(index)?.command_mut()
     }
 }

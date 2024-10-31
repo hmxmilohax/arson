@@ -17,12 +17,12 @@ impl Context {
         context
     }
 
-    pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> Result<(), Error> {
+    pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> crate::Result<()> {
         let symbol = self.symbol_table.add(name);
         self.register_func(symbol, func)
     }
 
-    pub fn register_func(&mut self, name: Symbol, func: HandleFn) -> Result<(), Error> {
+    pub fn register_func(&mut self, name: Symbol, func: HandleFn) -> crate::Result<()> {
         if self.fn_map.contains_key(&name) {
             return Err(Error::DuplicateEntry(name));
         }

@@ -23,3 +23,5 @@ pub enum Error {
     #[error("{0}")]
     Failure(String),
 }
+
+pub type Result<T> = std::result::Result<T, self::Error>;
