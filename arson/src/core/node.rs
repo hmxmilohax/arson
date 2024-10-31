@@ -194,20 +194,8 @@ impl NodeArray {
         Self { nodes: Vec::new() }
     }
 
-    pub fn push(&mut self, node: Node) {
-        self.nodes.push(node)
-    }
-
-    pub fn pop(&mut self) -> Option<Node> {
-        self.nodes.pop()
-    }
-
-    pub fn insert(&mut self, index: usize, node: Node) {
-        self.nodes.insert(index, node)
-    }
-
-    pub fn remove(&mut self, index: usize) -> Node {
-        self.nodes.remove(index)
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { nodes: Vec::with_capacity(capacity) }
     }
 
     pub fn node(&self, index: usize) -> crate::Result<&Node> {
@@ -273,6 +261,20 @@ impl NodeArray {
 
     pub fn command_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeCommand>> {
         self.node_mut(index)?.command_mut()
+    }
+}
+
+impl std::ops::Deref for NodeArray {
+    type Target = Vec<Node>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
+}
+
+impl std::ops::DerefMut for NodeArray {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.nodes
     }
 }
 
