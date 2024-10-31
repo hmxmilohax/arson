@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Error, Symbol};
+use crate::{Error, Object, Symbol};
 
 /// A function which is callable by a [`NodeCommand`].
 pub type HandleFn = fn(args: &NodeArray) -> HandleResult;
@@ -33,6 +33,7 @@ define_node_types! {
     String(String),
     Symbol(Symbol),
 
+    Object(Rc<dyn Object>),
     Function(HandleFn),
 
     Array(Rc<NodeArray>),
@@ -74,6 +75,7 @@ impl Node {
             Self::String(_) => NodeType::String,
             Self::Symbol(_) => NodeType::Symbol,
 
+            Self::Object(_) => NodeType::Object,
             Self::Function(_) => NodeType::Function,
 
             Self::Array(_) => NodeType::Array,
@@ -111,6 +113,10 @@ impl Node {
 
     pub fn string(&self) -> Result<&String, Error> {
         evaluate_type!(self, String(value) => value)
+    }
+
+    pub fn object(&self) -> Result<&Rc<dyn Object>, Error> {
+        evaluate_type!(self, Object(value) => value)
     }
 
     pub fn function(&self) -> Result<HandleFn, Error> {
@@ -207,6 +213,10 @@ impl NodeArray {
 
     pub fn string(&self, index: usize) -> Result<&String, Error> {
         self.node(index)?.string()
+    }
+
+    pub fn object(&self, index: usize) -> Result<&Rc<dyn Object>, Error> {
+        self.node(index)?.object()
     }
 
     pub fn function(&self, index: usize) -> Result<HandleFn, Error> {
