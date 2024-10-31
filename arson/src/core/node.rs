@@ -41,6 +41,7 @@ define_node_types! {
 
     Array(Rc<NodeArray>),
     Command(Rc<NodeCommand>),
+    Property(Rc<NodeProperty>),
 }
 
 /// Helper macro for evaluating whether a node matches a single type.
@@ -85,6 +86,7 @@ impl Node {
 
             Self::Array(_) => NodeType::Array,
             Self::Command(_) => NodeType::Command,
+            Self::Property(_) => NodeType::Property,
         }
     }
 
@@ -150,6 +152,14 @@ impl Node {
 
     pub fn command_mut(&mut self) -> crate::Result<&mut Rc<NodeCommand>> {
         evaluate_type!(self, Command(value) => value)
+    }
+
+    pub fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+        evaluate_type!(self, Property(value) => value)
+    }
+
+    pub fn property_mut(&mut self) -> crate::Result<&mut Rc<NodeProperty>> {
+        evaluate_type!(self, Property(value) => value)
     }
 }
 
@@ -262,6 +272,14 @@ impl NodeArray {
     pub fn command_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeCommand>> {
         self.node_mut(index)?.command_mut()
     }
+
+    pub fn property(&self, index: usize) -> crate::Result<&Rc<NodeProperty>> {
+        self.node(index)?.property()
+    }
+
+    pub fn property_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeProperty>> {
+        self.node_mut(index)?.property_mut()
+    }
 }
 
 impl std::ops::Deref for NodeArray {
@@ -292,6 +310,25 @@ impl std::ops::Deref for NodeCommand {
 }
 
 impl std::ops::DerefMut for NodeCommand {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.nodes
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeProperty {
+    nodes: NodeArray,
+}
+
+impl std::ops::Deref for NodeProperty {
+    type Target = NodeArray;
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
+}
+
+impl std::ops::DerefMut for NodeProperty {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.nodes
     }
