@@ -2,10 +2,10 @@
 
 use std::rc::Rc;
 
-use crate::{Error, Object, Symbol};
+use super::{Context, Error, Object, Symbol};
 
 /// A function which is callable by a [`NodeCommand`].
-pub type HandleFn = fn(args: &NodeArray) -> HandleResult;
+pub type HandleFn = fn(context: &mut Context, args: &NodeArray) -> HandleResult;
 /// The result of a [`HandleFn`].
 pub type HandleResult = Result<Node, Error>;
 

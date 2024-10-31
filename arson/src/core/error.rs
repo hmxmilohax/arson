@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::NodeType;
+use super::{NodeType, Symbol};
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
@@ -16,6 +16,9 @@ pub enum Error {
         index: usize,
         range: std::ops::Range<usize>,
     },
+
+    #[error("Duplicate entry for symbol {0}")]
+    DuplicateEntry(Symbol),
 
     #[error("{0}")]
     Failure(String),
