@@ -165,12 +165,19 @@ impl_from!(Integer, NodeInteger);
 impl_from!(Float, NodeFloat);
 impl_from!(Symbol, Symbol);
 impl_from!(String, String);
+impl_from!(Object, Rc<dyn Object>);
+impl_from!(Function, HandleFn);
+impl_from!(Array, Rc<NodeArray>);
+impl_from!(Command, Rc<NodeCommand>);
 
 impl_from!(Integer, i32, value => value as NodeInteger);
 impl_from!(Float, f32, value => value as NodeFloat);
 impl_from!(Symbol, &Symbol, value => value.clone());
 impl_from!(String, &String, value => value.clone());
 impl_from!(String, &str, value => value.to_owned());
+impl_from!(Object, &Rc<dyn Object>, value => value.clone());
+impl_from!(Array, &Rc<NodeArray>, value => value.clone());
+impl_from!(Command, &Rc<NodeCommand>, value => value.clone());
 
 #[derive(Debug, Clone)]
 pub struct NodeArray {
