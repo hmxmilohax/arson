@@ -39,9 +39,9 @@ define_node_types! {
     Object(Rc<dyn Object>),
     Function(HandleFn),
 
-    Array(Rc<NodeArray>),
-    Command(Rc<NodeCommand>),
-    Property(Rc<NodeProperty>),
+    Array(NodeArray),
+    Command(NodeCommand),
+    Property(NodeProperty),
 }
 
 /// Helper macro for evaluating whether a node matches a single type.
@@ -138,27 +138,27 @@ impl Node {
         evaluate_type!(self, Function(value) => *value)
     }
 
-    pub fn array(&self) -> crate::Result<&Rc<NodeArray>> {
+    pub fn array(&self) -> crate::Result<&NodeArray> {
         evaluate_type!(self, Array(value) => value)
     }
 
-    pub fn array_mut(&mut self) -> crate::Result<&mut Rc<NodeArray>> {
+    pub fn array_mut(&mut self) -> crate::Result<&mut NodeArray> {
         evaluate_type!(self, Array(value) => value)
     }
 
-    pub fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
+    pub fn command(&self) -> crate::Result<&NodeCommand> {
         evaluate_type!(self, Command(value) => value)
     }
 
-    pub fn command_mut(&mut self) -> crate::Result<&mut Rc<NodeCommand>> {
+    pub fn command_mut(&mut self) -> crate::Result<&mut NodeCommand> {
         evaluate_type!(self, Command(value) => value)
     }
 
-    pub fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+    pub fn property(&self) -> crate::Result<&NodeProperty> {
         evaluate_type!(self, Property(value) => value)
     }
 
-    pub fn property_mut(&mut self) -> crate::Result<&mut Rc<NodeProperty>> {
+    pub fn property_mut(&mut self) -> crate::Result<&mut NodeProperty> {
         evaluate_type!(self, Property(value) => value)
     }
 }
@@ -182,8 +182,9 @@ impl_from!(Symbol, Symbol);
 impl_from!(String, String);
 impl_from!(Object, Rc<dyn Object>);
 impl_from!(Function, HandleFn);
-impl_from!(Array, Rc<NodeArray>);
-impl_from!(Command, Rc<NodeCommand>);
+impl_from!(Array, NodeArray);
+impl_from!(Command, NodeCommand);
+impl_from!(Property, NodeProperty);
 
 impl_from!(Integer, i32, value => value as NodeInteger);
 impl_from!(Float, f32, value => value as NodeFloat);
@@ -191,8 +192,6 @@ impl_from!(Symbol, &Symbol, value => value.clone());
 impl_from!(String, &String, value => value.clone());
 impl_from!(String, &str, value => value.to_owned());
 impl_from!(Object, &Rc<dyn Object>, value => value.clone());
-impl_from!(Array, &Rc<NodeArray>, value => value.clone());
-impl_from!(Command, &Rc<NodeCommand>, value => value.clone());
 
 #[derive(Debug, Clone)]
 pub struct NodeArray {
@@ -257,27 +256,27 @@ impl NodeArray {
         self.node(index)?.function()
     }
 
-    pub fn array(&self, index: usize) -> crate::Result<&Rc<NodeArray>> {
+    pub fn array(&self, index: usize) -> crate::Result<&NodeArray> {
         self.node(index)?.array()
     }
 
-    pub fn array_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeArray>> {
+    pub fn array_mut(&mut self, index: usize) -> crate::Result<&mut NodeArray> {
         self.node_mut(index)?.array_mut()
     }
 
-    pub fn command(&self, index: usize) -> crate::Result<&Rc<NodeCommand>> {
+    pub fn command(&self, index: usize) -> crate::Result<&NodeCommand> {
         self.node(index)?.command()
     }
 
-    pub fn command_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeCommand>> {
+    pub fn command_mut(&mut self, index: usize) -> crate::Result<&mut NodeCommand> {
         self.node_mut(index)?.command_mut()
     }
 
-    pub fn property(&self, index: usize) -> crate::Result<&Rc<NodeProperty>> {
+    pub fn property(&self, index: usize) -> crate::Result<&NodeProperty> {
         self.node(index)?.property()
     }
 
-    pub fn property_mut(&mut self, index: usize) -> crate::Result<&mut Rc<NodeProperty>> {
+    pub fn property_mut(&mut self, index: usize) -> crate::Result<&mut NodeProperty> {
         self.node_mut(index)?.property_mut()
     }
 }
