@@ -25,3 +25,24 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, self::Error>;
+
+#[macro_export]
+macro_rules! arson_assert {
+    ($cond:expr $(,)?) => {
+        if !$cond {
+            $crate::arson_fail!("Assertion failed: {}", stringify!($cond));
+        }
+    };
+    ($cond:expr, $($arg:tt)+) => {
+        if !$cond {
+            $crate::arson_fail!($($arg)+);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! arson_fail {
+    ($($arg:tt)+) => {
+        return Err($crate::Error::Failure(format!($($arg)+)))
+    };
+}

@@ -5,6 +5,7 @@ mod error;
 mod node;
 mod object;
 mod symbol;
+mod parse;
 
 pub use context::*;
 pub use error::*;
