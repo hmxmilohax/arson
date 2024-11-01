@@ -199,7 +199,7 @@ pub struct NodeArray {
 }
 
 impl NodeArray {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { nodes: Vec::new() }
     }
 
@@ -300,6 +300,18 @@ pub struct NodeCommand {
     nodes: NodeArray,
 }
 
+impl NodeCommand {
+    pub const fn new() -> Self {
+        Self { nodes: NodeArray::new() }
+    }
+}
+
+impl From<NodeArray> for NodeCommand {
+    fn from(value: NodeArray) -> Self {
+        Self { nodes: value }
+    }
+}
+
 impl std::ops::Deref for NodeCommand {
     type Target = NodeArray;
 
@@ -317,6 +329,18 @@ impl std::ops::DerefMut for NodeCommand {
 #[derive(Debug, Clone)]
 pub struct NodeProperty {
     nodes: NodeArray,
+}
+
+impl NodeProperty {
+    pub const fn new() -> Self {
+        Self { nodes: NodeArray::new() }
+    }
+}
+
+impl From<NodeArray> for NodeProperty {
+    fn from(value: NodeArray) -> Self {
+        Self { nodes: value }
+    }
 }
 
 impl std::ops::Deref for NodeProperty {
