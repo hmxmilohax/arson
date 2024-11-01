@@ -139,6 +139,7 @@ enum NodeParseStatus {
 pub struct Parser {
     line_number: usize,
     array_open: ArrayType,
+    conditionals: Vec<bool>,
     block_comment: bool,
 }
 
@@ -147,6 +148,7 @@ impl Parser {
         Self {
             line_number: 1,
             array_open: ArrayType::None,
+            conditionals: Vec::new(),
             block_comment: false,
         }
     }
@@ -228,8 +230,49 @@ impl Parser {
                 }
             },
 
-            // Skip everything else during necessary conditions
+            // Skip everything else during block comments
             _ if self.block_comment => {
+                return Ok(NodeParseStatus::Continue);
+            },
+
+            Token::Ifdef => {
+                let name = match next_token(lexer)? {
+                    Token::Symbol(name) => context.add_symbol(name),
+                    token => arson_fail!("Invalid token for #ifdef name: {token:?}"),
+                };
+                self.conditionals.push(context.get_macro(&name).is_some());
+                return Ok(NodeParseStatus::Continue);
+            },
+            Token::Ifndef => {
+                let name = match next_token(lexer)? {
+                    Token::Symbol(name) => context.add_symbol(name),
+                    token => arson_fail!("Invalid token for #ifndef name: {token:?}"),
+                };
+                self.conditionals.push(context.get_macro(&name).is_none());
+                return Ok(NodeParseStatus::Continue);
+            },
+            Token::Else => {
+                match self.conditionals.pop() {
+                    Some(value) => self.conditionals.push(!value),
+                    None => arson_fail!("Mismatched #else outside of a conditional block."),
+                }
+                return Ok(NodeParseStatus::Continue);
+            },
+            Token::Endif => {
+                if let None = self.conditionals.pop() {
+                    arson_fail!("Mismatched #endif outside of a conditional block.");
+                }
+                return Ok(NodeParseStatus::Continue);
+            },
+
+            Token::BadDirective(name) => arson_fail!("Bad directive {name}"),
+
+            // Skip everything else during negative conditionals
+            _ if match self.conditionals.last() {
+                Some(value) => !value,
+                None => false,
+            } =>
+            {
                 return Ok(NodeParseStatus::Continue);
             },
 
