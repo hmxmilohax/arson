@@ -22,8 +22,8 @@ enum TokenError {
 }
 
 // Token regexes based on the RB3 decomp.
-// Behavior is replicated as closely as possible, with the only exception being block comments,
-// as those are rather badly handled in the original lex file.
+// Behavior is replicated as closely as possible, all files should tokenize
+// identically to the original Flex tokenizer based on current knowledge for it.
 
 #[derive(logos::Logos, Debug, PartialEq)]
 #[logos(error = TokenError)]
@@ -33,17 +33,17 @@ enum Token<'src> {
     #[regex(r#"0x[A-Fa-f0-9]+"#, parse_hex, priority = 2)]
     Integer(i64),
     // This one allows some weird things, such as ".", "+.", and "-.E1"
-    #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, |lex| lex.slice().parse::<f64>(), priority = 2)]
+    #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, parse_float, priority = 2)]
     Float(f64),
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
     String(&'src str),
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
-    #[regex(r#"[^ \v\t\r\f\(\)\[\]\{\}]+"#, priority = 0)]
+    #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, priority = 0)]
     #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
     Symbol(&'src str),
-    #[regex(r#"\$[^ \v\t\r\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
+    #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
     Variable(&'src str),
     #[token("kDataUnhandled")]
     Unhandled,
@@ -83,22 +83,37 @@ enum Token<'src> {
     #[token("#endif")]
     Endif,
 
-    #[regex(r#"#[^ \v\t\r\f\(\)\[\]\{\}]+"#)]
+    #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
     BadDirective(&'src str),
 
     #[token("\n")]
     Newline,
     #[regex(r#";[^\n]*"#, priority = 1)]
     Comment,
-    #[token("/*")]
-    BlockCommentStart,
-    #[token("*/")]
-    BlockCommentEnd,
+    #[regex(r#"(\/\*)+[^\n*]*"#)]
+    BlockCommentStart(&'src str),
+    #[regex(r#"\*+\/"#)]
+    BlockCommentEnd(&'src str),
 }
 
 fn parse_hex<'src>(lex: &mut Lexer<'src, Token<'src>>) -> Result<i64, TokenError> {
     let trimmed = trim_delimiters(lex.slice(), 2, 0)?;
-    i64::from_str_radix(trimmed, 16).map_err(|err| TokenError::IntegerError(err))
+    u64::from_str_radix(trimmed, 16)
+        .map(|v| v as i64)
+        .map_err(|err| TokenError::IntegerError(err))
+}
+
+fn parse_float<'src>(lex: &mut Lexer<'src, Token<'src>>) -> Result<f64, TokenError> {
+    let text = lex.slice();
+    match text.parse::<f64>() {
+        Ok(value) => Ok(value),
+        Err(err) => match text {
+            text if text.starts_with(".") => Ok(0.0),
+            text if text.starts_with("+.") => Ok(0.0),
+            text if text.starts_with("-.") => Ok(-0.0),
+            _ => Err(TokenError::FloatError(err)),
+        },
+    }
 }
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, TokenError> {
@@ -199,13 +214,18 @@ impl Parser {
             Token::Comment => {
                 return Ok(NodeParseStatus::Continue);
             },
-            Token::BlockCommentStart => {
+            Token::BlockCommentStart(_) => {
                 self.block_comment = true;
                 return Ok(NodeParseStatus::Continue);
             },
-            Token::BlockCommentEnd => {
-                self.block_comment = false;
-                return Ok(NodeParseStatus::Continue);
+            Token::BlockCommentEnd(text) => {
+                if self.block_comment {
+                    self.block_comment = false;
+                    return Ok(NodeParseStatus::Continue);
+                } else {
+                    // For compatibility, stray block ends are parsed as symbols
+                    Node::Symbol(context.add_symbol(text))
+                }
             },
 
             // Skip everything else during necessary conditions
@@ -265,24 +285,6 @@ mod tests {
     mod tokens {
         use super::*;
 
-        macro_rules! assert_token_error {
-            ($text:expr, $type:ident) => {
-                let tokens = Vec::from_iter(Token::lexer($text));
-                assert_eq!(tokens.len(), 1);
-                match &tokens[0] {
-                    Ok(token) => panic!("expected error result, got token {token:?}"),
-                    Err(err) => match err {
-                        TokenError::$type(_) => (),
-                        err => panic!(
-                            "expected error {}, got error {:?}",
-                            stringify!(TokenError::$type),
-                            err
-                        ),
-                    },
-                }
-            };
-        }
-
         fn assert_token(text: &str, expected: Token<'_>) {
             let tokens = Vec::from_iter(Token::lexer(text));
             assert_eq!(tokens.len(), 1, "Unexpected token count");
@@ -308,9 +310,9 @@ mod tests {
             assert_token("12.", Token::Float(12.0));
             assert_token(".12", Token::Float(0.12));
 
-            assert_token_error!(".", FloatError);
-            assert_token_error!("+.", FloatError);
-            assert_token_error!("-.", FloatError);
+            assert_token(".", Token::Float(0.0));
+            assert_token("+.", Token::Float(0.0));
+            assert_token("-.", Token::Float(-0.0));
         }
 
         #[test]
@@ -419,7 +421,7 @@ mod tests {
             assert_token("#ifndef", Token::Ifndef);
             assert_token("#else", Token::Else);
             assert_token("#endif", Token::Endif);
-            assert_token("#bad", Token::BadDirective("#bad"));
+            assert_token("#bad", Token::BadDirective("bad"));
         }
 
         #[test]
@@ -429,9 +431,9 @@ mod tests {
             assert_tokens(
                 "/* comment */",
                 vec![
-                    Token::BlockCommentStart,
+                    Token::BlockCommentStart("/*"),
                     Token::Symbol("comment"),
-                    Token::BlockCommentEnd,
+                    Token::BlockCommentEnd("*/"),
                 ],
             );
 
@@ -440,26 +442,6 @@ mod tests {
             assert_token("/**/", Token::Symbol("/**/"));
             assert_token("/*****/", Token::Symbol("/*****/"));
             assert_token("/*comment*/", Token::Symbol("/*comment*/"));
-
-            assert_token("/** */", Token::Symbol("/**/"));
-
-            assert_tokens(
-                r#"
-                /*****
-
-                    /*
-
-                    *****
-
-                ***/
-                "#,
-                vec![
-                    Token::Symbol("/*****"),
-                    Token::BlockCommentStart,
-                    Token::Symbol("*****"),
-                    Token::BlockCommentEnd,
-                ],
-            )
         }
 
         #[test]
@@ -467,6 +449,202 @@ mod tests {
             assert_token("\n", Token::Newline);
             assert_token("\r\n", Token::Newline);
             assert_token("\n\t", Token::Newline);
+        }
+
+        #[test]
+        fn thorough() {
+            use Token::*;
+
+            let text = include_str!("../../tests/test_files/thorough.dta").replace("\r\n", "\n");
+
+            #[rustfmt::skip]
+            let tokens = vec![
+                // integers
+                Comment, Newline,
+                Integer(1), Integer(2), Integer(-3), Newline,
+                Integer(1), Integer(2), Integer(-3), Newline,
+                Newline,
+
+                // hex numbers
+                Comment, Newline,
+                Integer(0x1), Integer(0xA), Integer(0xa), Newline,
+                Integer(0xFFFFFFFF), Newline,
+                Integer(0xFFFFFFFFFFFFFFFFu64 as i64), Newline,
+                // invalid (lexed as symbols)
+                Comment, Newline,
+                Symbol("0x"), Symbol("x1"), Newline,
+                Symbol("+0x2"), Symbol("-0x3"), Newline,
+                Symbol("+0xB"), Symbol("-0xC"), Newline,
+                Symbol("+0xb"), Symbol("-0xc"), Newline,
+                Newline,
+
+                // floats
+                Comment, Newline,
+                Float(1.0), Float(2.0), Float(-3.0), Newline,
+                Float(1.0), Float(2.0), Float(-3.0), Newline,
+                Float(0.1), Float(0.2), Float(-0.3), Newline,
+                // these are valid
+                Comment, Newline,
+                Float(0.0), Float(0.0), Float(-0.0), Newline,
+                Newline,
+
+                // floats with exponents
+                Comment, Newline,
+                // valid                                          -  invalid
+                Comment, Newline,
+                Float(1.0E1),  Float(2.0E1),  Float(-3.0E1),      Symbol("1.0-E1"),  Symbol("+2.0-E1"),  Symbol("-3.0-E1"),  Newline,
+                Float(1.0E+1), Float(2.0E+1), Float(-3.0E+1),     Symbol("1.0-E+1"), Symbol("+2.0-E+1"), Symbol("-3.0-E+1"), Newline,
+                Float(1.0E-1), Float(2.0E-1), Float(-3.0E-1),     Symbol("1.0-E-1"), Symbol("+2.0-E-1"), Symbol("-3.0-E-1"), Newline,
+                Newline,
+                Float(1.0E1),  Float(2.0E1),  Float(-3.0E1),      Symbol("1.-E1"),   Symbol("+2.-E1"),   Symbol("-3.-E1"),   Newline,
+                Float(1.0E+1), Float(2.0E+1), Float(-3.0E+1),     Symbol("1.-E+1"),  Symbol("+2.-E+1"),  Symbol("-3.-E+1"),  Newline,
+                Float(1.0E-1), Float(2.0E-1), Float(-3.0E-1),     Symbol("1.-E-1"),  Symbol("+2.-E-1"),  Symbol("-3.-E-1"),  Newline,
+                Newline,
+                Float(0.1E1),  Float(0.2E1),  Float(-0.3E1),      Symbol(".1-E1"),   Symbol("+.2-E1"),   Symbol("-.3-E1"),   Newline,
+                Float(0.1E+1), Float(0.2E+1), Float(-0.3E+1),     Symbol(".1-E+1"),  Symbol("+.2-E+1"),  Symbol("-.3-E+1"),  Newline,
+                Float(0.1E-1), Float(0.2E-1), Float(-0.3E-1),     Symbol(".1-E-1"),  Symbol("+.2-E-1"),  Symbol("-.3-E-1"),  Newline,
+                Newline,
+                Float(0.0E1),  Float(0.0E1),  Float(-0.0E1),      Symbol(".-E1"),    Symbol("+.-E1"),    Symbol("-.-E1"),    Newline,
+                Float(0.0E+1), Float(0.0E+1), Float(-0.0E+1),     Symbol(".-E+1"),   Symbol("+.-E+1"),   Symbol("-.-E+1"),   Newline,
+                Float(0.0E-1), Float(0.0E-1), Float(-0.0E-1),     Symbol(".-E-1"),   Symbol("+.-E-1"),   Symbol("-.-E-1"),   Newline,
+                Newline,
+
+                // strings
+                Comment, Newline,
+                String("asdf"), Newline,
+                String(""), String(""), Newline,
+                Newline,
+                String(
+                    "\n\
+                    asdf\n\
+                    jkl\n\
+                    qwerty\
+                    \n"
+                ), Newline,
+                Newline,
+
+                Newline,
+
+                // symbols
+                Comment, Newline,
+                Symbol("asdf"), Newline,
+                Symbol("jkl"), Newline,
+                Symbol("qwerty"), Newline,
+                Newline,
+
+                // quoted symbols
+                Comment, Newline,
+                Symbol("asdf"), Newline,
+                Symbol(""), Symbol(""), Newline,
+                Newline,
+                Symbol(
+                    "\n\
+                    asdf\n\
+                    jkl\n\
+                    qwerty\
+                    \n"
+                ), Newline,
+                Newline,
+
+                // variables
+                Comment, Newline,
+                Variable("asdf"), Newline,
+                Variable("jkl"), Newline,
+                Variable("qwerty"), Newline,
+                Newline,
+
+                // kDataUnhandled is its own token
+                Comment, Newline,
+                Unhandled, Newline,
+                Newline,
+
+                Newline,
+
+                // arrays
+                Comment, Newline,
+                ArrayOpen, Symbol("array"), Integer(1), Integer(2), ArrayClose, Comment, Newline,
+                CommandOpen, Symbol("+"), Integer(1), Integer(2), CommandClose, Comment, Newline,
+                PropertyOpen, Symbol("property"), PropertyClose, Comment, Newline,
+                Newline,
+
+                Newline,
+
+                // directives
+                Comment, Newline,
+                IncludeOptional, Symbol("../file.dta"), Newline,
+                Include, Symbol("../file.dta"), Newline,
+                Merge, Symbol("../file.dta"), Newline,
+                Ifdef, Symbol("kDefine"), Newline,
+                Undefine, Symbol("kDefine"), Newline,
+                Endif, Newline,
+                Ifndef, Symbol("kDefine"), Newline,
+                Define, Symbol("kDefine"), Newline,
+                Else, Newline,
+                Autorun, CommandOpen, Symbol("action"), CommandClose, Newline,
+                Endif, Newline,
+                // invalid
+                Comment, Newline,
+                BadDirective("bad"), Newline,
+                BadDirective("#"), Newline,
+                Newline,
+
+                // *not* directives, these are lexed as symbols
+                Comment, Newline,
+                Symbol("#"), Newline,
+                Symbol("#"), Symbol("#"), Comment, Newline,
+                Symbol("#"), Symbol("#"), Comment, Newline,
+                // lexed as symbols and arrays
+                Comment, Newline,
+                Symbol("#"), ArrayOpen, Symbol("#"), ArrayClose, Comment, Newline,
+                Symbol("#"), CommandOpen, Symbol("#"), CommandClose, Comment, Newline,
+                Symbol("#"), PropertyOpen, Symbol("#"), PropertyClose, Comment, Newline,
+                Newline,
+
+                Newline,
+
+                // line comment
+                Comment, Newline,
+                Comment, Newline, // ;;
+                Comment, Newline, // ; ;
+                Comment, Newline, // ;	;
+                Comment, Newline, // ;;;;;;;;
+                Comment, Newline, // ;nospace
+                Symbol("asdf;jkl"), Comment, Newline,
+                Newline,
+
+                // block comment
+                BlockCommentStart("/*"), Newline,
+                Symbol("block"), Symbol("comment"), Newline,
+                BlockCommentEnd("*/"), Newline,
+                Newline,
+
+                Symbol("/*asdf*/"), Comment, Newline,
+                BlockCommentStart("/*jkl "), BlockCommentEnd("*/"), Newline,
+                Newline,
+                Symbol("/**/"), Comment, Newline,
+                BlockCommentStart("/* "), BlockCommentEnd("*/"), Newline,
+                BlockCommentStart("/*\t"), BlockCommentEnd("*/"), Newline,
+                Newline,
+
+                // stray block-comment close, lexed as a symbol
+                // note: handled by the parser
+                Comment, Newline,
+                BlockCommentEnd("*/"), Newline,
+                Newline,
+
+                Symbol("/*****/"), Comment, Newline,
+                Newline,
+
+                Symbol("/*****"), Comment, Newline,
+                Newline,
+                BlockCommentStart("/*"), Newline,
+                Newline,
+                Symbol("*****"), Newline,
+                Newline,
+                BlockCommentEnd("***/"), Newline,
+            ];
+
+            assert_tokens(&text, tokens);
         }
     }
 }
