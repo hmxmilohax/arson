@@ -90,6 +90,7 @@ enum Token<'src> {
     Newline,
     #[regex(r#";[^\n]*"#, priority = 1)]
     Comment,
+    // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#)]
     BlockCommentStart(&'src str),
     #[regex(r#"\*+\/"#)]
