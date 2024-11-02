@@ -53,6 +53,10 @@ impl Context {
         Ok(())
     }
 
+    pub fn load_text(&mut self, text: &str) -> crate::Result<NodeArray> {
+        super::parse::parse_dta(self, text)
+    }
+
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {
         let result = match command.node(0)? {
             Node::Symbol(symbol) => match self.fn_map.get(symbol) {

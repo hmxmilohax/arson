@@ -279,6 +279,24 @@ impl NodeArray {
     pub fn property_mut(&mut self, index: usize) -> crate::Result<&mut NodeProperty> {
         self.node_mut(index)?.property_mut()
     }
+
+    pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
+        for node in self.iter() {
+            let Node::Array(array) = node else {
+                continue;
+            };
+
+            let Ok(symbol) = array.symbol(0) else {
+                continue;
+            };
+
+            if symbol == tag {
+                return Ok(array);
+            }
+        }
+
+        Err(Error::EntryNotFound(tag.clone()))
+    }
 }
 
 impl std::ops::Deref for NodeArray {
