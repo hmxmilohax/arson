@@ -17,6 +17,9 @@ pub enum Error {
         range: std::ops::Range<usize>,
     },
 
+    #[error("Entry for symbol {0} not found")]
+    EntryNotFound(Symbol),
+
     #[error("Duplicate entry for symbol {0}")]
     DuplicateEntry(Symbol),
 

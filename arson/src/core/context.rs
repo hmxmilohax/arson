@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use super::{Error, HandleFn, NodeArray, Symbol, SymbolMap, SymbolTable};
+use super::{Error, HandleFn, Node, NodeArray, NodeCommand, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
     symbol_table: SymbolTable,
@@ -27,6 +27,18 @@ impl Context {
         self.symbol_table.remove_by_symbol(name)
     }
 
+    pub fn add_macro(&mut self, name: Symbol, array: NodeArray) {
+        self.macros.insert(name, array);
+    }
+
+    pub fn remove_macro(&mut self, name: &Symbol) {
+        self.macros.remove(name);
+    }
+
+    pub fn get_macro(&mut self, name: &Symbol) -> Option<&NodeArray> {
+        self.macros.get(name)
+    }
+
     pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> crate::Result<()> {
         let symbol = self.symbol_table.add(name);
         self.register_func(symbol, func)
@@ -41,15 +53,22 @@ impl Context {
         Ok(())
     }
 
-    pub fn add_macro(&mut self, name: Symbol, array: NodeArray) {
-        self.macros.insert(name, array);
-    }
+    pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {
+        let result = match command.node(0)? {
+            Node::Symbol(symbol) => match self.fn_map.get(symbol) {
+                Some(func) => func(self, command)?,
+                None => return Err(Error::EntryNotFound(symbol.clone())),
+            },
+            // Node::Object(obj) => obj.handle(self, command)?,
+            Node::Function(func) => func(self, command)?,
 
-    pub fn remove_macro(&mut self, name: &Symbol) {
-        self.macros.remove(name);
-    }
+            _ => Node::Unhandled,
+        };
 
-    pub fn get_macro(&mut self, name: &Symbol) -> Option<&NodeArray> {
-        self.macros.get(name)
+        if let Node::Unhandled = result {
+            todo!("default handler")
+        }
+
+        return Ok(result);
     }
 }
