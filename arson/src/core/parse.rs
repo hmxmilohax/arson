@@ -317,7 +317,10 @@ fn next_token<'src>(lexer: &mut Tokenizer<'src>) -> crate::Result<Token<'src>> {
 
 pub fn parse_dta(context: &mut Context, text: &str) -> crate::Result<NodeArray> {
     let mut parser = Parser::new();
-    parser.parse_array(context, &mut Token::lexer(text), ArrayType::Array)
+    // The contents of the entire file are parsed into an array, not a node.
+    // Since there are no open/close tokens for this file-level array,
+    // ArrayType::None is used as the starting type.
+    parser.parse_array(context, &mut Token::lexer(text), ArrayType::None)
 }
 
 #[cfg(test)]
