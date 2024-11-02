@@ -279,7 +279,7 @@ impl Parser {
             Token::Float(value) => Node::Float(value),
             Token::String(value) => Node::String(value.to_owned()),
             Token::Symbol(value) => Node::Symbol(context.add_symbol(value)),
-            Token::Variable(value) => Node::Symbol(context.add_symbol(value)),
+            Token::Variable(_value) => todo!("variables"),
             Token::Unhandled => Node::Unhandled,
 
             Token::ArrayOpen => {
