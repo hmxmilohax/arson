@@ -472,7 +472,7 @@ mod tests {
             assert_token(";comment", Token::Comment);
             assert_tokens(
                 "/* comment */",
-                vec![Token::BlockCommentStart("/* comment"), Token::BlockCommentEnd("*/")],
+                vec![Token::BlockCommentStart("/* comment "), Token::BlockCommentEnd("*/")],
             );
 
             // These get parsed as symbols in the original lexer
