@@ -3,7 +3,7 @@
 use logos::{Lexer, Logos};
 
 use super::{Context, Node, NodeArray, NodeCommand, NodeProperty};
-use crate::arson_fail;
+use crate::{arson_assert, arson_fail};
 
 type Tokenizer<'src> = Lexer<'src, Token<'src>>;
 
@@ -188,7 +188,7 @@ impl Parser {
         let token = match lexer.next() {
             None => match self.array_open {
                 ArrayType::None => return Ok(NodeParseStatus::Break),
-                open => arson_fail!("{open:?} closed incorrectly."),
+                open => arson_fail!("{open:?} not closed"),
             },
             Some(token) => match token {
                 Ok(token) => token,
@@ -197,13 +197,11 @@ impl Parser {
         };
 
         let array_close = |array_type: ArrayType| -> crate::Result<NodeParseStatus> {
-            if self.array_open != array_type {
-                arson_fail!(
-                    "Improper array close! Expected {:?}, found {:?}.",
-                    self.array_open,
-                    array_type
-                );
-            }
+            arson_assert!(
+                self.array_open == array_type,
+                "{:?} closed incorrectly, found {array_type:?} instead",
+                self.array_open,
+            );
             Ok(NodeParseStatus::Break)
         };
 
@@ -238,7 +236,7 @@ impl Parser {
             Token::Ifdef => {
                 let name = match next_token(lexer)? {
                     Token::Symbol(name) => context.add_symbol(name),
-                    token => arson_fail!("Invalid token for #ifdef name: {token:?}"),
+                    token => arson_fail!("Expected symbol for #ifdef name, got {token:?} instead"),
                 };
                 self.conditionals.push(context.get_macro(&name).is_some());
                 return Ok(NodeParseStatus::Continue);
@@ -246,7 +244,7 @@ impl Parser {
             Token::Ifndef => {
                 let name = match next_token(lexer)? {
                     Token::Symbol(name) => context.add_symbol(name),
-                    token => arson_fail!("Invalid token for #ifndef name: {token:?}"),
+                    token => arson_fail!("Expected symbol for #ifndef name, got {token:?} instead"),
                 };
                 self.conditionals.push(context.get_macro(&name).is_none());
                 return Ok(NodeParseStatus::Continue);
@@ -254,13 +252,13 @@ impl Parser {
             Token::Else => {
                 match self.conditionals.pop() {
                     Some(value) => self.conditionals.push(!value),
-                    None => arson_fail!("Mismatched #else outside of a conditional block."),
+                    None => arson_fail!("No #ifdef/#ifndef found for this #else directive"),
                 }
                 return Ok(NodeParseStatus::Continue);
             },
             Token::Endif => {
                 if let None = self.conditionals.pop() {
-                    arson_fail!("Mismatched #endif outside of a conditional block.");
+                    arson_fail!("No #ifdef/#ifndef/#else found for this #endif directive");
                 }
                 return Ok(NodeParseStatus::Continue);
             },
