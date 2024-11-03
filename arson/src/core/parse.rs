@@ -181,11 +181,7 @@ impl Parser {
         Ok(array)
     }
 
-    fn parse_node(
-        &mut self,
-        context: &mut Context,
-        lexer: &mut Tokenizer<'_>,
-    ) -> crate::Result<NodeParseStatus> {
+    fn parse_node(&mut self, context: &mut Context, lexer: &mut Tokenizer<'_>) -> crate::Result<NodeParseStatus> {
         let token = match lexer.next() {
             None => match self.array_open {
                 ArrayType::None => return Ok(NodeParseStatus::Break),
@@ -304,7 +300,7 @@ impl Parser {
             Token::CommandClose => return array_close(ArrayType::Command),
             Token::PropertyClose => return array_close(ArrayType::Property),
 
-            token => todo!("Token {token:?} not yet handled")
+            token => todo!("Token {token:?} not yet handled"),
         };
 
         Ok(NodeParseStatus::Node(node))

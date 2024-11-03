@@ -4,8 +4,8 @@ mod context;
 mod error;
 mod node;
 mod object;
-mod symbol;
 mod parse;
+mod symbol;
 
 pub use context::*;
 pub use error::*;
