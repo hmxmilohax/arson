@@ -299,6 +299,12 @@ impl NodeArray {
     }
 }
 
+impl Default for NodeArray {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::ops::Deref for NodeArray {
     type Target = Vec<Node>;
 
@@ -321,6 +327,12 @@ pub struct NodeCommand {
 impl NodeCommand {
     pub const fn new() -> Self {
         Self { nodes: NodeArray::new() }
+    }
+}
+
+impl Default for NodeCommand {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -352,6 +364,12 @@ pub struct NodeProperty {
 impl NodeProperty {
     pub const fn new() -> Self {
         Self { nodes: NodeArray::new() }
+    }
+}
+
+impl Default for NodeProperty {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -33,7 +33,7 @@ impl Eq for Symbol {}
 
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Rc::as_ptr(&self.name).partial_cmp(&Rc::as_ptr(&other.name))
+        Some(self.cmp(other))
     }
 }
 
@@ -97,7 +97,7 @@ impl SymbolTable {
 
     /// Returns the corresponding symbol for a given name, if one exists.
     pub fn get(&self, name: &str) -> Option<Symbol> {
-        self.table.get(name).map(|s| s.clone())
+        self.table.get(name).cloned()
     }
 
     /// Removes a symbol from the table by its name.
@@ -114,6 +114,12 @@ impl SymbolTable {
     /// that is, whether it was successfully removed.
     pub fn remove_by_symbol(&mut self, symbol: &Symbol) -> bool {
         self.table.remove(&*symbol.name).is_some()
+    }
+}
+
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

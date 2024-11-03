@@ -10,13 +10,11 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
-        let context = Self {
+        Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             fn_map: SymbolMap::new(),
-        };
-
-        context
+        }
     }
 
     pub fn add_symbol(&mut self, name: &str) -> Symbol {
@@ -73,6 +71,12 @@ impl Context {
             todo!("default handler")
         }
 
-        return Ok(result);
+        Ok(result)
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }

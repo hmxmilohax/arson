@@ -101,7 +101,7 @@ fn parse_hex<'src>(lex: &mut Lexer<'src, Token<'src>>) -> Result<i64, TokenError
     let trimmed = trim_delimiters(lex.slice(), 2, 0)?;
     u64::from_str_radix(trimmed, 16)
         .map(|v| v as i64)
-        .map_err(|err| TokenError::IntegerError(err))
+        .map_err(TokenError::IntegerError)
 }
 
 fn parse_float<'src>(lex: &mut Lexer<'src, Token<'src>>) -> Result<f64, TokenError> {
@@ -154,10 +154,10 @@ impl Parser {
         }
     }
 
-    fn parse_array<'src>(
+    fn parse_array(
         &mut self,
         context: &mut Context,
-        lexer: &mut Tokenizer<'src>,
+        lexer: &mut Tokenizer<'_>,
         array_type: ArrayType,
     ) -> crate::Result<NodeArray> {
         // Save current state
@@ -181,10 +181,10 @@ impl Parser {
         Ok(array)
     }
 
-    fn parse_node<'src>(
+    fn parse_node(
         &mut self,
         context: &mut Context,
-        lexer: &mut Tokenizer<'src>,
+        lexer: &mut Tokenizer<'_>,
     ) -> crate::Result<NodeParseStatus> {
         let token = match lexer.next() {
             None => match self.array_open {
@@ -258,7 +258,7 @@ impl Parser {
                 return Ok(NodeParseStatus::Continue);
             },
             Token::Endif => {
-                if let None = self.conditionals.pop() {
+                if self.conditionals.pop().is_none() {
                     arson_fail!("No #ifdef/#ifndef/#else found for this #endif directive");
                 }
                 return Ok(NodeParseStatus::Continue);

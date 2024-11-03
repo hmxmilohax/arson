@@ -15,7 +15,7 @@ fn main() -> arson::Result<()> {
 
     let file = context.load_text(include_str!("../run/main.dta"))?;
     let command = file.find_array(&context.add_symbol("main"))?.command(1)?;
-    context.execute(&command)?;
+    context.execute(command)?;
 
     Ok(())
 }
