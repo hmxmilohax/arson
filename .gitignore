@@ -1,2 +1,5 @@
+# IDE cache/config directories
+.vscode/
+
 # Cargo build output
 target/
