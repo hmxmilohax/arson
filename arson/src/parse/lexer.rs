@@ -6,6 +6,7 @@ use logos::{Logos, Span};
 
 type Lexer<'src> = logos::Lexer<'src, TokenKind<'src>>;
 
+#[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
     pub location: Span,

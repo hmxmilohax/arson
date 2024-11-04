@@ -4,6 +4,7 @@ use logos::Span;
 
 use super::lexer::{LexError, Token, TokenKind};
 
+#[derive(Debug, Clone)]
 pub enum ExpressionKind<'src> {
     Integer(i64),
     Float(f64),
@@ -16,18 +17,33 @@ pub enum ExpressionKind<'src> {
     Array(Vec<Expression<'src>>),
     Command(Vec<Expression<'src>>),
     Property(Vec<Expression<'src>>),
+
+    Define(&'src str, Vec<Expression<'src>>),
+    Undefine(&'src str),
+    Include(&'src str),
+    IncludeOptional(&'src str),
+    Merge(&'src str),
+    Autorun(Vec<Expression<'src>>),
 }
 
+#[derive(Debug, Clone)]
 pub struct Expression<'src> {
     pub kind: ExpressionKind<'src>,
     pub location: Span,
 }
 
+type ExpressionArray<'src> = (Vec<Expression<'src>>, Span);
+
 #[derive(Debug, Clone)]
-pub enum ParseError {
+pub enum ParseError<'src> {
+    LexingError(LexError),
+    UnexpectedEof,
     UnmatchedBrace(Span, ArrayKind),
     BadDirective(Span),
-    InvalidToken(LexError),
+    IncorrectToken {
+        expected: TokenKind<'static>,
+        actual: Token<'src>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -43,13 +59,42 @@ struct ArrayMarker {
     location: Span,
 }
 
-#[derive(Clone)]
-struct Parser {
-    array_stack: Vec<ArrayMarker>,
-    errors: Vec<ParseError>,
+enum ParseNodeResult<'src> {
+    Node(Expression<'src>),
+    ArrayEnd(Span),
+    SkipToken,
+    Eof,
 }
 
-impl Parser {
+#[derive(Clone)]
+struct Parser<'src> {
+    array_stack: Vec<ArrayMarker>,
+    errors: Vec<ParseError<'src>>,
+}
+
+macro_rules! next_token {
+    ($self:expr, $tokens:expr, $expected:ident) => {{
+        let Some(next) = $tokens.peek() else {
+            return $self.unexpected_eof();
+        };
+        let TokenKind::$expected = next.kind else {
+            return $self.incorrect_token(TokenKind::$expected, next.clone());
+        };
+        $tokens.next();
+    }};
+    ($self:expr, $tokens:expr, $expected:ident($dummy:expr)) => {{
+        let Some(next) = $tokens.peek() else {
+            return $self.unexpected_eof();
+        };
+        let TokenKind::$expected(value) = next.kind else {
+            return $self.incorrect_token(TokenKind::$expected($dummy), next.clone());
+        };
+        $tokens.next();
+        value
+    }};
+}
+
+impl<'src> Parser<'src> {
     pub fn new() -> Self {
         Self {
             array_stack: Vec::new(),
@@ -57,46 +102,47 @@ impl Parser {
         }
     }
 
-    pub fn parse<'src, I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> Vec<Expression<'src>> {
+    pub fn parse_exprs<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ExpressionArray<'src> {
         let mut exprs = Vec::new();
 
         loop {
             match self.parse_node(tokens) {
-                Some(node) => exprs.push(node),
-                None => break,
+                ParseNodeResult::Node(node) => exprs.push(node),
+                ParseNodeResult::ArrayEnd(end_location) => return (exprs, end_location),
+                ParseNodeResult::SkipToken => continue,
+                ParseNodeResult::Eof => match exprs.last().cloned() {
+                    Some(last) => return (exprs, last.location.clone()),
+                    None => return (exprs, 0..0),
+                }
             };
         }
-
-        exprs
     }
 
-    fn parse_array<'src, I: Iterator<Item = Token<'src>>>(
+    fn parse_array<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
         kind: ArrayKind,
         start: Span,
-    ) -> Vec<Expression<'src>> {
+    ) -> ExpressionArray<'src> {
         self.array_stack.push(ArrayMarker { kind, location: start });
-        let array = self.parse(tokens);
+        let array = self.parse_exprs(tokens);
         self.array_stack.pop();
 
         array
     }
 
-    fn open_array<'src, I: Iterator<Item = Token<'src>>>(
+    fn open_array<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
         token: &mut Token<'src>,
         kind: ArrayKind,
     ) -> Vec<Expression<'src>> {
-        let array = self.parse_array(tokens, kind, token.location.clone());
-        if let Some(last) = array.last() {
-            token.location.end = last.location.end;
-        }
+        let (array, location) = self.parse_array(tokens, kind, token.location.clone());
+        token.location.end = location.end;
         array
     }
 
-    fn close_array<'src>(&mut self, kind: ArrayKind, end: Span) -> bool {
+    fn close_array(&mut self, kind: ArrayKind, end: Span) -> ParseNodeResult<'src> {
         match self.array_stack.last() {
             Some(last) => {
                 if kind != last.kind {
@@ -105,97 +151,106 @@ impl Parser {
             },
             None => {
                 self.errors.push(ParseError::UnmatchedBrace(end, kind));
-                return false;
+                return ParseNodeResult::SkipToken;
             },
         }
 
-        return true;
+        return ParseNodeResult::ArrayEnd(end);
     }
 
-    fn recover_mismatched_array<'src>(&mut self, kind: ArrayKind, end: Span) -> bool {
+    fn recover_mismatched_array(&mut self, kind: ArrayKind, end: Span) -> ParseNodeResult<'src> {
         todo!()
     }
 
-    fn parse_node<'src, I: Iterator<Item = Token<'src>>>(
-        &mut self,
-        tokens: &mut Peekable<I>,
-    ) -> Option<Expression<'src>> {
-        loop {
-            let mut token = match tokens.next() {
-                None => {
-                    if let Some(unmatched) = self.array_stack.last() {
-                        self.errors
-                            .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
-                    }
+    fn parse_node<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ParseNodeResult<'src> {
+        let mut token = match tokens.next() {
+            None => {
+                if let Some(unmatched) = self.array_stack.last() {
+                    self.errors
+                        .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
+                }
 
-                    return None;
-                },
-                Some(token) => token,
-            };
+                return ParseNodeResult::Eof;
+            },
+            Some(token) => token,
+        };
 
-            let expr = match token.kind {
-                TokenKind::Integer(value) => ExpressionKind::Integer(value),
-                TokenKind::Float(value) => ExpressionKind::Float(value),
-                TokenKind::String(value) => ExpressionKind::String(value),
-                TokenKind::Symbol(value) => ExpressionKind::Symbol(value),
-                TokenKind::Variable(value) => ExpressionKind::Variable(value),
-                TokenKind::Unhandled => ExpressionKind::Unhandled,
+        let expr = match token.kind {
+            TokenKind::Integer(value) => ExpressionKind::Integer(value),
+            TokenKind::Float(value) => ExpressionKind::Float(value),
+            TokenKind::String(value) => ExpressionKind::String(value),
+            TokenKind::Symbol(value) => ExpressionKind::Symbol(value),
+            TokenKind::Variable(value) => ExpressionKind::Variable(value),
+            TokenKind::Unhandled => ExpressionKind::Unhandled,
 
-                TokenKind::ArrayOpen => {
-                    let array = self.open_array(tokens, &mut token, ArrayKind::Array);
-                    ExpressionKind::Array(array)
-                },
-                TokenKind::CommandOpen => {
-                    let array = self.open_array(tokens, &mut token, ArrayKind::Command);
-                    ExpressionKind::Command(array)
-                },
-                TokenKind::PropertyOpen => {
-                    let array = self.open_array(tokens, &mut token, ArrayKind::Property);
-                    ExpressionKind::Property(array)
-                },
-                TokenKind::ArrayClose => match self.close_array(ArrayKind::Array, token.location) {
-                    true => return None,
-                    false => continue,
-                },
-                TokenKind::CommandClose => match self.close_array(ArrayKind::Command, token.location) {
-                    true => return None,
-                    false => continue,
-                },
-                TokenKind::PropertyClose => match self.close_array(ArrayKind::Property, token.location) {
-                    true => return None,
-                    false => continue,
-                },
+            TokenKind::ArrayOpen => {
+                let array = self.open_array(tokens, &mut token, ArrayKind::Array);
+                ExpressionKind::Array(array)
+            },
+            TokenKind::CommandOpen => {
+                let array = self.open_array(tokens, &mut token, ArrayKind::Command);
+                ExpressionKind::Command(array)
+            },
+            TokenKind::PropertyOpen => {
+                let array = self.open_array(tokens, &mut token, ArrayKind::Property);
+                ExpressionKind::Property(array)
+            },
+            TokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
+            TokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
+            TokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
 
-                TokenKind::Ifdef => todo!(),
-                TokenKind::Ifndef => todo!(),
-                TokenKind::Else => todo!(),
-                TokenKind::Endif => todo!(),
+            TokenKind::Ifdef => todo!(),
+            TokenKind::Ifndef => todo!(),
+            TokenKind::Else => todo!(),
+            TokenKind::Endif => todo!(),
 
-                TokenKind::Define => todo!(),
-                TokenKind::Undefine => todo!(),
-                TokenKind::Include => todo!(),
-                TokenKind::IncludeOptional => todo!(),
-                TokenKind::Merge => todo!(),
-                TokenKind::Autorun => todo!(),
+            TokenKind::Define => {
+                let name = next_token!(self, tokens, Symbol("dummy"));
 
-                TokenKind::BadDirective(_) => {
-                    self.errors.push(ParseError::BadDirective(token.location));
-                    continue;
-                },
+                next_token!(self, tokens, ArrayOpen);
+                let body = self.open_array(tokens, &mut token, ArrayKind::Array);
 
-                TokenKind::Comment => continue,
-                TokenKind::BlockCommentStart(_) => {
-                    self.skip_block_comment(tokens);
-                    continue;
-                },
-                TokenKind::BlockCommentEnd(_) => continue,
-            };
+                ExpressionKind::Define(name, body)
+            },
+            TokenKind::Undefine => {
+                let name = next_token!(self, tokens, Symbol("dummy"));
+                ExpressionKind::Undefine(name)
+            },
+            TokenKind::Include => {
+                let path = next_token!(self, tokens, Symbol("dummy"));
+                ExpressionKind::Include(path)
+            },
+            TokenKind::IncludeOptional => {
+                let path = next_token!(self, tokens, Symbol("dummy"));
+                ExpressionKind::IncludeOptional(path)
+            },
+            TokenKind::Merge => {
+                let name = next_token!(self, tokens, Symbol("dummy"));
+                ExpressionKind::Merge(name)
+            },
+            TokenKind::Autorun => {
+                next_token!(self, tokens, CommandOpen);
+                let body = self.open_array(tokens, &mut token, ArrayKind::Command);
+                ExpressionKind::Autorun(body)
+            },
 
-            return Some(Expression { kind: expr, location: token.location });
-        }
+            TokenKind::BadDirective(_) => {
+                self.errors.push(ParseError::BadDirective(token.location));
+                return ParseNodeResult::SkipToken;
+            },
+
+            TokenKind::Comment => return ParseNodeResult::SkipToken,
+            TokenKind::BlockCommentStart(_) => {
+                self.skip_block_comment(tokens);
+                return ParseNodeResult::SkipToken;
+            },
+            TokenKind::BlockCommentEnd(_) => return ParseNodeResult::SkipToken,
+        };
+
+        return ParseNodeResult::Node(Expression { kind: expr, location: token.location });
     }
 
-    fn skip_block_comment<'src, I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
+    fn skip_block_comment<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
         while let Some(token) = tokens.peek() {
             let TokenKind::BlockCommentEnd(_) = token.kind else {
                 tokens.next();
@@ -203,6 +258,17 @@ impl Parser {
             };
             break;
         }
+    }
+
+    fn incorrect_token(&mut self, expected: TokenKind<'static>, actual: Token<'src>) -> ParseNodeResult<'src> {
+        self.errors
+            .push(ParseError::IncorrectToken { expected, actual });
+        return ParseNodeResult::SkipToken;
+    }
+
+    fn unexpected_eof(&mut self) -> ParseNodeResult<'src> {
+        self.errors.push(ParseError::UnexpectedEof);
+        ParseNodeResult::Eof
     }
 }
 
@@ -213,7 +279,7 @@ fn filter_token_errors(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<T
         .filter_map(|t| match t {
             Ok(token) => Some(token),
             Err(error) => {
-                errors.push(ParseError::InvalidToken(error));
+                errors.push(ParseError::LexingError(error));
                 None
             },
         })
@@ -229,7 +295,7 @@ fn filter_token_errors(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<T
 pub fn parse(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<Expression>, Vec<ParseError>> {
     let tokens = filter_token_errors(tokens)?;
     let mut parser = Parser::new();
-    let exprs = parser.parse(&mut tokens.into_iter().peekable());
+    let (exprs, _) = parser.parse_exprs(&mut tokens.into_iter().peekable());
     match parser.errors.is_empty() {
         true => Ok(exprs),
         false => Err(parser.errors),
