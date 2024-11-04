@@ -85,7 +85,7 @@ pub enum TokenKind<'src> {
     BlockCommentEnd(&'src str),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LexError {
     pub kind: LexErrorKind,
     pub location: Span,
