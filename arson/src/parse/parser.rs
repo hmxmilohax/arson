@@ -4,7 +4,31 @@ use logos::Span;
 
 use super::lexer::{LexError, Token, TokenKind};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrExpression<'src> {
+    pub text: &'src str,
+    pub location: Span,
+}
+
+impl<'src> StrExpression<'src> {
+    fn new(text: &'src str, location: Span) -> Self {
+        Self { text, location }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayExpression<'src> {
+    pub exprs: Vec<Expression<'src>>,
+    pub location: Span,
+}
+
+impl<'src> ArrayExpression<'src> {
+    fn new(exprs: Vec<Expression<'src>>, location: Span) -> Self {
+        Self { exprs, location }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExpressionKind<'src> {
     Integer(i64),
     Float(f64),
@@ -18,23 +42,21 @@ pub enum ExpressionKind<'src> {
     Command(Vec<Expression<'src>>),
     Property(Vec<Expression<'src>>),
 
-    Define(&'src str, Vec<Expression<'src>>),
-    Undefine(&'src str),
-    Include(&'src str),
-    IncludeOptional(&'src str),
-    Merge(&'src str),
-    Autorun(Vec<Expression<'src>>),
+    Define(StrExpression<'src>, ArrayExpression<'src>),
+    Undefine(StrExpression<'src>),
+    Include(StrExpression<'src>),
+    IncludeOptional(StrExpression<'src>),
+    Merge(StrExpression<'src>),
+    Autorun(ArrayExpression<'src>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Expression<'src> {
     pub kind: ExpressionKind<'src>,
     pub location: Span,
 }
 
-type ExpressionArray<'src> = (Vec<Expression<'src>>, Span);
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'src> {
     LexingError(LexError),
     UnexpectedEof,
@@ -80,7 +102,9 @@ macro_rules! next_token {
         let TokenKind::$expected = next.kind else {
             return $self.incorrect_token(TokenKind::$expected, next.clone());
         };
+        let location = next.location.clone();
         $tokens.next();
+        location
     }};
     ($self:expr, $tokens:expr, $expected:ident($dummy:expr)) => {{
         let Some(next) = $tokens.peek() else {
@@ -89,8 +113,9 @@ macro_rules! next_token {
         let TokenKind::$expected(value) = next.kind else {
             return $self.incorrect_token(TokenKind::$expected($dummy), next.clone());
         };
+        let result = (value, next.location.clone());
         $tokens.next();
-        value
+        result
     }};
 }
 
@@ -102,7 +127,10 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn parse_exprs<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ExpressionArray<'src> {
+    pub fn parse_exprs<I: Iterator<Item = Token<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> (Vec<Expression<'src>>, Span) {
         let mut exprs = Vec::new();
 
         loop {
@@ -113,7 +141,7 @@ impl<'src> Parser<'src> {
                 ParseNodeResult::Eof => match exprs.last().cloned() {
                     Some(last) => return (exprs, last.location.clone()),
                     None => return (exprs, 0..0),
-                }
+                },
             };
         }
     }
@@ -123,7 +151,7 @@ impl<'src> Parser<'src> {
         tokens: &mut Peekable<I>,
         kind: ArrayKind,
         start: Span,
-    ) -> ExpressionArray<'src> {
+    ) -> (Vec<Expression<'src>>, Span) {
         self.array_stack.push(ArrayMarker { kind, location: start });
         let array = self.parse_exprs(tokens);
         self.array_stack.pop();
@@ -134,12 +162,11 @@ impl<'src> Parser<'src> {
     fn open_array<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
-        token: &mut Token<'src>,
+        start: &Span,
         kind: ArrayKind,
-    ) -> Vec<Expression<'src>> {
-        let (array, location) = self.parse_array(tokens, kind, token.location.clone());
-        token.location.end = location.end;
-        array
+    ) -> (Vec<Expression<'src>>, Span) {
+        let (array, end) = self.parse_array(tokens, kind, start.clone());
+        (array, start.start..end.end)
     }
 
     fn close_array(&mut self, kind: ArrayKind, end: Span) -> ParseNodeResult<'src> {
@@ -163,7 +190,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_node<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ParseNodeResult<'src> {
-        let mut token = match tokens.next() {
+        let token = match tokens.next() {
             None => {
                 if let Some(unmatched) = self.array_stack.last() {
                     self.errors
@@ -175,25 +202,25 @@ impl<'src> Parser<'src> {
             Some(token) => token,
         };
 
-        let expr = match token.kind {
-            TokenKind::Integer(value) => ExpressionKind::Integer(value),
-            TokenKind::Float(value) => ExpressionKind::Float(value),
-            TokenKind::String(value) => ExpressionKind::String(value),
-            TokenKind::Symbol(value) => ExpressionKind::Symbol(value),
-            TokenKind::Variable(value) => ExpressionKind::Variable(value),
-            TokenKind::Unhandled => ExpressionKind::Unhandled,
+        let (kind, location) = match token.kind {
+            TokenKind::Integer(value) => (ExpressionKind::Integer(value), token.location),
+            TokenKind::Float(value) => (ExpressionKind::Float(value), token.location),
+            TokenKind::String(value) => (ExpressionKind::String(value), token.location),
+            TokenKind::Symbol(value) => (ExpressionKind::Symbol(value), token.location),
+            TokenKind::Variable(value) => (ExpressionKind::Variable(value), token.location),
+            TokenKind::Unhandled => (ExpressionKind::Unhandled, token.location),
 
             TokenKind::ArrayOpen => {
-                let array = self.open_array(tokens, &mut token, ArrayKind::Array);
-                ExpressionKind::Array(array)
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Array);
+                (ExpressionKind::Array(array), location)
             },
             TokenKind::CommandOpen => {
-                let array = self.open_array(tokens, &mut token, ArrayKind::Command);
-                ExpressionKind::Command(array)
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Command);
+                (ExpressionKind::Command(array), location)
             },
             TokenKind::PropertyOpen => {
-                let array = self.open_array(tokens, &mut token, ArrayKind::Property);
-                ExpressionKind::Property(array)
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Property);
+                (ExpressionKind::Property(array), location)
             },
             TokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
             TokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
@@ -205,33 +232,46 @@ impl<'src> Parser<'src> {
             TokenKind::Endif => todo!(),
 
             TokenKind::Define => {
-                let name = next_token!(self, tokens, Symbol("dummy"));
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                let name = StrExpression::new(name, name_location.clone());
 
-                next_token!(self, tokens, ArrayOpen);
-                let body = self.open_array(tokens, &mut token, ArrayKind::Array);
+                let start_location = next_token!(self, tokens, ArrayOpen);
+                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Array);
+                let body = ArrayExpression::new(body, body_location.clone());
 
-                ExpressionKind::Define(name, body)
+                (
+                    ExpressionKind::Define(name, body),
+                    token.location.start..body_location.end,
+                )
             },
             TokenKind::Undefine => {
-                let name = next_token!(self, tokens, Symbol("dummy"));
-                ExpressionKind::Undefine(name)
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                let name = StrExpression::new(name, name_location.clone());
+                (ExpressionKind::Undefine(name), token.location.start..name_location.end)
             },
             TokenKind::Include => {
-                let path = next_token!(self, tokens, Symbol("dummy"));
-                ExpressionKind::Include(path)
+                let (path, path_location) = next_token!(self, tokens, Symbol("dummy"));
+                let path = StrExpression::new(path, path_location.clone());
+                (ExpressionKind::Include(path), token.location.start..path_location.end)
             },
             TokenKind::IncludeOptional => {
-                let path = next_token!(self, tokens, Symbol("dummy"));
-                ExpressionKind::IncludeOptional(path)
+                let (path, path_location) = next_token!(self, tokens, Symbol("dummy"));
+                let path = StrExpression::new(path, path_location.clone());
+                (
+                    ExpressionKind::IncludeOptional(path),
+                    token.location.start..path_location.end,
+                )
             },
             TokenKind::Merge => {
-                let name = next_token!(self, tokens, Symbol("dummy"));
-                ExpressionKind::Merge(name)
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                let name = StrExpression::new(name, name_location.clone());
+                (ExpressionKind::Merge(name), token.location.start..name_location.end)
             },
             TokenKind::Autorun => {
-                next_token!(self, tokens, CommandOpen);
-                let body = self.open_array(tokens, &mut token, ArrayKind::Command);
-                ExpressionKind::Autorun(body)
+                let start_location = next_token!(self, tokens, CommandOpen);
+                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Command);
+                let body = ArrayExpression::new(body, body_location.clone());
+                (ExpressionKind::Autorun(body), token.location.start..body_location.end)
             },
 
             TokenKind::BadDirective(_) => {
@@ -247,7 +287,7 @@ impl<'src> Parser<'src> {
             TokenKind::BlockCommentEnd(_) => return ParseNodeResult::SkipToken,
         };
 
-        return ParseNodeResult::Node(Expression { kind: expr, location: token.location });
+        return ParseNodeResult::Node(Expression { kind, location });
     }
 
     fn skip_block_comment<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
