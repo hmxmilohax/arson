@@ -341,3 +341,186 @@ pub fn parse(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<Expression>
         false => Err(parser.errors),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::parse::lexer;
+
+    use super::*;
+
+    const fn new_expression(kind: ExpressionKind<'_>, location: Span) -> Expression<'_> {
+        Expression { kind, location }
+    }
+
+    fn assert_parsed(text: &str, exprs: Vec<Expression>) {
+        let tokens = lexer::lex(text);
+        let result = match parse(tokens) {
+            Ok(exprs) => exprs,
+            Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
+        };
+        assert_eq!(result, exprs);
+    }
+
+    fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
+        let tokens = lexer::lex(text);
+        let result = match parse(tokens) {
+            Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
+            Err(errs) => errs,
+        };
+        assert_eq!(result, errs);
+    }
+
+    #[test]
+    fn integer() {
+        assert_parsed(
+            "1 2 3",
+            vec![
+                new_expression(ExpressionKind::Integer(1), 0..1),
+                new_expression(ExpressionKind::Integer(2), 2..3),
+                new_expression(ExpressionKind::Integer(3), 4..5),
+            ],
+        );
+    }
+
+    #[test]
+    fn float() {
+        assert_parsed(
+            "1.0 2.0 3.0",
+            vec![
+                new_expression(ExpressionKind::Float(1.0), 0..3),
+                new_expression(ExpressionKind::Float(2.0), 4..7),
+                new_expression(ExpressionKind::Float(3.0), 8..11),
+            ],
+        );
+    }
+
+    #[test]
+    fn string() {
+        assert_parsed(
+            "\"a\" \"b\" \"c\"",
+            vec![
+                new_expression(ExpressionKind::String("a"), 0..3),
+                new_expression(ExpressionKind::String("b"), 4..7),
+                new_expression(ExpressionKind::String("c"), 8..11),
+            ],
+        );
+    }
+
+    #[test]
+    fn symbol() {
+        assert_parsed(
+            "asdf + '10'",
+            vec![
+                new_expression(ExpressionKind::Symbol("asdf"), 0..4),
+                new_expression(ExpressionKind::Symbol("+"), 5..6),
+                new_expression(ExpressionKind::Symbol("10"), 7..11),
+            ],
+        );
+    }
+
+    #[test]
+    fn variable() {
+        assert_parsed(
+            "$asdf $this",
+            vec![
+                new_expression(ExpressionKind::Variable("asdf"), 0..5),
+                new_expression(ExpressionKind::Variable("this"), 6..11),
+            ],
+        );
+    }
+
+    #[test]
+    fn unhandled() {
+        assert_parsed("kDataUnhandled", vec![new_expression(ExpressionKind::Unhandled, 0..14)])
+    }
+
+    #[test]
+    fn arrays() {
+        assert_parsed(
+            "(asdf \"text\" 1)",
+            vec![new_expression(
+                ExpressionKind::Array(vec![
+                    new_expression(ExpressionKind::Symbol("asdf"), 1..5),
+                    new_expression(ExpressionKind::String("text"), 6..12),
+                    new_expression(ExpressionKind::Integer(1), 13..14),
+                ]),
+                0..15,
+            )],
+        );
+        assert_parsed(
+            "{set $var \"asdf\"}",
+            vec![new_expression(
+                ExpressionKind::Command(vec![
+                    new_expression(ExpressionKind::Symbol("set"), 1..4),
+                    new_expression(ExpressionKind::Variable("var"), 5..9),
+                    new_expression(ExpressionKind::String("asdf"), 10..16),
+                ]),
+                0..17,
+            )],
+        );
+        assert_parsed(
+            "[property]",
+            vec![new_expression(
+                ExpressionKind::Property(vec![new_expression(ExpressionKind::Symbol("property"), 1..9)]),
+                0..10,
+            )],
+        );
+    }
+
+    #[test]
+    fn directives() {
+        assert_parsed(
+            "#define kDefine (1)",
+            vec![new_expression(
+                ExpressionKind::Define(
+                    StrExpression::new("kDefine", 8..15),
+                    ArrayExpression::new(vec![new_expression(ExpressionKind::Integer(1), 17..18)], 16..19),
+                ),
+                0..19,
+            )],
+        );
+        assert_parsed(
+            "#undef kDefine",
+            vec![new_expression(
+                ExpressionKind::Undefine(StrExpression::new("kDefine", 7..14)),
+                0..14,
+            )],
+        );
+        assert_parsed(
+            "#include ../file.dta",
+            vec![new_expression(
+                ExpressionKind::Include(StrExpression::new("../file.dta", 9..20)),
+                0..20,
+            )],
+        );
+        assert_parsed(
+            "#include_opt ../file.dta",
+            vec![new_expression(
+                ExpressionKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                0..24,
+            )],
+        );
+        assert_parsed(
+            "#merge ../file.dta",
+            vec![new_expression(
+                ExpressionKind::Merge(StrExpression::new("../file.dta", 7..18)),
+                0..18,
+            )],
+        );
+        assert_parsed(
+            "#autorun {print \"Auto-run action\"}",
+            vec![new_expression(
+                ExpressionKind::Autorun(ArrayExpression::new(
+                    vec![
+                        new_expression(ExpressionKind::Symbol("print"), 10..15),
+                        new_expression(ExpressionKind::String("Auto-run action"), 16..33),
+                    ],
+                    9..34,
+                )),
+                0..34,
+            )],
+        );
+
+        assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+    }
+}
