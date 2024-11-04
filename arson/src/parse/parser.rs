@@ -67,6 +67,7 @@ pub struct Expression<'src> {
 pub enum ParseError<'src> {
     UnexpectedEof,
     UnmatchedBrace(Span, ArrayKind),
+    UnexpectedConditional(Span),
     UnmatchedConditional(Span),
     UnbalancedConditional(Span),
     BadDirective(Span),
@@ -541,6 +542,17 @@ mod tests {
         );
     }
 
+    fn assert_directive_symbol_error(name: &str) {
+        let text = name.to_owned() + " 1";
+        assert_errors(
+            &text,
+            vec![ParseError::IncorrectToken {
+                expected: TokenKind::Symbol("dummy"),
+                actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+            }],
+        );
+    }
+
     #[test]
     fn directives() {
         assert_parsed(
@@ -593,6 +605,27 @@ mod tests {
                 )),
                 0..34,
             )],
+        );
+
+        assert_directive_symbol_error("#define");
+        assert_directive_symbol_error("#undef");
+        assert_directive_symbol_error("#include");
+        assert_directive_symbol_error("#include_opt");
+        assert_directive_symbol_error("#merge");
+
+        assert_errors(
+            "#define kDefine 1",
+            vec![ParseError::IncorrectToken {
+                expected: TokenKind::ArrayOpen,
+                actual: Token::new(TokenKind::Integer(1), 16..17),
+            }],
+        );
+        assert_errors(
+            "#autorun kDefine",
+            vec![ParseError::IncorrectToken {
+                expected: TokenKind::CommandOpen,
+                actual: Token::new(TokenKind::Symbol("kDefine"), 9..16),
+            }],
         );
 
         assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
@@ -660,6 +693,56 @@ mod tests {
                 },
                 13..74,
             )],
+        );
+
+        assert_directive_symbol_error("#ifdef");
+        assert_directive_symbol_error("#ifndef");
+
+        assert_errors(
+            r#"
+            #ifndef kDefine
+                (array 10)
+            "#,
+            vec![ParseError::UnmatchedConditional(14..21)],
+        );
+        assert_errors(
+            r#"
+            #ifdef kDefine
+                (array1 10)
+            #else
+            "#,
+            vec![ParseError::UnmatchedConditional(71..76)],
+        );
+        assert_errors(
+            r#"
+            #else
+                (array2 5)
+            #endif
+            "#,
+            vec![ParseError::UnexpectedConditional(14..19)],
+        );
+        assert_errors(
+            r#"
+                (array 10)
+            #endif
+            "#,
+            vec![ParseError::UnexpectedConditional(42..48)],
+        );
+
+        assert_errors(
+            r#"
+            (
+            #ifdef kDefine
+                array1 10)
+            #else
+                array2 5)
+            #endif
+            )
+            "#,
+            vec![
+                ParseError::UnbalancedConditional(29..90),
+                ParseError::UnbalancedConditional(85..137)
+            ],
         );
     }
 }
