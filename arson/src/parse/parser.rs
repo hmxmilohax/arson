@@ -156,9 +156,12 @@ impl<'src> Parser<'src> {
                 ParseNodeResult::Node(node) => exprs.push(node),
                 ParseNodeResult::ArrayEnd(end_location) => return (exprs, end_location),
                 ParseNodeResult::SkipToken => continue,
-                ParseNodeResult::Eof => match exprs.last().cloned() {
-                    Some(last) => return (exprs, last.location.clone()),
-                    None => return (exprs, 0..0),
+                ParseNodeResult::Eof => {
+                    self.verify_eof();
+                    match exprs.last().cloned() {
+                        Some(last) => return (exprs, last.location.clone()),
+                        None => return (exprs, 0..0),
+                    }
                 },
             };
         }
@@ -260,23 +263,27 @@ impl<'src> Parser<'src> {
     }
 
     fn verify_eof(&mut self) {
+        let mut unexpected_eof = false;
         for unmatched in &self.array_stack {
             self.errors
                 .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
+            unexpected_eof = true;
         }
 
         for unmatched in &self.conditional_stack {
             self.errors
                 .push(ParseError::UnmatchedConditional(unmatched.location.clone()));
+            unexpected_eof = true;
+        }
+
+        if unexpected_eof && !self.errors.contains(&ParseError::UnexpectedEof) {
+            self.errors.push(ParseError::UnexpectedEof);
         }
     }
 
     fn parse_node<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ParseNodeResult<'src> {
         let token = match tokens.next() {
-            None => {
-                self.verify_eof();
-                return ParseNodeResult::Eof;
-            },
+            None => return ParseNodeResult::Eof,
             Some(token) => token,
         };
 
