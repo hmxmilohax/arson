@@ -6,7 +6,7 @@ use logos::{Logos, Span};
 
 type Lexer<'src> = logos::Lexer<'src, TokenKind<'src>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
     pub location: Span,
@@ -146,9 +146,13 @@ pub fn lex(text: &str) -> Vec<Result<Token<'_>, LexError>> {
 mod tests {
     use super::*;
 
-    fn assert_token(text: &str, expected: TokenKind<'_>) {
-        let tokens = Vec::from_iter(TokenKind::lexer(text));
-        assert_eq!(tokens, vec![Ok(expected)], "Unexpected token result for '{text}'");
+    fn assert_token(text: &str, kind: TokenKind<'_>, location: Span) {
+        let expected = Token { kind, location };
+        let tokens: Vec<Token<'_>> = lex(text)
+            .into_iter()
+            .map(|t| t.expect("no token errors expected in this test"))
+            .collect();
+        assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
     }
 
     fn assert_tokens(text: &str, expected: Vec<TokenKind<'_>>) {
@@ -159,135 +163,135 @@ mod tests {
 
     #[test]
     fn integer() {
-        assert_token("64", TokenKind::Integer(64));
-        assert_token("1234567890", TokenKind::Integer(1234567890));
-        assert_token("0xABCD", TokenKind::Integer(0xABCD));
+        assert_token("64", TokenKind::Integer(64), 0..2);
+        assert_token("1234567890", TokenKind::Integer(1234567890), 0..10);
+        assert_token("0xABCD", TokenKind::Integer(0xABCD), 0..6);
     }
 
     #[test]
     fn float() {
-        assert_token("12.0", TokenKind::Float(12.0));
-        assert_token("12.", TokenKind::Float(12.0));
-        assert_token(".12", TokenKind::Float(0.12));
+        assert_token("12.0", TokenKind::Float(12.0), 0..4);
+        assert_token("12.", TokenKind::Float(12.0), 0..3);
+        assert_token(".12", TokenKind::Float(0.12), 0..3);
 
-        assert_token(".", TokenKind::Float(0.0));
-        assert_token("+.", TokenKind::Float(0.0));
-        assert_token("-.", TokenKind::Float(-0.0));
+        assert_token(".", TokenKind::Float(0.0), 0..1);
+        assert_token("+.", TokenKind::Float(0.0), 0..2);
+        assert_token("-.", TokenKind::Float(-0.0), 0..2);
     }
 
     #[test]
     fn string() {
-        assert_token("\"text\"", TokenKind::String("text"));
+        assert_token("\"text\"", TokenKind::String("text"), 0..6);
 
-        assert_token("\"64\"", TokenKind::String("64"));
-        assert_token("\"12.0\"", TokenKind::String("12.0"));
+        assert_token("\"64\"", TokenKind::String("64"), 0..4);
+        assert_token("\"12.0\"", TokenKind::String("12.0"), 0..6);
 
-        assert_token("\"'text'\"", TokenKind::String("'text'"));
-        assert_token("\"$text\"", TokenKind::String("$text"));
-        assert_token("\"kDataUnhandled\"", TokenKind::String("kDataUnhandled"));
+        assert_token("\"'text'\"", TokenKind::String("'text'"), 0..8);
+        assert_token("\"$text\"", TokenKind::String("$text"), 0..7);
+        assert_token("\"kDataUnhandled\"", TokenKind::String("kDataUnhandled"), 0..16);
 
-        assert_token("\"(\"", TokenKind::String("("));
-        assert_token("\")\"", TokenKind::String(")"));
-        assert_token("\"{\"", TokenKind::String("{"));
-        assert_token("\"}\"", TokenKind::String("}"));
-        assert_token("\"[\"", TokenKind::String("["));
-        assert_token("\"]\"", TokenKind::String("]"));
+        assert_token("\"(\"", TokenKind::String("("), 0..3);
+        assert_token("\")\"", TokenKind::String(")"), 0..3);
+        assert_token("\"{\"", TokenKind::String("{"), 0..3);
+        assert_token("\"}\"", TokenKind::String("}"), 0..3);
+        assert_token("\"[\"", TokenKind::String("["), 0..3);
+        assert_token("\"]\"", TokenKind::String("]"), 0..3);
 
-        assert_token("\"#define\"", TokenKind::String("#define"));
-        assert_token("\"#undef\"", TokenKind::String("#undef"));
-        assert_token("\"#include\"", TokenKind::String("#include"));
-        assert_token("\"#include_opt\"", TokenKind::String("#include_opt"));
-        assert_token("\"#merge\"", TokenKind::String("#merge"));
-        assert_token("\"#autorun\"", TokenKind::String("#autorun"));
-        assert_token("\"#ifdef\"", TokenKind::String("#ifdef"));
-        assert_token("\"#ifndef\"", TokenKind::String("#ifndef"));
-        assert_token("\"#else\"", TokenKind::String("#else"));
-        assert_token("\"#endif\"", TokenKind::String("#endif"));
-        assert_token("\"#bad\"", TokenKind::String("#bad"));
+        assert_token("\"#define\"", TokenKind::String("#define"), 0..9);
+        assert_token("\"#undef\"", TokenKind::String("#undef"), 0..8);
+        assert_token("\"#include\"", TokenKind::String("#include"), 0..10);
+        assert_token("\"#include_opt\"", TokenKind::String("#include_opt"), 0..14);
+        assert_token("\"#merge\"", TokenKind::String("#merge"), 0..8);
+        assert_token("\"#autorun\"", TokenKind::String("#autorun"), 0..10);
+        assert_token("\"#ifdef\"", TokenKind::String("#ifdef"), 0..8);
+        assert_token("\"#ifndef\"", TokenKind::String("#ifndef"), 0..9);
+        assert_token("\"#else\"", TokenKind::String("#else"), 0..7);
+        assert_token("\"#endif\"", TokenKind::String("#endif"), 0..8);
+        assert_token("\"#bad\"", TokenKind::String("#bad"), 0..6);
 
-        assert_token("\"\n\"", TokenKind::String("\n"));
-        assert_token("\"; a comment\"", TokenKind::String("; a comment"));
-        assert_token("\"/* a comment */\"", TokenKind::String("/* a comment */"));
+        assert_token("\"\n\"", TokenKind::String("\n"), 0..3);
+        assert_token("\"; a comment\"", TokenKind::String("; a comment"), 0..13);
+        assert_token("\"/* a comment */\"", TokenKind::String("/* a comment */"), 0..17);
     }
 
     #[test]
     fn symbol() {
-        assert_token("text", TokenKind::Symbol("text"));
+        assert_token("text", TokenKind::Symbol("text"), 0..4);
 
-        assert_token("+", TokenKind::Symbol("+"));
-        assert_token("-", TokenKind::Symbol("-"));
-        assert_token("*", TokenKind::Symbol("*"));
-        assert_token("/", TokenKind::Symbol("/"));
-        assert_token("%", TokenKind::Symbol("%"));
-        assert_token("_", TokenKind::Symbol("_"));
+        assert_token("+", TokenKind::Symbol("+"), 0..1);
+        assert_token("-", TokenKind::Symbol("-"), 0..1);
+        assert_token("*", TokenKind::Symbol("*"), 0..1);
+        assert_token("/", TokenKind::Symbol("/"), 0..1);
+        assert_token("%", TokenKind::Symbol("%"), 0..1);
+        assert_token("_", TokenKind::Symbol("_"), 0..1);
 
         for char in 'a'..'z' {
             let str = char.to_string();
-            assert_token(&str, TokenKind::Symbol(&str));
+            assert_token(&str, TokenKind::Symbol(&str), 0..1);
 
             for char2 in 'a'..'z' {
                 let str = char.to_string() + &char2.to_string();
-                assert_token(&str, TokenKind::Symbol(&str));
+                assert_token(&str, TokenKind::Symbol(&str), 0..2);
             }
         }
     }
 
     #[test]
     fn variable() {
-        assert_token("$text", TokenKind::Variable("text"));
+        assert_token("$text", TokenKind::Variable("text"), 0..5);
 
-        assert_token("$+", TokenKind::Variable("+"));
-        assert_token("$-", TokenKind::Variable("-"));
-        assert_token("$*", TokenKind::Variable("*"));
-        assert_token("$/", TokenKind::Variable("/"));
-        assert_token("$%", TokenKind::Variable("%"));
-        assert_token("$_", TokenKind::Variable("_"));
+        assert_token("$+", TokenKind::Variable("+"), 0..2);
+        assert_token("$-", TokenKind::Variable("-"), 0..2);
+        assert_token("$*", TokenKind::Variable("*"), 0..2);
+        assert_token("$/", TokenKind::Variable("/"), 0..2);
+        assert_token("$%", TokenKind::Variable("%"), 0..2);
+        assert_token("$_", TokenKind::Variable("_"), 0..2);
 
         for char in 'a'..'z' {
             let str = char.to_string();
-            assert_token(&("$".to_owned() + &str), TokenKind::Variable(&str));
+            assert_token(&("$".to_owned() + &str), TokenKind::Variable(&str), 0..2);
 
             for char2 in 'a'..'z' {
                 let str = char.to_string() + &char2.to_string();
-                assert_token(&("$".to_owned() + &str), TokenKind::Variable(&str));
+                assert_token(&("$".to_owned() + &str), TokenKind::Variable(&str), 0..3);
             }
         }
     }
 
     #[test]
     fn unhandled() {
-        assert_token("kDataUnhandled", TokenKind::Unhandled);
+        assert_token("kDataUnhandled", TokenKind::Unhandled, 0..14);
     }
 
     #[test]
     fn arrays() {
-        assert_token("(", TokenKind::ArrayOpen);
-        assert_token(")", TokenKind::ArrayClose);
-        assert_token("{", TokenKind::CommandOpen);
-        assert_token("}", TokenKind::CommandClose);
-        assert_token("[", TokenKind::PropertyOpen);
-        assert_token("]", TokenKind::PropertyClose);
+        assert_token("(", TokenKind::ArrayOpen, 0..1);
+        assert_token(")", TokenKind::ArrayClose, 0..1);
+        assert_token("{", TokenKind::CommandOpen, 0..1);
+        assert_token("}", TokenKind::CommandClose, 0..1);
+        assert_token("[", TokenKind::PropertyOpen, 0..1);
+        assert_token("]", TokenKind::PropertyClose, 0..1);
     }
 
     #[test]
     fn directives() {
-        assert_token("#define", TokenKind::Define);
-        assert_token("#undef", TokenKind::Undefine);
-        assert_token("#include", TokenKind::Include);
-        assert_token("#include_opt", TokenKind::IncludeOptional);
-        assert_token("#merge", TokenKind::Merge);
-        assert_token("#autorun", TokenKind::Autorun);
-        assert_token("#ifdef", TokenKind::Ifdef);
-        assert_token("#ifndef", TokenKind::Ifndef);
-        assert_token("#else", TokenKind::Else);
-        assert_token("#endif", TokenKind::Endif);
-        assert_token("#bad", TokenKind::BadDirective("bad"));
+        assert_token("#define", TokenKind::Define, 0..7);
+        assert_token("#undef", TokenKind::Undefine, 0..6);
+        assert_token("#include", TokenKind::Include, 0..8);
+        assert_token("#include_opt", TokenKind::IncludeOptional, 0..12);
+        assert_token("#merge", TokenKind::Merge, 0..6);
+        assert_token("#autorun", TokenKind::Autorun, 0..8);
+        assert_token("#ifdef", TokenKind::Ifdef, 0..6);
+        assert_token("#ifndef", TokenKind::Ifndef, 0..7);
+        assert_token("#else", TokenKind::Else, 0..5);
+        assert_token("#endif", TokenKind::Endif, 0..6);
+        assert_token("#bad", TokenKind::BadDirective("bad"), 0..4);
     }
 
     #[test]
     fn comments() {
-        assert_token("; comment", TokenKind::Comment);
-        assert_token(";comment", TokenKind::Comment);
+        assert_token("; comment", TokenKind::Comment, 0..9);
+        assert_token(";comment", TokenKind::Comment, 0..8);
         assert_tokens(
             "/* comment */",
             vec![
@@ -297,10 +301,10 @@ mod tests {
         );
 
         // These get parsed as symbols in the original lexer
-        assert_token("a;symbol", TokenKind::Symbol("a;symbol"));
-        assert_token("/**/", TokenKind::Symbol("/**/"));
-        assert_token("/*****/", TokenKind::Symbol("/*****/"));
-        assert_token("/*comment*/", TokenKind::Symbol("/*comment*/"));
+        assert_token("a;symbol", TokenKind::Symbol("a;symbol"), 0..8);
+        assert_token("/**/", TokenKind::Symbol("/**/"), 0..4);
+        assert_token("/*****/", TokenKind::Symbol("/*****/"), 0..7);
+        assert_token("/*comment*/", TokenKind::Symbol("/*comment*/"), 0..11);
     }
 
     #[test]
