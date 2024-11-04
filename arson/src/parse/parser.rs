@@ -48,6 +48,13 @@ pub enum ExpressionKind<'src> {
     IncludeOptional(StrExpression<'src>),
     Merge(StrExpression<'src>),
     Autorun(ArrayExpression<'src>),
+
+    Conditional {
+        is_positive: bool,
+        symbol: StrExpression<'src>,
+        true_branch: ArrayExpression<'src>,
+        false_branch: Option<ArrayExpression<'src>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,6 +68,8 @@ pub enum ParseError<'src> {
     LexingError(LexError),
     UnexpectedEof,
     UnmatchedBrace(Span, ArrayKind),
+    UnmatchedConditional(Span),
+    UnbalancedConditional(Span),
     BadDirective(Span),
     IncorrectToken {
         expected: TokenKind<'static>,
@@ -81,6 +90,14 @@ struct ArrayMarker {
     location: Span,
 }
 
+struct ConditionalMarker<'src> {
+    location: Span,
+    array_depth: usize,
+    is_positive: bool,
+    symbol: StrExpression<'src>,
+    false_branch: Option<ArrayExpression<'src>>,
+}
+
 enum ParseNodeResult<'src> {
     Node(Expression<'src>),
     ArrayEnd(Span),
@@ -88,9 +105,9 @@ enum ParseNodeResult<'src> {
     Eof,
 }
 
-#[derive(Clone)]
 struct Parser<'src> {
     array_stack: Vec<ArrayMarker>,
+    conditional_stack: Vec<ConditionalMarker<'src>>,
     errors: Vec<ParseError<'src>>,
 }
 
@@ -123,6 +140,7 @@ impl<'src> Parser<'src> {
     pub fn new() -> Self {
         Self {
             array_stack: Vec::new(),
+            conditional_stack: Vec::new(),
             errors: Vec::new(),
         }
     }
@@ -189,14 +207,74 @@ impl<'src> Parser<'src> {
         todo!()
     }
 
+    fn parse_conditional<I: Iterator<Item = Token<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        start: Span,
+        positive: bool,
+        symbol: StrExpression<'src>,
+    ) -> (ExpressionKind<'src>, Span) {
+        self.conditional_stack.push(ConditionalMarker {
+            location: start.clone(),
+            array_depth: self.array_stack.len(),
+            is_positive: positive,
+            symbol,
+            false_branch: None,
+        });
+
+        let (true_exprs, true_location) = self.parse_conditional_block(tokens, start);
+        let conditional = self
+            .conditional_stack
+            .pop()
+            .expect("conditional was added just above");
+
+        if self.array_stack.len() != conditional.array_depth {
+            self.errors
+                .push(ParseError::UnbalancedConditional(true_location.clone()));
+        }
+
+        let location = match &conditional.false_branch {
+            Some(false_branch) => conditional.location.start..false_branch.location.end,
+            None => conditional.location.start..true_location.end,
+        };
+
+        (
+            ExpressionKind::Conditional {
+                is_positive: conditional.is_positive,
+                symbol: conditional.symbol,
+                true_branch: ArrayExpression::new(true_exprs, true_location),
+                false_branch: conditional.false_branch,
+            },
+            location,
+        )
+    }
+
+    fn parse_conditional_block<I: Iterator<Item = Token<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        start: Span,
+    ) -> (Vec<Expression<'src>>, Span) {
+        let (exprs, next_directive_location) = self.parse_exprs(tokens);
+        let location = start.start..next_directive_location.end;
+        (exprs, location)
+    }
+
+    fn verify_eof(&mut self) {
+        for unmatched in &self.array_stack {
+            self.errors
+                .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
+        }
+
+        for unmatched in &self.conditional_stack {
+            self.errors
+                .push(ParseError::UnmatchedConditional(unmatched.location.clone()));
+        }
+    }
+
     fn parse_node<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ParseNodeResult<'src> {
         let token = match tokens.next() {
             None => {
-                if let Some(unmatched) = self.array_stack.last() {
-                    self.errors
-                        .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
-                }
-
+                self.verify_eof();
                 return ParseNodeResult::Eof;
             },
             Some(token) => token,
@@ -226,10 +304,28 @@ impl<'src> Parser<'src> {
             TokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
             TokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
 
-            TokenKind::Ifdef => todo!(),
-            TokenKind::Ifndef => todo!(),
-            TokenKind::Else => todo!(),
-            TokenKind::Endif => todo!(),
+            TokenKind::Ifdef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                self.parse_conditional(tokens, token.location, true, StrExpression::new(name, name_location))
+            },
+            TokenKind::Ifndef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                self.parse_conditional(tokens, token.location, false, StrExpression::new(name, name_location))
+            },
+            TokenKind::Else => {
+                let (exprs, location) = self.parse_conditional_block(tokens, token.location.clone());
+                match self.conditional_stack.last_mut() {
+                    Some(conditional) => {
+                        conditional.false_branch = Some(ArrayExpression::new(exprs, location));
+                        return ParseNodeResult::ArrayEnd(token.location);
+                    },
+                    None => todo!("#else error recovery"),
+                }
+            },
+            TokenKind::Endif => match self.conditional_stack.last() {
+                Some(_) => return ParseNodeResult::ArrayEnd(token.location),
+                None => todo!("#endif error recovery"),
+            },
 
             TokenKind::Define => {
                 let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
@@ -522,5 +618,70 @@ mod tests {
         );
 
         assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+    }
+
+    #[test]
+    fn conditionals() {
+        assert_parsed(
+            r#"
+            #ifdef kDefine
+                (array1 10)
+            #else
+                (array2 5)
+            #endif
+            "#,
+            vec![new_expression(
+                ExpressionKind::Conditional {
+                    is_positive: true,
+                    symbol: StrExpression::new("kDefine", 20..27),
+                    true_branch: ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionKind::Array(vec![
+                                new_expression(ExpressionKind::Symbol("array1"), 45..51),
+                                new_expression(ExpressionKind::Integer(10), 52..54),
+                            ]),
+                            44..55,
+                        )],
+                        13..73,
+                    ),
+                    false_branch: Some(ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionKind::Array(vec![
+                                new_expression(ExpressionKind::Symbol("array2"), 91..97),
+                                new_expression(ExpressionKind::Integer(5), 98..99),
+                            ]),
+                            90..100,
+                        )],
+                        68..119,
+                    )),
+                },
+                13..119,
+            )],
+        );
+        assert_parsed(
+            r#"
+            #ifndef kDefine
+                (array 10)
+            #endif
+            "#,
+            vec![new_expression(
+                ExpressionKind::Conditional {
+                    is_positive: false,
+                    symbol: StrExpression::new("kDefine", 21..28),
+                    true_branch: ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionKind::Array(vec![
+                                new_expression(ExpressionKind::Symbol("array"), 46..51),
+                                new_expression(ExpressionKind::Integer(10), 52..54),
+                            ]),
+                            45..55,
+                        )],
+                        13..74,
+                    ),
+                    false_branch: None,
+                },
+                13..74,
+            )],
+        );
     }
 }
