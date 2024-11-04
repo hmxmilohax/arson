@@ -132,14 +132,25 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<f64, ParseFloatError> {
     }
 }
 
-pub fn lex(text: &str) -> Vec<Result<Token<'_>, LexError>> {
-    TokenKind::lexer(text)
+pub fn lex(text: &str) -> Result<Vec<Token<'_>>, Vec<LexError>> {
+    let mut errors = Vec::new();
+    let tokens = TokenKind::lexer(text)
         .spanned()
-        .map(|t| match t {
-            (Ok(kind), location) => Ok(Token { kind, location }),
-            (Err(kind), location) => Err(LexError { kind, location }),
+        .into_iter()
+        .filter_map(|t| match t {
+            (Ok(kind), location) => Some(Token { kind, location }),
+            (Err(kind), location) => {
+                errors.push(LexError { kind, location });
+                None
+            },
         })
-        .collect()
+        .collect();
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -148,10 +159,7 @@ mod tests {
 
     fn assert_token(text: &str, kind: TokenKind<'_>, location: Span) {
         let expected = Token { kind, location };
-        let tokens: Vec<Token<'_>> = lex(text)
-            .into_iter()
-            .map(|t| t.expect("no token errors expected in this test"))
-            .collect();
+        let tokens = lex(text).expect("no token errors expected in this test");
         assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
     }
 

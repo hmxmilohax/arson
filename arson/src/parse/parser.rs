@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use logos::Span;
 
-use super::lexer::{LexError, Token, TokenKind};
+use super::lexer::{Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -65,7 +65,6 @@ pub struct Expression<'src> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'src> {
-    LexingError(LexError),
     UnexpectedEof,
     UnmatchedBrace(Span, ArrayKind),
     UnmatchedConditional(Span),
@@ -408,28 +407,7 @@ impl<'src> Parser<'src> {
     }
 }
 
-fn filter_token_errors(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<Token<'_>>, Vec<ParseError>> {
-    let mut errors = Vec::new();
-    let tokens = tokens
-        .into_iter()
-        .filter_map(|t| match t {
-            Ok(token) => Some(token),
-            Err(error) => {
-                errors.push(ParseError::LexingError(error));
-                None
-            },
-        })
-        .collect();
-
-    if !errors.is_empty() {
-        return Err(errors);
-    }
-
-    Ok(tokens)
-}
-
-pub fn parse(tokens: Vec<Result<Token<'_>, LexError>>) -> Result<Vec<Expression>, Vec<ParseError>> {
-    let tokens = filter_token_errors(tokens)?;
+pub fn parse(tokens: Vec<Token<'_>>) -> Result<Vec<Expression>, Vec<ParseError>> {
     let mut parser = Parser::new();
     let (exprs, _) = parser.parse_exprs(&mut tokens.into_iter().peekable());
     match parser.errors.is_empty() {
@@ -449,7 +427,7 @@ mod tests {
     }
 
     fn assert_parsed(text: &str, exprs: Vec<Expression>) {
-        let tokens = lexer::lex(text);
+        let tokens = lexer::lex(text).expect("no token errors expected in this test");
         let result = match parse(tokens) {
             Ok(exprs) => exprs,
             Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
@@ -458,7 +436,7 @@ mod tests {
     }
 
     fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
-        let tokens = lexer::lex(text);
+        let tokens = lexer::lex(text).expect("no token errors expected in this test");
         let result = match parse(tokens) {
             Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
             Err(errs) => errs,
