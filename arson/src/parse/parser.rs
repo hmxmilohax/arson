@@ -569,9 +569,15 @@ impl<'src> Parser<'src> {
     ) -> ArrayExpression<'src> {
         let mut block_parser = Parser::new();
         let (branch, _) = block_parser.parse_exprs(&mut branch.into_iter().peekable());
-        if !block_parser.errors.is_empty() {
-            self.errors.append(&mut block_parser.errors);
+        if block_parser
+            .errors
+            .iter()
+            .any(|e| matches!(e, ParseError::UnmatchedBrace(_, _)))
+        {
+            self.errors
+                .push(ParseError::UnbalancedConditional(location.clone()))
         }
+        self.errors.append(&mut block_parser.errors);
 
         ArrayExpression::new(branch, location)
     }
@@ -1231,6 +1237,16 @@ mod tests {
             );
             assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
             assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+
+            assert_errors(
+                "(#ifdef kDefine array1 10) #else array2 5) #endif)",
+                vec![
+                    ParseError::UnbalancedConditional(1..32),
+                    ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
+                    ParseError::UnbalancedConditional(27..49),
+                    ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+                ],
+            );
         }
     }
 }
