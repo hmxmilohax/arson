@@ -209,6 +209,7 @@ enum ProcessResult<T> {
 struct Preprocessor<'src> {
     conditional_stack: Vec<ConditionalMarker<'src>>,
     errors: Vec<ParseError<'src>>,
+    unexpected_eof: bool,
 }
 
 macro_rules! next_token {
@@ -238,10 +239,25 @@ macro_rules! next_token {
 
 impl<'src> Preprocessor<'src> {
     pub fn new() -> Self {
-        Self { conditional_stack: Vec::new(), errors: Vec::new() }
+        Self {
+            conditional_stack: Vec::new(),
+            errors: Vec::new(),
+            unexpected_eof: false,
+        }
     }
 
     pub fn preprocess<I: Iterator<Item = Token<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> (Vec<PreprocessedToken<'src>>, Span) {
+        let result = self.preprocess_loop(tokens);
+        if self.unexpected_eof {
+            self.errors.push(ParseError::UnexpectedEof);
+        }
+        result
+    }
+
+    fn preprocess_loop<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
     ) -> (Vec<PreprocessedToken<'src>>, Span) {
@@ -412,14 +428,12 @@ impl<'src> Preprocessor<'src> {
         tokens: &mut Peekable<I>,
         start: Span,
     ) -> (Vec<PreprocessedToken<'src>>, Span) {
-        let (exprs, next_directive_location) = self.preprocess(tokens);
+        let (exprs, next_directive_location) = self.preprocess_loop(tokens);
         let location = start.start..next_directive_location.end;
         (exprs, location)
     }
 
     fn verify_eof(&mut self) {
-        let mut unexpected_eof = false;
-
         for unmatched in &self.conditional_stack {
             let location = match &unmatched.false_location {
                 Some(else_location) => else_location.clone(),
@@ -427,11 +441,7 @@ impl<'src> Preprocessor<'src> {
             };
             self.errors
                 .push(ParseError::UnmatchedConditional(location.clone()));
-            unexpected_eof = true;
-        }
-
-        if unexpected_eof && !self.errors.contains(&ParseError::UnexpectedEof) {
-            self.errors.push(ParseError::UnexpectedEof);
+            self.unexpected_eof = true;
         }
     }
 
@@ -460,14 +470,30 @@ impl<'src> Preprocessor<'src> {
 struct Parser<'src> {
     array_stack: Vec<ArrayMarker>,
     errors: Vec<ParseError<'src>>,
+    unexpected_eof: bool,
 }
 
 impl<'src> Parser<'src> {
     pub fn new() -> Self {
-        Self { array_stack: Vec::new(), errors: Vec::new() }
+        Self {
+            array_stack: Vec::new(),
+            errors: Vec::new(),
+            unexpected_eof: false,
+        }
     }
 
-    pub fn parse_exprs<I: Iterator<Item = PreprocessedToken<'src>>>(
+    pub fn parse<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> (Vec<Expression<'src>>, Span) {
+        let result = self.parse_exprs(tokens);
+        if self.unexpected_eof {
+            self.errors.push(ParseError::UnexpectedEof);
+        }
+        result
+    }
+
+    fn parse_exprs<I: Iterator<Item = PreprocessedToken<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
     ) -> (Vec<Expression<'src>>, Span) {
@@ -657,16 +683,10 @@ impl<'src> Parser<'src> {
     }
 
     fn verify_eof(&mut self) {
-        let mut unexpected_eof = false;
-
         for unmatched in &self.array_stack {
             self.errors
                 .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
-            unexpected_eof = true;
-        }
-
-        if unexpected_eof && !self.errors.contains(&ParseError::UnexpectedEof) {
-            self.errors.push(ParseError::UnexpectedEof);
+            self.unexpected_eof = true;
         }
     }
 
@@ -729,7 +749,7 @@ pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expr
     let preprocessed = preprocess(tokens)?;
 
     let mut parser = Parser::new();
-    let (exprs, _) = parser.parse_exprs(&mut preprocessed.into_iter().peekable());
+    let (exprs, _) = parser.parse(&mut preprocessed.into_iter().peekable());
     match parser.errors.is_empty() {
         true => Ok(exprs),
         false => Err(parser.errors),
@@ -1371,6 +1391,24 @@ mod tests {
                     ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
                     ParseError::UnbalancedConditional(27..49),
                     ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+                ],
+            );
+
+            assert_errors(
+                "\
+                #ifdef kDefine\n\
+                {do\n\
+                #endif\
+                \n    {+ 1 2}\n\
+                #ifdef kDefine\n\
+                }\n\
+                #endif\
+                ",
+                vec![
+                    ParseError::UnbalancedConditional(0..25),
+                    ParseError::UnmatchedBrace(15..16, ArrayKind::Command),
+                    ParseError::UnbalancedConditional(38..61),
+                    ParseError::UnmatchedBrace(53..54, ArrayKind::Command),
                 ],
             );
         }
