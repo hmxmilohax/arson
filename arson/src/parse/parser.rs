@@ -31,6 +31,45 @@ impl<'src> ArrayExpression<'src> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+enum PreprocessedTokenKind<'src> {
+    Integer(i64),
+    Float(f64),
+    String(&'src str),
+    Symbol(&'src str),
+    Variable(&'src str),
+    Unhandled,
+
+    ArrayOpen,
+    ArrayClose,
+    CommandOpen,
+    CommandClose,
+    PropertyOpen,
+    PropertyClose,
+
+    Define(StrExpression<'src>),
+    Undefine(StrExpression<'src>),
+    Include(StrExpression<'src>),
+    IncludeOptional(StrExpression<'src>),
+    Merge(StrExpression<'src>),
+    Autorun,
+
+    Conditional {
+        is_positive: bool,
+        symbol: StrExpression<'src>,
+        true_branch: (Vec<PreprocessedToken<'src>>, Span),
+        false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
+    },
+
+    Error(LexError),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PreprocessedToken<'src> {
+    kind: PreprocessedTokenKind<'src>,
+    location: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExpressionKind<'src> {
     Integer(i64),
     Float(f64),
@@ -95,21 +134,20 @@ struct ArrayMarker {
 
 struct ConditionalMarker<'src> {
     location: Span,
-    array_depth: usize,
     is_positive: bool,
     symbol: StrExpression<'src>,
-    false_branch: Option<ArrayExpression<'src>>,
+    false_location: Option<Span>,
+    false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
 }
 
-enum ParseNodeResult<'src> {
-    Node(Expression<'src>),
-    ArrayEnd(Span),
+enum ProcessResult<T> {
+    Result(T),
+    BlockEnd(Span),
     SkipToken,
     Eof,
 }
 
-struct Parser<'src> {
-    array_stack: Vec<ArrayMarker>,
+struct Preprocessor<'src> {
     conditional_stack: Vec<ConditionalMarker<'src>>,
     errors: Vec<ParseError<'src>>,
 }
@@ -139,78 +177,137 @@ macro_rules! next_token {
     }};
 }
 
-impl<'src> Parser<'src> {
+impl<'src> Preprocessor<'src> {
     pub fn new() -> Self {
-        Self {
-            array_stack: Vec::new(),
-            conditional_stack: Vec::new(),
-            errors: Vec::new(),
-        }
+        Self { conditional_stack: Vec::new(), errors: Vec::new() }
     }
 
-    pub fn parse_exprs<I: Iterator<Item = Token<'src>>>(
+    pub fn preprocess<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
-    ) -> (Vec<Expression<'src>>, Span) {
-        let mut exprs = Vec::new();
+    ) -> (Vec<PreprocessedToken<'src>>, Span) {
+        let mut processed = Vec::new();
 
         loop {
-            match self.parse_node(tokens) {
-                ParseNodeResult::Node(node) => exprs.push(node),
-                ParseNodeResult::ArrayEnd(end_location) => return (exprs, end_location),
-                ParseNodeResult::SkipToken => continue,
-                ParseNodeResult::Eof => {
+            match self.process_token(tokens) {
+                ProcessResult::Result(node) => processed.push(node),
+                ProcessResult::BlockEnd(end_location) => return (processed, end_location),
+                ProcessResult::SkipToken => continue,
+                ProcessResult::Eof => {
                     self.verify_eof();
-                    match exprs.last().cloned() {
-                        Some(last) => return (exprs, last.location.clone()),
-                        None => return (exprs, 0..0),
+                    match processed.last().cloned() {
+                        Some(last) => return (processed, last.location.clone()),
+                        None => return (processed, 0..0),
                     }
                 },
             };
         }
     }
 
-    fn parse_array<I: Iterator<Item = Token<'src>>>(
+    fn symbol_directive<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
-        kind: ArrayKind,
-        start: Span,
-    ) -> (Vec<Expression<'src>>, Span) {
-        self.array_stack.push(ArrayMarker { kind, location: start });
-        let array = self.parse_exprs(tokens);
-        self.array_stack.pop();
-
-        array
+        location: Span,
+        kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenKind<'src>,
+    ) -> ProcessResult<PreprocessedToken<'src>> {
+        let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+        let name = StrExpression::new(name, name_location.clone());
+        return ProcessResult::Result(PreprocessedToken { kind: kind(name), location });
     }
 
-    fn open_array<I: Iterator<Item = Token<'src>>>(
+    fn process_token<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
-        start: &Span,
-        kind: ArrayKind,
-    ) -> (Vec<Expression<'src>>, Span) {
-        let (array, end) = self.parse_array(tokens, kind, start.clone());
-        (array, start.start..end.end)
-    }
+    ) -> ProcessResult<PreprocessedToken<'src>> {
+        let token = match tokens.next() {
+            None => return ProcessResult::Eof,
+            Some(token) => token,
+        };
 
-    fn close_array(&mut self, kind: ArrayKind, end: Span) -> ParseNodeResult<'src> {
-        match self.array_stack.last() {
-            Some(last) => {
-                if kind != last.kind {
-                    return self.recover_mismatched_array(kind, end);
+        let kind = match token.kind {
+            TokenKind::Integer(value) => PreprocessedTokenKind::Integer(value),
+            TokenKind::Float(value) => PreprocessedTokenKind::Float(value),
+            TokenKind::String(value) => PreprocessedTokenKind::String(value),
+            TokenKind::Symbol(value) => PreprocessedTokenKind::Symbol(value),
+            TokenKind::Variable(value) => PreprocessedTokenKind::Variable(value),
+            TokenKind::Unhandled => PreprocessedTokenKind::Unhandled,
+
+            TokenKind::ArrayOpen => PreprocessedTokenKind::ArrayOpen,
+            TokenKind::ArrayClose => PreprocessedTokenKind::ArrayClose,
+            TokenKind::CommandOpen => PreprocessedTokenKind::CommandOpen,
+            TokenKind::CommandClose => PreprocessedTokenKind::CommandClose,
+            TokenKind::PropertyOpen => PreprocessedTokenKind::PropertyOpen,
+            TokenKind::PropertyClose => PreprocessedTokenKind::PropertyClose,
+
+            TokenKind::Define => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define),
+            TokenKind::Undefine => {
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Undefine)
+            },
+            TokenKind::Include => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include),
+            TokenKind::IncludeOptional => {
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::IncludeOptional)
+            },
+            TokenKind::Merge => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge),
+            TokenKind::Autorun => PreprocessedTokenKind::Autorun,
+
+            TokenKind::Ifdef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                return self.parse_conditional(tokens, token.location, true, StrExpression::new(name, name_location));
+            },
+            TokenKind::Ifndef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+                return self.parse_conditional(tokens, token.location, false, StrExpression::new(name, name_location));
+            },
+            TokenKind::Else => {
+                match self.conditional_stack.last_mut() {
+                    Some(conditional) => {
+                        conditional.false_location = Some(token.location.clone());
+                    },
+                    None => {
+                        self.errors
+                            .push(ParseError::UnexpectedConditional(token.location.clone()));
+                        self.conditional_stack.push(ConditionalMarker {
+                            location: token.location.clone(),
+                            is_positive: true,
+                            symbol: StrExpression::new("<invalid>", token.location.clone()),
+                            false_location: Some(token.location.clone()),
+                            false_branch: None,
+                        });
+                    },
                 }
-            },
-            None => {
-                self.errors.push(ParseError::UnmatchedBrace(end, kind));
-                return ParseNodeResult::SkipToken;
-            },
-        }
 
-        return ParseNodeResult::ArrayEnd(end);
-    }
+                let (exprs, location) = self.parse_conditional_block(tokens, token.location.clone());
+                if let Some(conditional) = self.conditional_stack.last_mut() {
+                    conditional.false_branch = Some((exprs, location));
+                }
 
-    fn recover_mismatched_array(&mut self, kind: ArrayKind, end: Span) -> ParseNodeResult<'src> {
-        todo!()
+                return ProcessResult::BlockEnd(token.location);
+            },
+            TokenKind::Endif => match self.conditional_stack.last() {
+                Some(_) => return ProcessResult::BlockEnd(token.location),
+                None => {
+                    self.errors
+                        .push(ParseError::UnexpectedConditional(token.location));
+                    return ProcessResult::SkipToken;
+                },
+            },
+
+            TokenKind::BadDirective(_) => {
+                self.errors.push(ParseError::BadDirective(token.location));
+                return ProcessResult::SkipToken;
+            },
+
+            TokenKind::Comment => return ProcessResult::SkipToken,
+            TokenKind::BlockCommentStart(_) => {
+                self.skip_block_comment(tokens);
+                return ProcessResult::SkipToken;
+            },
+            TokenKind::BlockCommentEnd(_) => return ProcessResult::SkipToken,
+
+            TokenKind::Error(error) => PreprocessedTokenKind::Error(error),
+        };
+
+        ProcessResult::Result(PreprocessedToken { kind, location: token.location })
     }
 
     fn parse_conditional<I: Iterator<Item = Token<'src>>>(
@@ -219,12 +316,12 @@ impl<'src> Parser<'src> {
         start: Span,
         positive: bool,
         symbol: StrExpression<'src>,
-    ) -> (ExpressionKind<'src>, Span) {
+    ) -> ProcessResult<PreprocessedToken<'src>> {
         self.conditional_stack.push(ConditionalMarker {
             location: start.clone(),
-            array_depth: self.array_stack.len(),
             is_positive: positive,
             symbol,
+            false_location: None,
             false_branch: None,
         });
 
@@ -234,171 +331,48 @@ impl<'src> Parser<'src> {
             .pop()
             .expect("conditional was added just above");
 
-        if self.array_stack.len() != conditional.array_depth {
-            self.errors
-                .push(ParseError::UnbalancedConditional(true_location.clone()));
-        }
-
         let location = match &conditional.false_branch {
-            Some(false_branch) => conditional.location.start..false_branch.location.end,
+            Some(false_branch) => conditional.location.start..false_branch.1.end,
             None => conditional.location.start..true_location.end,
         };
 
-        (
-            ExpressionKind::Conditional {
+        ProcessResult::Result(PreprocessedToken {
+            kind: PreprocessedTokenKind::Conditional {
                 is_positive: conditional.is_positive,
                 symbol: conditional.symbol,
-                true_branch: ArrayExpression::new(true_exprs, true_location),
+                true_branch: (true_exprs, true_location),
                 false_branch: conditional.false_branch,
             },
             location,
-        )
+        })
     }
 
     fn parse_conditional_block<I: Iterator<Item = Token<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
         start: Span,
-    ) -> (Vec<Expression<'src>>, Span) {
-        let (exprs, next_directive_location) = self.parse_exprs(tokens);
+    ) -> (Vec<PreprocessedToken<'src>>, Span) {
+        let (exprs, next_directive_location) = self.preprocess(tokens);
         let location = start.start..next_directive_location.end;
         (exprs, location)
     }
 
     fn verify_eof(&mut self) {
         let mut unexpected_eof = false;
-        for unmatched in &self.array_stack {
-            self.errors
-                .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
-            unexpected_eof = true;
-        }
 
         for unmatched in &self.conditional_stack {
+            let location = match &unmatched.false_location {
+                Some(else_location) => else_location.clone(),
+                None => unmatched.location.clone(),
+            };
             self.errors
-                .push(ParseError::UnmatchedConditional(unmatched.location.clone()));
+                .push(ParseError::UnmatchedConditional(location.clone()));
             unexpected_eof = true;
         }
 
         if unexpected_eof && !self.errors.contains(&ParseError::UnexpectedEof) {
             self.errors.push(ParseError::UnexpectedEof);
         }
-    }
-
-    fn parse_node<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) -> ParseNodeResult<'src> {
-        let token = match tokens.next() {
-            None => return ParseNodeResult::Eof,
-            Some(token) => token,
-        };
-
-        let (kind, location) = match token.kind {
-            TokenKind::Integer(value) => (ExpressionKind::Integer(value), token.location),
-            TokenKind::Float(value) => (ExpressionKind::Float(value), token.location),
-            TokenKind::String(value) => (ExpressionKind::String(value), token.location),
-            TokenKind::Symbol(value) => (ExpressionKind::Symbol(value), token.location),
-            TokenKind::Variable(value) => (ExpressionKind::Variable(value), token.location),
-            TokenKind::Unhandled => (ExpressionKind::Unhandled, token.location),
-
-            TokenKind::ArrayOpen => {
-                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Array);
-                (ExpressionKind::Array(array), location)
-            },
-            TokenKind::CommandOpen => {
-                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Command);
-                (ExpressionKind::Command(array), location)
-            },
-            TokenKind::PropertyOpen => {
-                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Property);
-                (ExpressionKind::Property(array), location)
-            },
-            TokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
-            TokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
-            TokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
-
-            TokenKind::Ifdef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
-                self.parse_conditional(tokens, token.location, true, StrExpression::new(name, name_location))
-            },
-            TokenKind::Ifndef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
-                self.parse_conditional(tokens, token.location, false, StrExpression::new(name, name_location))
-            },
-            TokenKind::Else => {
-                let (exprs, location) = self.parse_conditional_block(tokens, token.location.clone());
-                match self.conditional_stack.last_mut() {
-                    Some(conditional) => {
-                        conditional.false_branch = Some(ArrayExpression::new(exprs, location));
-                        return ParseNodeResult::ArrayEnd(token.location);
-                    },
-                    None => todo!("#else error recovery"),
-                }
-            },
-            TokenKind::Endif => match self.conditional_stack.last() {
-                Some(_) => return ParseNodeResult::ArrayEnd(token.location),
-                None => todo!("#endif error recovery"),
-            },
-
-            TokenKind::Define => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
-                let name = StrExpression::new(name, name_location.clone());
-
-                let start_location = next_token!(self, tokens, ArrayOpen);
-                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Array);
-                let body = ArrayExpression::new(body, body_location.clone());
-
-                (
-                    ExpressionKind::Define(name, body),
-                    token.location.start..body_location.end,
-                )
-            },
-            TokenKind::Undefine => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
-                let name = StrExpression::new(name, name_location.clone());
-                (ExpressionKind::Undefine(name), token.location.start..name_location.end)
-            },
-            TokenKind::Include => {
-                let (path, path_location) = next_token!(self, tokens, Symbol("dummy"));
-                let path = StrExpression::new(path, path_location.clone());
-                (ExpressionKind::Include(path), token.location.start..path_location.end)
-            },
-            TokenKind::IncludeOptional => {
-                let (path, path_location) = next_token!(self, tokens, Symbol("dummy"));
-                let path = StrExpression::new(path, path_location.clone());
-                (
-                    ExpressionKind::IncludeOptional(path),
-                    token.location.start..path_location.end,
-                )
-            },
-            TokenKind::Merge => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
-                let name = StrExpression::new(name, name_location.clone());
-                (ExpressionKind::Merge(name), token.location.start..name_location.end)
-            },
-            TokenKind::Autorun => {
-                let start_location = next_token!(self, tokens, CommandOpen);
-                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Command);
-                let body = ArrayExpression::new(body, body_location.clone());
-                (ExpressionKind::Autorun(body), token.location.start..body_location.end)
-            },
-
-            TokenKind::BadDirective(_) => {
-                self.errors.push(ParseError::BadDirective(token.location));
-                return ParseNodeResult::SkipToken;
-            },
-
-            TokenKind::Comment => return ParseNodeResult::SkipToken,
-            TokenKind::BlockCommentStart(_) => {
-                self.skip_block_comment(tokens);
-                return ParseNodeResult::SkipToken;
-            },
-            TokenKind::BlockCommentEnd(_) => return ParseNodeResult::SkipToken,
-
-            TokenKind::Error(error) => {
-                self.errors.push(ParseError::TokenError(token.location, error));
-                return ParseNodeResult::SkipToken;
-            }
-        };
-
-        return ParseNodeResult::Node(Expression { kind, location });
     }
 
     fn skip_block_comment<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
@@ -411,21 +385,264 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn incorrect_token(&mut self, expected: TokenKind<'static>, actual: Token<'src>) -> ParseNodeResult<'src> {
+    fn incorrect_token<T>(&mut self, expected: TokenKind<'static>, actual: Token<'src>) -> ProcessResult<T> {
         self.errors
             .push(ParseError::IncorrectToken { expected, actual });
-        return ParseNodeResult::SkipToken;
+        return ProcessResult::SkipToken;
     }
 
-    fn unexpected_eof(&mut self) -> ParseNodeResult<'src> {
+    fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
         self.errors.push(ParseError::UnexpectedEof);
-        ParseNodeResult::Eof
+        ProcessResult::Eof
+    }
+}
+
+struct Parser<'src> {
+    array_stack: Vec<ArrayMarker>,
+    errors: Vec<ParseError<'src>>,
+}
+
+impl<'src> Parser<'src> {
+    pub fn new() -> Self {
+        Self { array_stack: Vec::new(), errors: Vec::new() }
+    }
+
+    pub fn parse_exprs<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> (Vec<Expression<'src>>, Span) {
+        let mut exprs = Vec::new();
+
+        loop {
+            match self.parse_node(tokens) {
+                ProcessResult::Result(node) => exprs.push(node),
+                ProcessResult::BlockEnd(end_location) => return (exprs, end_location),
+                ProcessResult::SkipToken => continue,
+                ProcessResult::Eof => {
+                    self.verify_eof();
+                    match exprs.last().cloned() {
+                        Some(last) => return (exprs, last.location.clone()),
+                        None => return (exprs, 0..0),
+                    }
+                },
+            };
+        }
+    }
+
+    fn parse_array<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        kind: ArrayKind,
+        start: Span,
+    ) -> (Vec<Expression<'src>>, Span) {
+        self.array_stack.push(ArrayMarker { kind, location: start });
+        let array = self.parse_exprs(tokens);
+        self.array_stack.pop();
+
+        array
+    }
+
+    fn open_array<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        start: &Span,
+        kind: ArrayKind,
+    ) -> (Vec<Expression<'src>>, Span) {
+        let (array, end) = self.parse_array(tokens, kind, start.clone());
+        (array, start.start..end.end)
+    }
+
+    fn close_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
+        match self.array_stack.last() {
+            Some(last) => {
+                if kind != last.kind {
+                    return self.recover_mismatched_array(kind, end);
+                }
+            },
+            None => {
+                self.errors.push(ParseError::UnmatchedBrace(end, kind));
+                return ProcessResult::SkipToken;
+            },
+        }
+
+        return ProcessResult::BlockEnd(end);
+    }
+
+    fn recover_mismatched_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
+        todo!("array mismatch recovery")
+    }
+
+    fn parse_node<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> ProcessResult<Expression<'src>> {
+        let token = match tokens.next() {
+            None => return ProcessResult::Eof,
+            Some(token) => token,
+        };
+
+        let (kind, location) = match token.kind {
+            PreprocessedTokenKind::Integer(value) => (ExpressionKind::Integer(value), token.location),
+            PreprocessedTokenKind::Float(value) => (ExpressionKind::Float(value), token.location),
+            PreprocessedTokenKind::String(value) => (ExpressionKind::String(value), token.location),
+            PreprocessedTokenKind::Symbol(value) => (ExpressionKind::Symbol(value), token.location),
+            PreprocessedTokenKind::Variable(value) => (ExpressionKind::Variable(value), token.location),
+            PreprocessedTokenKind::Unhandled => (ExpressionKind::Unhandled, token.location),
+
+            PreprocessedTokenKind::ArrayOpen => {
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Array);
+                (ExpressionKind::Array(array), location)
+            },
+            PreprocessedTokenKind::CommandOpen => {
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Command);
+                (ExpressionKind::Command(array), location)
+            },
+            PreprocessedTokenKind::PropertyOpen => {
+                let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Property);
+                (ExpressionKind::Property(array), location)
+            },
+            PreprocessedTokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
+            PreprocessedTokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
+            PreprocessedTokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
+
+            PreprocessedTokenKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
+                let (true_branch, _) = true_branch;
+                let (true_branch, true_location) = self.parse_exprs(&mut true_branch.into_iter().peekable());
+
+                let false_branch = match false_branch {
+                    Some((false_branch, _)) => {
+                        let (false_branch, false_location) = self.parse_exprs(&mut false_branch.into_iter().peekable());
+                        Some(ArrayExpression::new(false_branch, false_location))
+                    },
+                    None => None,
+                };
+
+                let expr = ExpressionKind::Conditional {
+                    is_positive,
+                    symbol,
+                    true_branch: ArrayExpression::new(true_branch, true_location),
+                    false_branch,
+                };
+                (expr, token.location)
+            },
+
+            PreprocessedTokenKind::Define(name) => {
+                let start_location = {
+                    let Some(next) = tokens.peek() else {
+                        return self.unexpected_eof();
+                    };
+                    let PreprocessedTokenKind::ArrayOpen = next.kind else {
+                        return self.incorrect_token(TokenKind::ArrayOpen, next.clone());
+                    };
+                    let location = next.location.clone();
+                    tokens.next();
+                    location
+                };
+
+                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Array);
+                let body = ArrayExpression::new(body, body_location.clone());
+                let location = token.location.start..body_location.end;
+
+                (ExpressionKind::Define(name, body), location)
+            },
+            PreprocessedTokenKind::Undefine(name) => (ExpressionKind::Undefine(name), token.location),
+            PreprocessedTokenKind::Include(path) => (ExpressionKind::Include(path), token.location),
+            PreprocessedTokenKind::IncludeOptional(path) => (ExpressionKind::IncludeOptional(path), token.location),
+            PreprocessedTokenKind::Merge(name) => (ExpressionKind::Merge(name), token.location),
+            PreprocessedTokenKind::Autorun => {
+                let start_location = {
+                    let Some(next) = tokens.peek() else {
+                        return self.unexpected_eof();
+                    };
+                    let PreprocessedTokenKind::CommandOpen = next.kind else {
+                        return self.incorrect_token(TokenKind::CommandOpen, next.clone());
+                    };
+                    let location = next.location.clone();
+                    tokens.next();
+                    location
+                };
+                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Command);
+                let body = ArrayExpression::new(body, body_location.clone());
+                (ExpressionKind::Autorun(body), token.location.start..body_location.end)
+            },
+
+            PreprocessedTokenKind::Error(error) => {
+                self.errors
+                    .push(ParseError::TokenError(token.location, error));
+                return ProcessResult::SkipToken;
+            },
+        };
+
+        ProcessResult::Result(Expression { kind, location })
+    }
+
+    fn verify_eof(&mut self) {
+        let mut unexpected_eof = false;
+
+        for unmatched in &self.array_stack {
+            self.errors
+                .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
+            unexpected_eof = true;
+        }
+
+        if unexpected_eof && !self.errors.contains(&ParseError::UnexpectedEof) {
+            self.errors.push(ParseError::UnexpectedEof);
+        }
+    }
+
+    fn incorrect_token(
+        &mut self,
+        expected: TokenKind<'static>,
+        actual: PreprocessedToken<'src>,
+    ) -> ProcessResult<Expression<'src>> {
+        let actual_kind = match actual.kind {
+            PreprocessedTokenKind::Integer(value) => TokenKind::Integer(value),
+            PreprocessedTokenKind::Float(value) => TokenKind::Float(value),
+            PreprocessedTokenKind::String(value) => TokenKind::String(value),
+            PreprocessedTokenKind::Symbol(value) => TokenKind::Symbol(value),
+            PreprocessedTokenKind::Variable(value) => TokenKind::Variable(value),
+            PreprocessedTokenKind::Unhandled => TokenKind::Unhandled,
+
+            PreprocessedTokenKind::ArrayOpen => TokenKind::ArrayOpen,
+            PreprocessedTokenKind::ArrayClose => TokenKind::ArrayClose,
+            PreprocessedTokenKind::CommandOpen => TokenKind::CommandOpen,
+            PreprocessedTokenKind::CommandClose => TokenKind::CommandClose,
+            PreprocessedTokenKind::PropertyOpen => TokenKind::PropertyOpen,
+            PreprocessedTokenKind::PropertyClose => TokenKind::PropertyClose,
+
+            PreprocessedTokenKind::Define(_) => TokenKind::Define,
+            PreprocessedTokenKind::Undefine(_) => TokenKind::Undefine,
+            PreprocessedTokenKind::Include(_) => TokenKind::Include,
+            PreprocessedTokenKind::IncludeOptional(_) => TokenKind::IncludeOptional,
+            PreprocessedTokenKind::Merge(_) => TokenKind::Merge,
+            PreprocessedTokenKind::Autorun => TokenKind::Autorun,
+
+            PreprocessedTokenKind::Conditional { .. } => TokenKind::Ifdef,
+
+            PreprocessedTokenKind::Error(error) => TokenKind::Error(error),
+        };
+        let actual = Token { kind: actual_kind, location: actual.location };
+
+        self.errors
+            .push(ParseError::IncorrectToken { expected, actual });
+        return ProcessResult::SkipToken;
+    }
+
+    fn unexpected_eof(&mut self) -> ProcessResult<Expression<'src>> {
+        self.errors.push(ParseError::UnexpectedEof);
+        ProcessResult::Eof
     }
 }
 
 pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError<'src>>> {
+    let mut preparser = Preprocessor::new();
+    let (exprs, _) = preparser.preprocess(&mut tokens.peekable());
+    if !preparser.errors.is_empty() {
+        return Err(preparser.errors);
+    }
+
     let mut parser = Parser::new();
-    let (exprs, _) = parser.parse_exprs(&mut tokens.peekable());
+    let (exprs, _) = parser.parse_exprs(&mut exprs.into_iter().peekable());
     match parser.errors.is_empty() {
         true => Ok(exprs),
         false => Err(parser.errors),
