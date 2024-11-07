@@ -88,6 +88,46 @@ pub enum TokenKind<'src> {
     Error(LexError),
 }
 
+impl<'src> std::fmt::Display for TokenKind<'src> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Integer(value) => write!(f, "integer {value}"),
+            TokenKind::Float(value) => write!(f, "float {value}"),
+            TokenKind::String(value) => write!(f, "string \"{value}\""),
+            TokenKind::Symbol(value) => write!(f, "symbol '{value}'"),
+            TokenKind::Variable(value) => write!(f, "variable ${value}"),
+            TokenKind::Unhandled => write!(f, "kDataUnhandled"),
+
+            TokenKind::ArrayOpen => write!(f, "array open"),
+            TokenKind::ArrayClose => write!(f, "array close"),
+            TokenKind::CommandOpen => write!(f, "command open"),
+            TokenKind::CommandClose => write!(f, "command close"),
+            TokenKind::PropertyOpen => write!(f, "property open"),
+            TokenKind::PropertyClose => write!(f, "property close"),
+
+            TokenKind::Define => write!(f, "#define directive"),
+            TokenKind::Undefine => write!(f, "#undef directive"),
+            TokenKind::Include => write!(f, "#include directive"),
+            TokenKind::IncludeOptional => write!(f, "#include_opt directive"),
+            TokenKind::Merge => write!(f, "#merge directive"),
+            TokenKind::Autorun => write!(f, "#autorun directive"),
+
+            TokenKind::Ifdef => write!(f, "#ifdef directive"),
+            TokenKind::Ifndef => write!(f, "#ifndef directive"),
+            TokenKind::Else => write!(f, "#else directive"),
+            TokenKind::Endif => write!(f, "#endif directive"),
+
+            TokenKind::BadDirective(name) => write!(f, "bad #{name} directive"),
+
+            TokenKind::Comment => write!(f, "comment"),
+            TokenKind::BlockCommentStart(_) => write!(f, "block comment start"),
+            TokenKind::BlockCommentEnd(_) => write!(f, "block comment end"),
+
+            TokenKind::Error(lex_error) => write!(f, "token error: {lex_error}"),
+        }
+    }
+}
+
 #[derive(thiserror::Error, Debug, Clone, Default, PartialEq)]
 pub enum LexError {
     #[default]

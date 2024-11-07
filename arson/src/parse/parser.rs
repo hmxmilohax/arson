@@ -2,6 +2,7 @@
 
 use std::iter::Peekable;
 
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use logos::Span;
 
 use super::lexer::{LexError, Token, TokenKind};
@@ -106,17 +107,65 @@ pub struct Expression<'src> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'src> {
-    UnexpectedEof,
     UnmatchedBrace(Span, ArrayKind),
+
     UnexpectedConditional(Span),
     UnmatchedConditional(Span),
     UnbalancedConditional(Span),
     BadDirective(Span),
+
     TokenError(Span, LexError),
     IncorrectToken {
         expected: TokenKind<'static>,
         actual: Token<'src>,
     },
+
+    UnexpectedEof,
+}
+
+impl<'src> ParseError<'src> {
+    pub fn to_diagnostic(&self, file_id: usize) -> Diagnostic<usize> {
+        match self {
+            ParseError::UnexpectedEof => Diagnostic::error()
+                .with_code("DTA0000")
+                .with_message("unexpected end of file"),
+            ParseError::TokenError(range, lex_error) => Diagnostic::error()
+                .with_code("DTA0001")
+                .with_message(format!("internal tokenizer error: {lex_error}"))
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::BadDirective(range) => Diagnostic::error()
+                .with_code("DTA0002")
+                .with_message("unrecognized parser directive")
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::UnexpectedConditional(range) => Diagnostic::error()
+                .with_code("DTA0003")
+                .with_message("unexpected conditional directive")
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::UnmatchedConditional(range) => Diagnostic::error()
+                .with_code("DTA0004")
+                .with_message("unmatched conditional directive")
+                .with_notes(vec![
+                    "#else or #endif required to close the conditional block".to_owned()
+                ])
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::UnbalancedConditional(range) => Diagnostic::error()
+                .with_code("DTA0005")
+                .with_message("unbalanced conditional block")
+                .with_notes(vec!["all arrays in conditionals must be self-contained".to_owned()])
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::UnmatchedBrace(range, array_kind) => Diagnostic::error()
+                .with_code("DTA0006")
+                .with_message(format!("unmatched {array_kind} delimiter"))
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
+            ParseError::IncorrectToken { expected, actual } => Diagnostic::error()
+                .with_code("DTA0007")
+                .with_message(format!(
+                    "expected token of type {}, found {} instead",
+                    expected, actual.kind
+                ))
+                .with_labels(vec![Label::primary(file_id, actual.location.clone())]),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -124,6 +173,16 @@ pub enum ArrayKind {
     Array,
     Command,
     Property,
+}
+
+impl std::fmt::Display for ArrayKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArrayKind::Array => write!(f, "array"),
+            ArrayKind::Command => write!(f, "command"),
+            ArrayKind::Property => write!(f, "property"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
