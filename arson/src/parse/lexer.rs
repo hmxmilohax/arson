@@ -169,12 +169,10 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<f64, ParseFloatError> {
 }
 
 pub fn lex(text: &str) -> impl Iterator<Item = Token<'_>> {
-    TokenKind::lexer(text)
-        .spanned()
-        .map(|t| match t {
-            (Ok(kind), location) => Token { kind, location },
-            (Err(error), location) => Token { kind: TokenKind::Error(error), location },
-        })
+    TokenKind::lexer(text).spanned().map(|t| match t {
+        (Ok(kind), location) => Token { kind, location },
+        (Err(error), location) => Token { kind: TokenKind::Error(error), location },
+    })
 }
 
 #[cfg(test)]
