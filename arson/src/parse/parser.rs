@@ -457,20 +457,35 @@ impl<'src> Parser<'src> {
         match self.array_stack.last() {
             Some(last) => {
                 if kind != last.kind {
-                    return self.recover_mismatched_array(kind, end);
+                    self.recover_mismatched_array(kind, end)
+                } else {
+                    ProcessResult::BlockEnd(end)
                 }
             },
             None => {
                 self.errors.push(ParseError::UnmatchedBrace(end, kind));
-                return ProcessResult::SkipToken;
+                ProcessResult::SkipToken
             },
         }
-
-        return ProcessResult::BlockEnd(end);
     }
 
     fn recover_mismatched_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
-        todo!("array mismatch recovery")
+        if !self.array_stack.iter().any(|arr| arr.kind == kind) {
+            self.errors.push(ParseError::UnmatchedBrace(end, kind));
+            return ProcessResult::SkipToken;
+        }
+
+        while let Some(array) = self.array_stack.last() {
+            if array.kind == kind {
+                break;
+            }
+
+            self.errors
+                .push(ParseError::UnmatchedBrace(array.location.clone(), array.kind));
+            self.array_stack.pop();
+        }
+
+        return ProcessResult::BlockEnd(end);
     }
 
     fn parse_node<I: Iterator<Item = PreprocessedToken<'src>>>(
@@ -1065,6 +1080,54 @@ mod tests {
                     0..10,
                 )],
             );
+
+            assert_errors(
+                "( ( )",
+                vec![
+                    ParseError::UnmatchedBrace(0..1, ArrayKind::Array),
+                    ParseError::UnexpectedEof,
+                ],
+            );
+            assert_errors(") ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Array)]);
+            assert_errors("( ) )", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Array)]);
+
+            assert_errors(
+                "{ ( )",
+                vec![
+                    ParseError::UnmatchedBrace(0..1, ArrayKind::Command),
+                    ParseError::UnexpectedEof,
+                ],
+            );
+            assert_errors("} ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Command)]);
+            assert_errors("( { )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Command)]);
+            assert_errors("( } )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Command)]);
+            assert_errors(
+                "( ) {",
+                vec![
+                    ParseError::UnmatchedBrace(4..5, ArrayKind::Command),
+                    ParseError::UnexpectedEof,
+                ],
+            );
+            assert_errors("( ) }", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Command)]);
+
+            assert_errors(
+                "[ ( )",
+                vec![
+                    ParseError::UnmatchedBrace(0..1, ArrayKind::Property),
+                    ParseError::UnexpectedEof,
+                ],
+            );
+            assert_errors("] ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Property)]);
+            assert_errors("( [ )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Property)]);
+            assert_errors("( ] )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Property)]);
+            assert_errors(
+                "( ) [",
+                vec![
+                    ParseError::UnmatchedBrace(4..5, ArrayKind::Property),
+                    ParseError::UnexpectedEof,
+                ],
+            );
+            assert_errors("( ) ]", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Property)]);
         }
 
         fn assert_directive_symbol_error(name: &str) {
