@@ -212,6 +212,7 @@ impl<'src> Preprocessor<'src> {
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
         let name = StrExpression::new(name, name_location.clone());
+        let location = location.start..name_location.end;
         return ProcessResult::Result(PreprocessedToken { kind: kind(name), location });
     }
 
@@ -506,23 +507,9 @@ impl<'src> Parser<'src> {
             PreprocessedTokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
 
             PreprocessedTokenKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
-                let (true_branch, _) = true_branch;
-                let (true_branch, true_location) = self.parse_exprs(&mut true_branch.into_iter().peekable());
-
-                let false_branch = match false_branch {
-                    Some((false_branch, _)) => {
-                        let (false_branch, false_location) = self.parse_exprs(&mut false_branch.into_iter().peekable());
-                        Some(ArrayExpression::new(false_branch, false_location))
-                    },
-                    None => None,
-                };
-
-                let expr = ExpressionKind::Conditional {
-                    is_positive,
-                    symbol,
-                    true_branch: ArrayExpression::new(true_branch, true_location),
-                    false_branch,
-                };
+                let true_branch = self.parse_conditional_block(true_branch);
+                let false_branch = false_branch.map(|block| self.parse_conditional_block(block));
+                let expr = ExpressionKind::Conditional { is_positive, symbol, true_branch, false_branch };
                 (expr, token.location)
             },
 
@@ -574,6 +561,19 @@ impl<'src> Parser<'src> {
         };
 
         ProcessResult::Result(Expression { kind, location })
+    }
+
+    fn parse_conditional_block(
+        &mut self,
+        (branch, location): (Vec<PreprocessedToken<'src>>, Span),
+    ) -> ArrayExpression<'src> {
+        let mut block_parser = Parser::new();
+        let (branch, _) = block_parser.parse_exprs(&mut branch.into_iter().peekable());
+        if !block_parser.errors.is_empty() {
+            self.errors.append(&mut block_parser.errors);
+        }
+
+        ArrayExpression::new(branch, location)
     }
 
     fn verify_eof(&mut self) {
@@ -634,15 +634,22 @@ impl<'src> Parser<'src> {
     }
 }
 
-pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError<'src>>> {
-    let mut preparser = Preprocessor::new();
-    let (exprs, _) = preparser.preprocess(&mut tokens.peekable());
-    if !preparser.errors.is_empty() {
-        return Err(preparser.errors);
+fn preprocess<'src>(
+    tokens: impl Iterator<Item = Token<'src>>,
+) -> Result<Vec<PreprocessedToken<'src>>, Vec<ParseError<'src>>> {
+    let mut preprocessor = Preprocessor::new();
+    let (exprs, _) = preprocessor.preprocess(&mut tokens.peekable());
+    match preprocessor.errors.is_empty() {
+        true => Ok(exprs),
+        false => Err(preprocessor.errors),
     }
+}
+
+pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError<'src>>> {
+    let preprocessed = preprocess(tokens)?;
 
     let mut parser = Parser::new();
-    let (exprs, _) = parser.parse_exprs(&mut exprs.into_iter().peekable());
+    let (exprs, _) = parser.parse_exprs(&mut preprocessed.into_iter().peekable());
     match parser.errors.is_empty() {
         true => Ok(exprs),
         false => Err(parser.errors),
@@ -655,326 +662,575 @@ mod tests {
 
     use super::*;
 
-    const fn new_expression(kind: ExpressionKind<'_>, location: Span) -> Expression<'_> {
-        Expression { kind, location }
-    }
+    mod preprocessor {
+        use super::*;
 
-    fn assert_parsed(text: &str, exprs: Vec<Expression>) {
-        let tokens = lexer::lex(text);
-        let result = match parse(tokens) {
-            Ok(exprs) => exprs,
-            Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
-        };
-        assert_eq!(result, exprs, "Unexpected result for '{text}'");
-    }
+        const fn new_token(kind: PreprocessedTokenKind<'_>, location: Span) -> PreprocessedToken<'_> {
+            PreprocessedToken { kind, location }
+        }
 
-    fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
-        let tokens = lexer::lex(text);
-        let result = match parse(tokens) {
-            Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
-            Err(errs) => errs,
-        };
-        assert_eq!(result, errs);
-    }
+        fn assert_preprocessed(text: &str, exprs: Vec<PreprocessedToken>) {
+            let tokens = lexer::lex(text);
+            let result = match preprocess(tokens) {
+                Ok(exprs) => exprs,
+                Err(errs) => panic!("Errors encountered while preprocessing: {errs:?}"),
+            };
+            assert_eq!(result, exprs, "Unexpected result for '{text}'");
+        }
 
-    #[test]
-    fn integer() {
-        assert_parsed(
-            "1 2 3",
-            vec![
-                new_expression(ExpressionKind::Integer(1), 0..1),
-                new_expression(ExpressionKind::Integer(2), 2..3),
-                new_expression(ExpressionKind::Integer(3), 4..5),
-            ],
-        );
-    }
+        fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
+            let tokens = lexer::lex(text);
+            let result = match preprocess(tokens) {
+                Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead instead.\nText: {text}\nResult: {preprocessed:?}"),
+                Err(errs) => errs,
+            };
+            assert_eq!(result, errs, "Unexpected result for '{text}'");
+        }
 
-    #[test]
-    fn float() {
-        assert_parsed(
-            "1.0 2.0 3.0",
-            vec![
-                new_expression(ExpressionKind::Float(1.0), 0..3),
-                new_expression(ExpressionKind::Float(2.0), 4..7),
-                new_expression(ExpressionKind::Float(3.0), 8..11),
-            ],
-        );
-    }
+        #[test]
+        fn integer() {
+            assert_preprocessed(
+                "1 2 3",
+                vec![
+                    new_token(PreprocessedTokenKind::Integer(1), 0..1),
+                    new_token(PreprocessedTokenKind::Integer(2), 2..3),
+                    new_token(PreprocessedTokenKind::Integer(3), 4..5),
+                ],
+            );
+        }
 
-    #[test]
-    fn string() {
-        assert_parsed(
-            "\"a\" \"b\" \"c\"",
-            vec![
-                new_expression(ExpressionKind::String("a"), 0..3),
-                new_expression(ExpressionKind::String("b"), 4..7),
-                new_expression(ExpressionKind::String("c"), 8..11),
-            ],
-        );
-    }
+        #[test]
+        fn float() {
+            assert_preprocessed(
+                "1.0 2.0 3.0",
+                vec![
+                    new_token(PreprocessedTokenKind::Float(1.0), 0..3),
+                    new_token(PreprocessedTokenKind::Float(2.0), 4..7),
+                    new_token(PreprocessedTokenKind::Float(3.0), 8..11),
+                ],
+            );
+        }
 
-    #[test]
-    fn symbol() {
-        assert_parsed(
-            "asdf + '10'",
-            vec![
-                new_expression(ExpressionKind::Symbol("asdf"), 0..4),
-                new_expression(ExpressionKind::Symbol("+"), 5..6),
-                new_expression(ExpressionKind::Symbol("10"), 7..11),
-            ],
-        );
-    }
+        #[test]
+        fn string() {
+            assert_preprocessed(
+                "\"a\" \"b\" \"c\"",
+                vec![
+                    new_token(PreprocessedTokenKind::String("a"), 0..3),
+                    new_token(PreprocessedTokenKind::String("b"), 4..7),
+                    new_token(PreprocessedTokenKind::String("c"), 8..11),
+                ],
+            );
+        }
 
-    #[test]
-    fn variable() {
-        assert_parsed(
-            "$asdf $this",
-            vec![
-                new_expression(ExpressionKind::Variable("asdf"), 0..5),
-                new_expression(ExpressionKind::Variable("this"), 6..11),
-            ],
-        );
-    }
+        #[test]
+        fn symbol() {
+            assert_preprocessed(
+                "asdf + '10'",
+                vec![
+                    new_token(PreprocessedTokenKind::Symbol("asdf"), 0..4),
+                    new_token(PreprocessedTokenKind::Symbol("+"), 5..6),
+                    new_token(PreprocessedTokenKind::Symbol("10"), 7..11),
+                ],
+            );
+        }
 
-    #[test]
-    fn unhandled() {
-        assert_parsed("kDataUnhandled", vec![new_expression(ExpressionKind::Unhandled, 0..14)])
-    }
+        #[test]
+        fn variable() {
+            assert_preprocessed(
+                "$asdf $this",
+                vec![
+                    new_token(PreprocessedTokenKind::Variable("asdf"), 0..5),
+                    new_token(PreprocessedTokenKind::Variable("this"), 6..11),
+                ],
+            );
+        }
 
-    #[test]
-    fn arrays() {
-        assert_parsed(
-            "(asdf \"text\" 1)",
-            vec![new_expression(
-                ExpressionKind::Array(vec![
-                    new_expression(ExpressionKind::Symbol("asdf"), 1..5),
-                    new_expression(ExpressionKind::String("text"), 6..12),
-                    new_expression(ExpressionKind::Integer(1), 13..14),
-                ]),
-                0..15,
-            )],
-        );
-        assert_parsed(
-            "{set $var \"asdf\"}",
-            vec![new_expression(
-                ExpressionKind::Command(vec![
-                    new_expression(ExpressionKind::Symbol("set"), 1..4),
-                    new_expression(ExpressionKind::Variable("var"), 5..9),
-                    new_expression(ExpressionKind::String("asdf"), 10..16),
-                ]),
-                0..17,
-            )],
-        );
-        assert_parsed(
-            "[property]",
-            vec![new_expression(
-                ExpressionKind::Property(vec![new_expression(ExpressionKind::Symbol("property"), 1..9)]),
-                0..10,
-            )],
-        );
-    }
-
-    fn assert_directive_symbol_error(name: &str) {
-        let text = name.to_owned() + " 1";
-        assert_errors(
-            &text,
-            vec![ParseError::IncorrectToken {
-                expected: TokenKind::Symbol("dummy"),
-                actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
-            }],
-        );
-    }
-
-    #[test]
-    fn directives() {
-        assert_parsed(
-            "#define kDefine (1)",
-            vec![new_expression(
-                ExpressionKind::Define(
-                    StrExpression::new("kDefine", 8..15),
-                    ArrayExpression::new(vec![new_expression(ExpressionKind::Integer(1), 17..18)], 16..19),
-                ),
-                0..19,
-            )],
-        );
-        assert_parsed(
-            "#undef kDefine",
-            vec![new_expression(
-                ExpressionKind::Undefine(StrExpression::new("kDefine", 7..14)),
-                0..14,
-            )],
-        );
-        assert_parsed(
-            "#include ../file.dta",
-            vec![new_expression(
-                ExpressionKind::Include(StrExpression::new("../file.dta", 9..20)),
-                0..20,
-            )],
-        );
-        assert_parsed(
-            "#include_opt ../file.dta",
-            vec![new_expression(
-                ExpressionKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
-                0..24,
-            )],
-        );
-        assert_parsed(
-            "#merge ../file.dta",
-            vec![new_expression(
-                ExpressionKind::Merge(StrExpression::new("../file.dta", 7..18)),
-                0..18,
-            )],
-        );
-        assert_parsed(
-            "#autorun {print \"Auto-run action\"}",
-            vec![new_expression(
-                ExpressionKind::Autorun(ArrayExpression::new(
-                    vec![
-                        new_expression(ExpressionKind::Symbol("print"), 10..15),
-                        new_expression(ExpressionKind::String("Auto-run action"), 16..33),
-                    ],
-                    9..34,
-                )),
-                0..34,
-            )],
-        );
-
-        assert_directive_symbol_error("#define");
-        assert_directive_symbol_error("#undef");
-        assert_directive_symbol_error("#include");
-        assert_directive_symbol_error("#include_opt");
-        assert_directive_symbol_error("#merge");
-
-        assert_errors(
-            "#define kDefine 1",
-            vec![ParseError::IncorrectToken {
-                expected: TokenKind::ArrayOpen,
-                actual: Token::new(TokenKind::Integer(1), 16..17),
-            }],
-        );
-        assert_errors(
-            "#autorun kDefine",
-            vec![ParseError::IncorrectToken {
-                expected: TokenKind::CommandOpen,
-                actual: Token::new(TokenKind::Symbol("kDefine"), 9..16),
-            }],
-        );
-
-        assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
-    }
-
-    #[test]
-    fn conditionals() {
-        assert_parsed(
-            r#"
-            #ifdef kDefine
-                (array1 10)
-            #else
-                (array2 5)
-            #endif
-            "#,
-            vec![new_expression(
-                ExpressionKind::Conditional {
-                    is_positive: true,
-                    symbol: StrExpression::new("kDefine", 20..27),
-                    true_branch: ArrayExpression::new(
-                        vec![new_expression(
-                            ExpressionKind::Array(vec![
-                                new_expression(ExpressionKind::Symbol("array1"), 45..51),
-                                new_expression(ExpressionKind::Integer(10), 52..54),
-                            ]),
-                            44..55,
-                        )],
-                        13..73,
-                    ),
-                    false_branch: Some(ArrayExpression::new(
-                        vec![new_expression(
-                            ExpressionKind::Array(vec![
-                                new_expression(ExpressionKind::Symbol("array2"), 91..97),
-                                new_expression(ExpressionKind::Integer(5), 98..99),
-                            ]),
-                            90..100,
-                        )],
-                        68..119,
-                    )),
-                },
-                13..119,
-            )],
-        );
-        assert_parsed(
-            r#"
-            #ifndef kDefine
-                (array 10)
-            #endif
-            "#,
-            vec![new_expression(
-                ExpressionKind::Conditional {
-                    is_positive: false,
-                    symbol: StrExpression::new("kDefine", 21..28),
-                    true_branch: ArrayExpression::new(
-                        vec![new_expression(
-                            ExpressionKind::Array(vec![
-                                new_expression(ExpressionKind::Symbol("array"), 46..51),
-                                new_expression(ExpressionKind::Integer(10), 52..54),
-                            ]),
-                            45..55,
-                        )],
-                        13..74,
-                    ),
-                    false_branch: None,
-                },
-                13..74,
-            )],
-        );
-
-        assert_directive_symbol_error("#ifdef");
-        assert_directive_symbol_error("#ifndef");
-
-        assert_errors(
-            r#"
-            #ifndef kDefine
-                (array 10)
-            "#,
-            vec![ParseError::UnmatchedConditional(14..21)],
-        );
-        assert_errors(
-            r#"
-            #ifdef kDefine
-                (array1 10)
-            #else
-            "#,
-            vec![ParseError::UnmatchedConditional(71..76)],
-        );
-        assert_errors(
-            r#"
-            #else
-                (array2 5)
-            #endif
-            "#,
-            vec![ParseError::UnexpectedConditional(14..19)],
-        );
-        assert_errors(
-            r#"
-                (array 10)
-            #endif
-            "#,
-            vec![ParseError::UnexpectedConditional(42..48)],
-        );
-
-        assert_errors(
-            r#"
-            (
-            #ifdef kDefine
-                array1 10)
-            #else
-                array2 5)
-            #endif
+        #[test]
+        fn unhandled() {
+            assert_preprocessed(
+                "kDataUnhandled",
+                vec![new_token(PreprocessedTokenKind::Unhandled, 0..14)],
             )
-            "#,
-            vec![
-                ParseError::UnbalancedConditional(29..90),
-                ParseError::UnbalancedConditional(85..137)
-            ],
-        );
+        }
+
+        #[test]
+        fn arrays() {
+            assert_preprocessed(
+                "(asdf \"text\" 1)",
+                vec![
+                    new_token(PreprocessedTokenKind::ArrayOpen, 0..1),
+                    new_token(PreprocessedTokenKind::Symbol("asdf"), 1..5),
+                    new_token(PreprocessedTokenKind::String("text"), 6..12),
+                    new_token(PreprocessedTokenKind::Integer(1), 13..14),
+                    new_token(PreprocessedTokenKind::ArrayClose, 14..15),
+                ],
+            );
+            assert_preprocessed(
+                "{set $var \"asdf\"}",
+                vec![
+                    new_token(PreprocessedTokenKind::CommandOpen, 0..1),
+                    new_token(PreprocessedTokenKind::Symbol("set"), 1..4),
+                    new_token(PreprocessedTokenKind::Variable("var"), 5..9),
+                    new_token(PreprocessedTokenKind::String("asdf"), 10..16),
+                    new_token(PreprocessedTokenKind::CommandClose, 16..17),
+                ],
+            );
+            assert_preprocessed(
+                "[property]",
+                vec![
+                    new_token(PreprocessedTokenKind::PropertyOpen, 0..1),
+                    new_token(PreprocessedTokenKind::Symbol("property"), 1..9),
+                    new_token(PreprocessedTokenKind::PropertyClose, 9..10),
+                ],
+            );
+        }
+
+        fn assert_directive_symbol_error(name: &str) {
+            let text = name.to_owned() + " 1";
+            assert_errors(
+                &text,
+                vec![ParseError::IncorrectToken {
+                    expected: TokenKind::Symbol("dummy"),
+                    actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                }],
+            );
+        }
+
+        fn assert_directive_eof_error(name: &str) {
+            assert_errors(name, vec![ParseError::UnexpectedEof]);
+        }
+
+        #[test]
+        fn directives() {
+            assert_preprocessed(
+                "#define kDefine (1)",
+                vec![
+                    new_token(
+                        PreprocessedTokenKind::Define(StrExpression::new("kDefine", 8..15)),
+                        0..15,
+                    ),
+                    new_token(PreprocessedTokenKind::ArrayOpen, 16..17),
+                    new_token(PreprocessedTokenKind::Integer(1), 17..18),
+                    new_token(PreprocessedTokenKind::ArrayClose, 18..19),
+                ],
+            );
+            assert_preprocessed(
+                "#undef kDefine",
+                vec![new_token(
+                    PreprocessedTokenKind::Undefine(StrExpression::new("kDefine", 7..14)),
+                    0..14,
+                )],
+            );
+            assert_preprocessed(
+                "#include ../file.dta",
+                vec![new_token(
+                    PreprocessedTokenKind::Include(StrExpression::new("../file.dta", 9..20)),
+                    0..20,
+                )],
+            );
+            assert_preprocessed(
+                "#include_opt ../file.dta",
+                vec![new_token(
+                    PreprocessedTokenKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                    0..24,
+                )],
+            );
+            assert_preprocessed(
+                "#merge ../file.dta",
+                vec![new_token(
+                    PreprocessedTokenKind::Merge(StrExpression::new("../file.dta", 7..18)),
+                    0..18,
+                )],
+            );
+            assert_preprocessed(
+                "#autorun {print \"Auto-run action\"}",
+                vec![
+                    new_token(PreprocessedTokenKind::Autorun, 0..8),
+                    new_token(PreprocessedTokenKind::CommandOpen, 9..10),
+                    new_token(PreprocessedTokenKind::Symbol("print"), 10..15),
+                    new_token(PreprocessedTokenKind::String("Auto-run action"), 16..33),
+                    new_token(PreprocessedTokenKind::CommandClose, 33..34),
+                ],
+            );
+
+            assert_directive_symbol_error("#define");
+            assert_directive_symbol_error("#undef");
+            assert_directive_symbol_error("#include");
+            assert_directive_symbol_error("#include_opt");
+            assert_directive_symbol_error("#merge");
+
+            assert_directive_eof_error("#define");
+            assert_directive_eof_error("#undef");
+            assert_directive_eof_error("#include");
+            assert_directive_eof_error("#include_opt");
+            assert_directive_eof_error("#merge");
+
+            assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+        }
+
+        #[test]
+        fn conditionals() {
+            assert_preprocessed(
+                "#ifdef kDefine (array1 10) #else (array2 5) #endif",
+                vec![new_token(
+                    PreprocessedTokenKind::Conditional {
+                        is_positive: true,
+                        symbol: StrExpression::new("kDefine", 7..14),
+                        true_branch: (
+                            vec![
+                                new_token(PreprocessedTokenKind::ArrayOpen, 15..16),
+                                new_token(PreprocessedTokenKind::Symbol("array1"), 16..22),
+                                new_token(PreprocessedTokenKind::Integer(10), 23..25),
+                                new_token(PreprocessedTokenKind::ArrayClose, 25..26),
+                            ],
+                            0..32,
+                        ),
+                        false_branch: Some((
+                            vec![
+                                new_token(PreprocessedTokenKind::ArrayOpen, 33..34),
+                                new_token(PreprocessedTokenKind::Symbol("array2"), 34..40),
+                                new_token(PreprocessedTokenKind::Integer(5), 41..42),
+                                new_token(PreprocessedTokenKind::ArrayClose, 42..43),
+                            ],
+                            27..50,
+                        )),
+                    },
+                    0..50,
+                )],
+            );
+            assert_preprocessed(
+                "#ifndef kDefine (array 10) #endif",
+                vec![new_token(
+                    PreprocessedTokenKind::Conditional {
+                        is_positive: false,
+                        symbol: StrExpression::new("kDefine", 8..15),
+                        true_branch: (
+                            vec![
+                                new_token(PreprocessedTokenKind::ArrayOpen, 16..17),
+                                new_token(PreprocessedTokenKind::Symbol("array"), 17..22),
+                                new_token(PreprocessedTokenKind::Integer(10), 23..25),
+                                new_token(PreprocessedTokenKind::ArrayClose, 25..26),
+                            ],
+                            0..33,
+                        ),
+                        false_branch: None,
+                    },
+                    0..33,
+                )],
+            );
+
+            assert_directive_symbol_error("#ifdef");
+            assert_directive_symbol_error("#ifndef");
+
+            assert_directive_eof_error("#ifdef");
+            assert_directive_eof_error("#ifndef");
+
+            assert_errors(
+                "#ifndef kDefine (array 10)",
+                vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
+            );
+            assert_errors(
+                "#ifdef kDefine (array1 10) #else",
+                vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
+            );
+            assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
+            assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+        }
+    }
+
+    mod parser {
+        use super::*;
+
+        const fn new_expression(kind: ExpressionKind<'_>, location: Span) -> Expression<'_> {
+            Expression { kind, location }
+        }
+
+        fn assert_parsed(text: &str, exprs: Vec<Expression>) {
+            let tokens = lexer::lex(text);
+            let result = match parse(tokens) {
+                Ok(exprs) => exprs,
+                Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
+            };
+            assert_eq!(result, exprs, "Unexpected result for '{text}'");
+        }
+
+        fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
+            let tokens = lexer::lex(text);
+            let result = match parse(tokens) {
+                Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
+                Err(errs) => errs,
+            };
+            assert_eq!(result, errs, "Unexpected result for '{text}'");
+        }
+
+        #[test]
+        fn integer() {
+            assert_parsed(
+                "1 2 3",
+                vec![
+                    new_expression(ExpressionKind::Integer(1), 0..1),
+                    new_expression(ExpressionKind::Integer(2), 2..3),
+                    new_expression(ExpressionKind::Integer(3), 4..5),
+                ],
+            );
+        }
+
+        #[test]
+        fn float() {
+            assert_parsed(
+                "1.0 2.0 3.0",
+                vec![
+                    new_expression(ExpressionKind::Float(1.0), 0..3),
+                    new_expression(ExpressionKind::Float(2.0), 4..7),
+                    new_expression(ExpressionKind::Float(3.0), 8..11),
+                ],
+            );
+        }
+
+        #[test]
+        fn string() {
+            assert_parsed(
+                "\"a\" \"b\" \"c\"",
+                vec![
+                    new_expression(ExpressionKind::String("a"), 0..3),
+                    new_expression(ExpressionKind::String("b"), 4..7),
+                    new_expression(ExpressionKind::String("c"), 8..11),
+                ],
+            );
+        }
+
+        #[test]
+        fn symbol() {
+            assert_parsed(
+                "asdf + '10'",
+                vec![
+                    new_expression(ExpressionKind::Symbol("asdf"), 0..4),
+                    new_expression(ExpressionKind::Symbol("+"), 5..6),
+                    new_expression(ExpressionKind::Symbol("10"), 7..11),
+                ],
+            );
+        }
+
+        #[test]
+        fn variable() {
+            assert_parsed(
+                "$asdf $this",
+                vec![
+                    new_expression(ExpressionKind::Variable("asdf"), 0..5),
+                    new_expression(ExpressionKind::Variable("this"), 6..11),
+                ],
+            );
+        }
+
+        #[test]
+        fn unhandled() {
+            assert_parsed("kDataUnhandled", vec![new_expression(ExpressionKind::Unhandled, 0..14)])
+        }
+
+        #[test]
+        fn arrays() {
+            assert_parsed(
+                "(asdf \"text\" 1)",
+                vec![new_expression(
+                    ExpressionKind::Array(vec![
+                        new_expression(ExpressionKind::Symbol("asdf"), 1..5),
+                        new_expression(ExpressionKind::String("text"), 6..12),
+                        new_expression(ExpressionKind::Integer(1), 13..14),
+                    ]),
+                    0..15,
+                )],
+            );
+            assert_parsed(
+                "{set $var \"asdf\"}",
+                vec![new_expression(
+                    ExpressionKind::Command(vec![
+                        new_expression(ExpressionKind::Symbol("set"), 1..4),
+                        new_expression(ExpressionKind::Variable("var"), 5..9),
+                        new_expression(ExpressionKind::String("asdf"), 10..16),
+                    ]),
+                    0..17,
+                )],
+            );
+            assert_parsed(
+                "[property]",
+                vec![new_expression(
+                    ExpressionKind::Property(vec![new_expression(ExpressionKind::Symbol("property"), 1..9)]),
+                    0..10,
+                )],
+            );
+        }
+
+        fn assert_directive_symbol_error(name: &str) {
+            let text = name.to_owned() + " 1";
+            assert_errors(
+                &text,
+                vec![ParseError::IncorrectToken {
+                    expected: TokenKind::Symbol("dummy"),
+                    actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                }],
+            );
+        }
+
+        fn assert_directive_eof_error(name: &str) {
+            assert_errors(name, vec![ParseError::UnexpectedEof]);
+        }
+
+        #[test]
+        fn directives() {
+            assert_parsed(
+                "#define kDefine (1)",
+                vec![new_expression(
+                    ExpressionKind::Define(
+                        StrExpression::new("kDefine", 8..15),
+                        ArrayExpression::new(vec![new_expression(ExpressionKind::Integer(1), 17..18)], 16..19),
+                    ),
+                    0..19,
+                )],
+            );
+            assert_parsed(
+                "#undef kDefine",
+                vec![new_expression(
+                    ExpressionKind::Undefine(StrExpression::new("kDefine", 7..14)),
+                    0..14,
+                )],
+            );
+            assert_parsed(
+                "#include ../file.dta",
+                vec![new_expression(
+                    ExpressionKind::Include(StrExpression::new("../file.dta", 9..20)),
+                    0..20,
+                )],
+            );
+            assert_parsed(
+                "#include_opt ../file.dta",
+                vec![new_expression(
+                    ExpressionKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                    0..24,
+                )],
+            );
+            assert_parsed(
+                "#merge ../file.dta",
+                vec![new_expression(
+                    ExpressionKind::Merge(StrExpression::new("../file.dta", 7..18)),
+                    0..18,
+                )],
+            );
+            assert_parsed(
+                "#autorun {print \"Auto-run action\"}",
+                vec![new_expression(
+                    ExpressionKind::Autorun(ArrayExpression::new(
+                        vec![
+                            new_expression(ExpressionKind::Symbol("print"), 10..15),
+                            new_expression(ExpressionKind::String("Auto-run action"), 16..33),
+                        ],
+                        9..34,
+                    )),
+                    0..34,
+                )],
+            );
+
+            assert_directive_symbol_error("#define");
+            assert_directive_symbol_error("#undef");
+            assert_directive_symbol_error("#include");
+            assert_directive_symbol_error("#include_opt");
+            assert_directive_symbol_error("#merge");
+
+            assert_directive_eof_error("#define");
+            assert_directive_eof_error("#undef");
+            assert_directive_eof_error("#include");
+            assert_directive_eof_error("#include_opt");
+            assert_directive_eof_error("#merge");
+            assert_directive_eof_error("#autorun");
+
+            assert_errors(
+                "#define kDefine 1",
+                vec![ParseError::IncorrectToken {
+                    expected: TokenKind::ArrayOpen,
+                    actual: Token::new(TokenKind::Integer(1), 16..17),
+                }],
+            );
+            assert_errors(
+                "#autorun kDefine",
+                vec![ParseError::IncorrectToken {
+                    expected: TokenKind::CommandOpen,
+                    actual: Token::new(TokenKind::Symbol("kDefine"), 9..16),
+                }],
+            );
+
+            assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+        }
+
+        #[test]
+        fn conditionals() {
+            assert_parsed(
+                "#ifdef kDefine (array1 10) #else (array2 5) #endif",
+                vec![new_expression(
+                    ExpressionKind::Conditional {
+                        is_positive: true,
+                        symbol: StrExpression::new("kDefine", 7..14),
+                        true_branch: ArrayExpression::new(
+                            vec![new_expression(
+                                ExpressionKind::Array(vec![
+                                    new_expression(ExpressionKind::Symbol("array1"), 16..22),
+                                    new_expression(ExpressionKind::Integer(10), 23..25),
+                                ]),
+                                15..26,
+                            )],
+                            0..32,
+                        ),
+                        false_branch: Some(ArrayExpression::new(
+                            vec![new_expression(
+                                ExpressionKind::Array(vec![
+                                    new_expression(ExpressionKind::Symbol("array2"), 34..40),
+                                    new_expression(ExpressionKind::Integer(5), 41..42),
+                                ]),
+                                33..43,
+                            )],
+                            27..50,
+                        )),
+                    },
+                    0..50,
+                )],
+            );
+            assert_parsed(
+                "#ifndef kDefine (array 10) #endif",
+                vec![new_expression(
+                    ExpressionKind::Conditional {
+                        is_positive: false,
+                        symbol: StrExpression::new("kDefine", 8..15),
+                        true_branch: ArrayExpression::new(
+                            vec![new_expression(
+                                ExpressionKind::Array(vec![
+                                    new_expression(ExpressionKind::Symbol("array"), 17..22),
+                                    new_expression(ExpressionKind::Integer(10), 23..25),
+                                ]),
+                                16..26,
+                            )],
+                            0..33,
+                        ),
+                        false_branch: None,
+                    },
+                    0..33,
+                )],
+            );
+
+            assert_directive_symbol_error("#ifdef");
+            assert_directive_symbol_error("#ifndef");
+
+            assert_directive_eof_error("#ifdef");
+            assert_directive_eof_error("#ifndef");
+
+            assert_errors(
+                "#ifndef kDefine (array 10)",
+                vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
+            );
+            assert_errors(
+                "#ifdef kDefine (array1 10) #else",
+                vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
+            );
+            assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
+            assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+        }
     }
 }
