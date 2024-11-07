@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use logos::Span;
 
-use super::lexer::{Token, TokenKind};
+use super::lexer::{LexError, Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -71,6 +71,7 @@ pub enum ParseError<'src> {
     UnmatchedConditional(Span),
     UnbalancedConditional(Span),
     BadDirective(Span),
+    TokenError(Span, LexError),
     IncorrectToken {
         expected: TokenKind<'static>,
         actual: Token<'src>,
@@ -388,6 +389,11 @@ impl<'src> Parser<'src> {
                 return ParseNodeResult::SkipToken;
             },
             TokenKind::BlockCommentEnd(_) => return ParseNodeResult::SkipToken,
+
+            TokenKind::Error(error) => {
+                self.errors.push(ParseError::TokenError(token.location, error));
+                return ParseNodeResult::SkipToken;
+            }
         };
 
         return ParseNodeResult::Node(Expression { kind, location });
@@ -415,9 +421,9 @@ impl<'src> Parser<'src> {
     }
 }
 
-pub fn parse(tokens: Vec<Token<'_>>) -> Result<Vec<Expression>, Vec<ParseError>> {
+pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError<'src>>> {
     let mut parser = Parser::new();
-    let (exprs, _) = parser.parse_exprs(&mut tokens.into_iter().peekable());
+    let (exprs, _) = parser.parse_exprs(&mut tokens.peekable());
     match parser.errors.is_empty() {
         true => Ok(exprs),
         false => Err(parser.errors),
@@ -435,16 +441,16 @@ mod tests {
     }
 
     fn assert_parsed(text: &str, exprs: Vec<Expression>) {
-        let tokens = lexer::lex(text).expect("no token errors expected in this test");
+        let tokens = lexer::lex(text);
         let result = match parse(tokens) {
             Ok(exprs) => exprs,
             Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
         };
-        assert_eq!(result, exprs);
+        assert_eq!(result, exprs, "Unexpected result for '{text}'");
     }
 
     fn assert_errors(text: &str, errs: Vec<ParseError<'_>>) {
-        let tokens = lexer::lex(text).expect("no token errors expected in this test");
+        let tokens = lexer::lex(text);
         let result = match parse(tokens) {
             Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
             Err(errs) => errs,

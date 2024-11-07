@@ -23,7 +23,7 @@ impl<'src> Token<'src> {
 // identically to the original Flex tokenizer based on current knowledge for it.
 
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(error = LexErrorKind)]
+#[logos(error = LexError)]
 #[logos(skip r#"[ \v\t\r\n\f]+"#)]
 pub enum TokenKind<'src> {
     #[regex(r#"[+-]?[0-9]+"#, |lex| lex.slice().parse::<i64>(), priority = 2)]
@@ -90,16 +90,12 @@ pub enum TokenKind<'src> {
     BlockCommentStart(&'src str),
     #[regex(r#"\*+\/"#)]
     BlockCommentEnd(&'src str),
-}
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LexError {
-    pub kind: LexErrorKind,
-    pub location: Span,
+    Error(LexError),
 }
 
 #[derive(thiserror::Error, Debug, Clone, Default, PartialEq)]
-pub enum LexErrorKind {
+pub enum LexError {
     #[default]
     #[error("Invalid token")]
     InvalidToken,
@@ -112,16 +108,16 @@ pub enum LexErrorKind {
     DelimiterError,
 }
 
-fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexErrorKind> {
+fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexError> {
     text.get(before..text.len() - after)
-        .ok_or(LexErrorKind::DelimiterError)
+        .ok_or(LexError::DelimiterError)
 }
 
-fn parse_hex(lex: &mut Lexer<'_>) -> Result<i64, LexErrorKind> {
+fn parse_hex(lex: &mut Lexer<'_>) -> Result<i64, LexError> {
     let trimmed = trim_delimiters(lex.slice(), 2, 0)?;
     u64::from_str_radix(trimmed, 16)
         .map(|v| v as i64)
-        .map_err(LexErrorKind::IntegerError)
+        .map_err(LexError::IntegerError)
 }
 
 fn parse_float(lex: &mut Lexer<'_>) -> Result<f64, ParseFloatError> {
@@ -138,25 +134,13 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<f64, ParseFloatError> {
     }
 }
 
-pub fn lex(text: &str) -> Result<Vec<Token<'_>>, Vec<LexError>> {
-    let mut errors = Vec::new();
-    let tokens = TokenKind::lexer(text)
+pub fn lex(text: &str) -> impl Iterator<Item = Token<'_>> {
+    TokenKind::lexer(text)
         .spanned()
-        .into_iter()
-        .filter_map(|t| match t {
-            (Ok(kind), location) => Some(Token { kind, location }),
-            (Err(kind), location) => {
-                errors.push(LexError { kind, location });
-                None
-            },
+        .map(|t| match t {
+            (Ok(kind), location) => Token { kind, location },
+            (Err(error), location) => Token { kind: TokenKind::Error(error), location },
         })
-        .collect();
-
-    if !errors.is_empty() {
-        return Err(errors);
-    }
-
-    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -165,7 +149,7 @@ mod tests {
 
     fn assert_token(text: &str, kind: TokenKind<'_>, location: Span) {
         let expected = Token { kind, location };
-        let tokens = lex(text).expect("no token errors expected in this test");
+        let tokens = lex(text).collect::<Vec<_>>();
         assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
     }
 
