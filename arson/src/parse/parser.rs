@@ -213,7 +213,7 @@ impl<'src> Preprocessor<'src> {
         let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
         let name = StrExpression::new(name, name_location.clone());
         let location = location.start..name_location.end;
-        return ProcessResult::Result(PreprocessedToken { kind: kind(name), location });
+        ProcessResult::Result(PreprocessedToken { kind: kind(name), location })
     }
 
     fn process_token<I: Iterator<Item = Token<'src>>>(
@@ -389,7 +389,7 @@ impl<'src> Preprocessor<'src> {
     fn incorrect_token<T>(&mut self, expected: TokenKind<'static>, actual: Token<'src>) -> ProcessResult<T> {
         self.errors
             .push(ParseError::IncorrectToken { expected, actual });
-        return ProcessResult::SkipToken;
+        ProcessResult::SkipToken
     }
 
     fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
@@ -485,7 +485,7 @@ impl<'src> Parser<'src> {
             self.array_stack.pop();
         }
 
-        return ProcessResult::BlockEnd(end);
+        ProcessResult::BlockEnd(end)
     }
 
     fn parse_node<I: Iterator<Item = PreprocessedToken<'src>>>(
@@ -646,7 +646,7 @@ impl<'src> Parser<'src> {
 
         self.errors
             .push(ParseError::IncorrectToken { expected, actual });
-        return ProcessResult::SkipToken;
+        ProcessResult::SkipToken
     }
 
     fn unexpected_eof(&mut self) -> ProcessResult<Expression<'src>> {
@@ -683,10 +683,14 @@ mod tests {
 
     use super::*;
 
+    const fn new_token(kind: TokenKind, location: Span) -> Token {
+        Token { kind, location }
+    }
+
     mod preprocessor {
         use super::*;
 
-        const fn new_token(kind: PreprocessedTokenKind<'_>, location: Span) -> PreprocessedToken<'_> {
+        const fn new_pretoken(kind: PreprocessedTokenKind<'_>, location: Span) -> PreprocessedToken<'_> {
             PreprocessedToken { kind, location }
         }
 
@@ -713,9 +717,9 @@ mod tests {
             assert_preprocessed(
                 "1 2 3",
                 vec![
-                    new_token(PreprocessedTokenKind::Integer(1), 0..1),
-                    new_token(PreprocessedTokenKind::Integer(2), 2..3),
-                    new_token(PreprocessedTokenKind::Integer(3), 4..5),
+                    new_pretoken(PreprocessedTokenKind::Integer(1), 0..1),
+                    new_pretoken(PreprocessedTokenKind::Integer(2), 2..3),
+                    new_pretoken(PreprocessedTokenKind::Integer(3), 4..5),
                 ],
             );
         }
@@ -725,9 +729,9 @@ mod tests {
             assert_preprocessed(
                 "1.0 2.0 3.0",
                 vec![
-                    new_token(PreprocessedTokenKind::Float(1.0), 0..3),
-                    new_token(PreprocessedTokenKind::Float(2.0), 4..7),
-                    new_token(PreprocessedTokenKind::Float(3.0), 8..11),
+                    new_pretoken(PreprocessedTokenKind::Float(1.0), 0..3),
+                    new_pretoken(PreprocessedTokenKind::Float(2.0), 4..7),
+                    new_pretoken(PreprocessedTokenKind::Float(3.0), 8..11),
                 ],
             );
         }
@@ -737,9 +741,9 @@ mod tests {
             assert_preprocessed(
                 "\"a\" \"b\" \"c\"",
                 vec![
-                    new_token(PreprocessedTokenKind::String("a"), 0..3),
-                    new_token(PreprocessedTokenKind::String("b"), 4..7),
-                    new_token(PreprocessedTokenKind::String("c"), 8..11),
+                    new_pretoken(PreprocessedTokenKind::String("a"), 0..3),
+                    new_pretoken(PreprocessedTokenKind::String("b"), 4..7),
+                    new_pretoken(PreprocessedTokenKind::String("c"), 8..11),
                 ],
             );
         }
@@ -749,9 +753,9 @@ mod tests {
             assert_preprocessed(
                 "asdf + '10'",
                 vec![
-                    new_token(PreprocessedTokenKind::Symbol("asdf"), 0..4),
-                    new_token(PreprocessedTokenKind::Symbol("+"), 5..6),
-                    new_token(PreprocessedTokenKind::Symbol("10"), 7..11),
+                    new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 0..4),
+                    new_pretoken(PreprocessedTokenKind::Symbol("+"), 5..6),
+                    new_pretoken(PreprocessedTokenKind::Symbol("10"), 7..11),
                 ],
             );
         }
@@ -761,8 +765,8 @@ mod tests {
             assert_preprocessed(
                 "$asdf $this",
                 vec![
-                    new_token(PreprocessedTokenKind::Variable("asdf"), 0..5),
-                    new_token(PreprocessedTokenKind::Variable("this"), 6..11),
+                    new_pretoken(PreprocessedTokenKind::Variable("asdf"), 0..5),
+                    new_pretoken(PreprocessedTokenKind::Variable("this"), 6..11),
                 ],
             );
         }
@@ -771,7 +775,7 @@ mod tests {
         fn unhandled() {
             assert_preprocessed(
                 "kDataUnhandled",
-                vec![new_token(PreprocessedTokenKind::Unhandled, 0..14)],
+                vec![new_pretoken(PreprocessedTokenKind::Unhandled, 0..14)],
             )
         }
 
@@ -780,29 +784,29 @@ mod tests {
             assert_preprocessed(
                 "(asdf \"text\" 1)",
                 vec![
-                    new_token(PreprocessedTokenKind::ArrayOpen, 0..1),
-                    new_token(PreprocessedTokenKind::Symbol("asdf"), 1..5),
-                    new_token(PreprocessedTokenKind::String("text"), 6..12),
-                    new_token(PreprocessedTokenKind::Integer(1), 13..14),
-                    new_token(PreprocessedTokenKind::ArrayClose, 14..15),
+                    new_pretoken(PreprocessedTokenKind::ArrayOpen, 0..1),
+                    new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 1..5),
+                    new_pretoken(PreprocessedTokenKind::String("text"), 6..12),
+                    new_pretoken(PreprocessedTokenKind::Integer(1), 13..14),
+                    new_pretoken(PreprocessedTokenKind::ArrayClose, 14..15),
                 ],
             );
             assert_preprocessed(
                 "{set $var \"asdf\"}",
                 vec![
-                    new_token(PreprocessedTokenKind::CommandOpen, 0..1),
-                    new_token(PreprocessedTokenKind::Symbol("set"), 1..4),
-                    new_token(PreprocessedTokenKind::Variable("var"), 5..9),
-                    new_token(PreprocessedTokenKind::String("asdf"), 10..16),
-                    new_token(PreprocessedTokenKind::CommandClose, 16..17),
+                    new_pretoken(PreprocessedTokenKind::CommandOpen, 0..1),
+                    new_pretoken(PreprocessedTokenKind::Symbol("set"), 1..4),
+                    new_pretoken(PreprocessedTokenKind::Variable("var"), 5..9),
+                    new_pretoken(PreprocessedTokenKind::String("asdf"), 10..16),
+                    new_pretoken(PreprocessedTokenKind::CommandClose, 16..17),
                 ],
             );
             assert_preprocessed(
                 "[property]",
                 vec![
-                    new_token(PreprocessedTokenKind::PropertyOpen, 0..1),
-                    new_token(PreprocessedTokenKind::Symbol("property"), 1..9),
-                    new_token(PreprocessedTokenKind::PropertyClose, 9..10),
+                    new_pretoken(PreprocessedTokenKind::PropertyOpen, 0..1),
+                    new_pretoken(PreprocessedTokenKind::Symbol("property"), 1..9),
+                    new_pretoken(PreprocessedTokenKind::PropertyClose, 9..10),
                 ],
             );
         }
@@ -813,7 +817,7 @@ mod tests {
                 &text,
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::Symbol("dummy"),
-                    actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                    actual: new_token(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -827,39 +831,39 @@ mod tests {
             assert_preprocessed(
                 "#define kDefine (1)",
                 vec![
-                    new_token(
+                    new_pretoken(
                         PreprocessedTokenKind::Define(StrExpression::new("kDefine", 8..15)),
                         0..15,
                     ),
-                    new_token(PreprocessedTokenKind::ArrayOpen, 16..17),
-                    new_token(PreprocessedTokenKind::Integer(1), 17..18),
-                    new_token(PreprocessedTokenKind::ArrayClose, 18..19),
+                    new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
+                    new_pretoken(PreprocessedTokenKind::Integer(1), 17..18),
+                    new_pretoken(PreprocessedTokenKind::ArrayClose, 18..19),
                 ],
             );
             assert_preprocessed(
                 "#undef kDefine",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::Undefine(StrExpression::new("kDefine", 7..14)),
                     0..14,
                 )],
             );
             assert_preprocessed(
                 "#include ../file.dta",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::Include(StrExpression::new("../file.dta", 9..20)),
                     0..20,
                 )],
             );
             assert_preprocessed(
                 "#include_opt ../file.dta",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
                     0..24,
                 )],
             );
             assert_preprocessed(
                 "#merge ../file.dta",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::Merge(StrExpression::new("../file.dta", 7..18)),
                     0..18,
                 )],
@@ -867,11 +871,11 @@ mod tests {
             assert_preprocessed(
                 "#autorun {print \"Auto-run action\"}",
                 vec![
-                    new_token(PreprocessedTokenKind::Autorun, 0..8),
-                    new_token(PreprocessedTokenKind::CommandOpen, 9..10),
-                    new_token(PreprocessedTokenKind::Symbol("print"), 10..15),
-                    new_token(PreprocessedTokenKind::String("Auto-run action"), 16..33),
-                    new_token(PreprocessedTokenKind::CommandClose, 33..34),
+                    new_pretoken(PreprocessedTokenKind::Autorun, 0..8),
+                    new_pretoken(PreprocessedTokenKind::CommandOpen, 9..10),
+                    new_pretoken(PreprocessedTokenKind::Symbol("print"), 10..15),
+                    new_pretoken(PreprocessedTokenKind::String("Auto-run action"), 16..33),
+                    new_pretoken(PreprocessedTokenKind::CommandClose, 33..34),
                 ],
             );
 
@@ -894,25 +898,25 @@ mod tests {
         fn conditionals() {
             assert_preprocessed(
                 "#ifdef kDefine (array1 10) #else (array2 5) #endif",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::Conditional {
                         is_positive: true,
                         symbol: StrExpression::new("kDefine", 7..14),
                         true_branch: (
                             vec![
-                                new_token(PreprocessedTokenKind::ArrayOpen, 15..16),
-                                new_token(PreprocessedTokenKind::Symbol("array1"), 16..22),
-                                new_token(PreprocessedTokenKind::Integer(10), 23..25),
-                                new_token(PreprocessedTokenKind::ArrayClose, 25..26),
+                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 15..16),
+                                new_pretoken(PreprocessedTokenKind::Symbol("array1"), 16..22),
+                                new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
+                                new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
                             ],
                             0..32,
                         ),
                         false_branch: Some((
                             vec![
-                                new_token(PreprocessedTokenKind::ArrayOpen, 33..34),
-                                new_token(PreprocessedTokenKind::Symbol("array2"), 34..40),
-                                new_token(PreprocessedTokenKind::Integer(5), 41..42),
-                                new_token(PreprocessedTokenKind::ArrayClose, 42..43),
+                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 33..34),
+                                new_pretoken(PreprocessedTokenKind::Symbol("array2"), 34..40),
+                                new_pretoken(PreprocessedTokenKind::Integer(5), 41..42),
+                                new_pretoken(PreprocessedTokenKind::ArrayClose, 42..43),
                             ],
                             27..50,
                         )),
@@ -922,16 +926,16 @@ mod tests {
             );
             assert_preprocessed(
                 "#ifndef kDefine (array 10) #endif",
-                vec![new_token(
+                vec![new_pretoken(
                     PreprocessedTokenKind::Conditional {
                         is_positive: false,
                         symbol: StrExpression::new("kDefine", 8..15),
                         true_branch: (
                             vec![
-                                new_token(PreprocessedTokenKind::ArrayOpen, 16..17),
-                                new_token(PreprocessedTokenKind::Symbol("array"), 17..22),
-                                new_token(PreprocessedTokenKind::Integer(10), 23..25),
-                                new_token(PreprocessedTokenKind::ArrayClose, 25..26),
+                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
+                                new_pretoken(PreprocessedTokenKind::Symbol("array"), 17..22),
+                                new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
+                                new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
                             ],
                             0..33,
                         ),
@@ -1136,7 +1140,7 @@ mod tests {
                 &text,
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::Symbol("dummy"),
-                    actual: Token::new(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                    actual: new_token(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -1216,14 +1220,14 @@ mod tests {
                 "#define kDefine 1",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::ArrayOpen,
-                    actual: Token::new(TokenKind::Integer(1), 16..17),
+                    actual: new_token(TokenKind::Integer(1), 16..17),
                 }],
             );
             assert_errors(
                 "#autorun kDefine",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::CommandOpen,
-                    actual: Token::new(TokenKind::Symbol("kDefine"), 9..16),
+                    actual: new_token(TokenKind::Symbol("kDefine"), 9..16),
                 }],
             );
 

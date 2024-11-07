@@ -12,12 +12,6 @@ pub struct Token<'src> {
     pub location: Span,
 }
 
-impl<'src> Token<'src> {
-    pub(crate) fn new(kind: TokenKind<'src>, location: Span) -> Self {
-        Self { kind, location }
-    }
-}
-
 // Token regexes based on the RB3 decomp.
 // Behavior is replicated as closely as possible, all files should tokenize
 // identically to the original Flex tokenizer based on current knowledge for it.
