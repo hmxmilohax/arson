@@ -5,7 +5,7 @@ use std::iter::Peekable;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use logos::Span;
 
-use super::lexer::{LexError, Token, TokenKind};
+use super::lexer::{LexError, Token, TokenKind, TokenValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -116,7 +116,7 @@ pub enum ParseError<'src> {
 
     TokenError(Span, LexError),
     IncorrectToken {
-        expected: TokenKind<'static>,
+        expected: TokenKind,
         actual: Token<'src>,
     },
 
@@ -224,12 +224,12 @@ macro_rules! next_token {
         $tokens.next();
         location
     }};
-    ($self:expr, $tokens:expr, $expected:ident($dummy:expr)) => {{
+    ($self:expr, $tokens:expr, $expected:ident()) => {{
         let Some(next) = $tokens.peek() else {
             return $self.unexpected_eof();
         };
-        let TokenKind::$expected(value) = next.kind else {
-            return $self.incorrect_token(TokenKind::$expected($dummy), next.clone());
+        let TokenValue::$expected(value) = next.kind else {
+            return $self.incorrect_token(TokenKind::$expected, next.clone());
         };
         let result = (value, next.location.clone());
         $tokens.next();
@@ -285,7 +285,7 @@ impl<'src> Preprocessor<'src> {
         location: Span,
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenKind<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
-        let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+        let (name, name_location) = next_token!(self, tokens, Symbol());
         let name = StrExpression::new(name, name_location.clone());
         let location = location.start..name_location.end;
         ProcessResult::Result(PreprocessedToken { kind: kind(name), location })
@@ -301,40 +301,40 @@ impl<'src> Preprocessor<'src> {
         };
 
         let kind = match token.kind {
-            TokenKind::Integer(value) => PreprocessedTokenKind::Integer(value),
-            TokenKind::Float(value) => PreprocessedTokenKind::Float(value),
-            TokenKind::String(value) => PreprocessedTokenKind::String(value),
-            TokenKind::Symbol(value) => PreprocessedTokenKind::Symbol(value),
-            TokenKind::Variable(value) => PreprocessedTokenKind::Variable(value),
-            TokenKind::Unhandled => PreprocessedTokenKind::Unhandled,
+            TokenValue::Integer(value) => PreprocessedTokenKind::Integer(value),
+            TokenValue::Float(value) => PreprocessedTokenKind::Float(value),
+            TokenValue::String(value) => PreprocessedTokenKind::String(value),
+            TokenValue::Symbol(value) => PreprocessedTokenKind::Symbol(value),
+            TokenValue::Variable(value) => PreprocessedTokenKind::Variable(value),
+            TokenValue::Unhandled => PreprocessedTokenKind::Unhandled,
 
-            TokenKind::ArrayOpen => PreprocessedTokenKind::ArrayOpen,
-            TokenKind::ArrayClose => PreprocessedTokenKind::ArrayClose,
-            TokenKind::CommandOpen => PreprocessedTokenKind::CommandOpen,
-            TokenKind::CommandClose => PreprocessedTokenKind::CommandClose,
-            TokenKind::PropertyOpen => PreprocessedTokenKind::PropertyOpen,
-            TokenKind::PropertyClose => PreprocessedTokenKind::PropertyClose,
+            TokenValue::ArrayOpen => PreprocessedTokenKind::ArrayOpen,
+            TokenValue::ArrayClose => PreprocessedTokenKind::ArrayClose,
+            TokenValue::CommandOpen => PreprocessedTokenKind::CommandOpen,
+            TokenValue::CommandClose => PreprocessedTokenKind::CommandClose,
+            TokenValue::PropertyOpen => PreprocessedTokenKind::PropertyOpen,
+            TokenValue::PropertyClose => PreprocessedTokenKind::PropertyClose,
 
-            TokenKind::Define => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define),
-            TokenKind::Undefine => {
+            TokenValue::Define => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define),
+            TokenValue::Undefine => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Undefine)
             },
-            TokenKind::Include => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include),
-            TokenKind::IncludeOptional => {
+            TokenValue::Include => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include),
+            TokenValue::IncludeOptional => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::IncludeOptional)
             },
-            TokenKind::Merge => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge),
-            TokenKind::Autorun => PreprocessedTokenKind::Autorun,
+            TokenValue::Merge => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge),
+            TokenValue::Autorun => PreprocessedTokenKind::Autorun,
 
-            TokenKind::Ifdef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+            TokenValue::Ifdef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol());
                 return self.parse_conditional(tokens, token.location, true, StrExpression::new(name, name_location));
             },
-            TokenKind::Ifndef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol("dummy"));
+            TokenValue::Ifndef => {
+                let (name, name_location) = next_token!(self, tokens, Symbol());
                 return self.parse_conditional(tokens, token.location, false, StrExpression::new(name, name_location));
             },
-            TokenKind::Else => {
+            TokenValue::Else => {
                 match self.conditional_stack.last_mut() {
                     Some(conditional) => {
                         conditional.false_location = Some(token.location.clone());
@@ -359,7 +359,7 @@ impl<'src> Preprocessor<'src> {
 
                 return ProcessResult::BlockEnd(token.location);
             },
-            TokenKind::Endif => match self.conditional_stack.last() {
+            TokenValue::Endif => match self.conditional_stack.last() {
                 Some(_) => return ProcessResult::BlockEnd(token.location),
                 None => {
                     self.errors
@@ -368,19 +368,19 @@ impl<'src> Preprocessor<'src> {
                 },
             },
 
-            TokenKind::BadDirective(_) => {
+            TokenValue::BadDirective(_) => {
                 self.errors.push(ParseError::BadDirective(token.location));
                 return ProcessResult::SkipToken;
             },
 
-            TokenKind::Comment => return ProcessResult::SkipToken,
-            TokenKind::BlockCommentStart(_) => {
+            TokenValue::Comment => return ProcessResult::SkipToken,
+            TokenValue::BlockCommentStart(_) => {
                 self.skip_block_comment(tokens);
                 return ProcessResult::SkipToken;
             },
-            TokenKind::BlockCommentEnd(_) => return ProcessResult::SkipToken,
+            TokenValue::BlockCommentEnd(_) => return ProcessResult::SkipToken,
 
-            TokenKind::Error(error) => PreprocessedTokenKind::Error(error),
+            TokenValue::Error(error) => PreprocessedTokenKind::Error(error),
         };
 
         ProcessResult::Result(PreprocessedToken { kind, location: token.location })
@@ -447,7 +447,7 @@ impl<'src> Preprocessor<'src> {
 
     fn skip_block_comment<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
         while let Some(token) = tokens.peek() {
-            let TokenKind::BlockCommentEnd(_) = token.kind else {
+            let TokenValue::BlockCommentEnd(_) = token.kind else {
                 tokens.next();
                 continue;
             };
@@ -455,7 +455,7 @@ impl<'src> Preprocessor<'src> {
         }
     }
 
-    fn incorrect_token<T>(&mut self, expected: TokenKind<'static>, actual: Token<'src>) -> ProcessResult<T> {
+    fn incorrect_token<T>(&mut self, expected: TokenKind, actual: Token<'src>) -> ProcessResult<T> {
         self.errors
             .push(ParseError::IncorrectToken { expected, actual });
         ProcessResult::SkipToken
@@ -692,34 +692,34 @@ impl<'src> Parser<'src> {
 
     fn incorrect_token(
         &mut self,
-        expected: TokenKind<'static>,
+        expected: TokenKind,
         actual: PreprocessedToken<'src>,
     ) -> ProcessResult<Expression<'src>> {
         let actual_kind = match actual.kind {
-            PreprocessedTokenKind::Integer(value) => TokenKind::Integer(value),
-            PreprocessedTokenKind::Float(value) => TokenKind::Float(value),
-            PreprocessedTokenKind::String(value) => TokenKind::String(value),
-            PreprocessedTokenKind::Symbol(value) => TokenKind::Symbol(value),
-            PreprocessedTokenKind::Variable(value) => TokenKind::Variable(value),
-            PreprocessedTokenKind::Unhandled => TokenKind::Unhandled,
+            PreprocessedTokenKind::Integer(value) => TokenValue::Integer(value),
+            PreprocessedTokenKind::Float(value) => TokenValue::Float(value),
+            PreprocessedTokenKind::String(value) => TokenValue::String(value),
+            PreprocessedTokenKind::Symbol(value) => TokenValue::Symbol(value),
+            PreprocessedTokenKind::Variable(value) => TokenValue::Variable(value),
+            PreprocessedTokenKind::Unhandled => TokenValue::Unhandled,
 
-            PreprocessedTokenKind::ArrayOpen => TokenKind::ArrayOpen,
-            PreprocessedTokenKind::ArrayClose => TokenKind::ArrayClose,
-            PreprocessedTokenKind::CommandOpen => TokenKind::CommandOpen,
-            PreprocessedTokenKind::CommandClose => TokenKind::CommandClose,
-            PreprocessedTokenKind::PropertyOpen => TokenKind::PropertyOpen,
-            PreprocessedTokenKind::PropertyClose => TokenKind::PropertyClose,
+            PreprocessedTokenKind::ArrayOpen => TokenValue::ArrayOpen,
+            PreprocessedTokenKind::ArrayClose => TokenValue::ArrayClose,
+            PreprocessedTokenKind::CommandOpen => TokenValue::CommandOpen,
+            PreprocessedTokenKind::CommandClose => TokenValue::CommandClose,
+            PreprocessedTokenKind::PropertyOpen => TokenValue::PropertyOpen,
+            PreprocessedTokenKind::PropertyClose => TokenValue::PropertyClose,
 
-            PreprocessedTokenKind::Define(_) => TokenKind::Define,
-            PreprocessedTokenKind::Undefine(_) => TokenKind::Undefine,
-            PreprocessedTokenKind::Include(_) => TokenKind::Include,
-            PreprocessedTokenKind::IncludeOptional(_) => TokenKind::IncludeOptional,
-            PreprocessedTokenKind::Merge(_) => TokenKind::Merge,
-            PreprocessedTokenKind::Autorun => TokenKind::Autorun,
+            PreprocessedTokenKind::Define(_) => TokenValue::Define,
+            PreprocessedTokenKind::Undefine(_) => TokenValue::Undefine,
+            PreprocessedTokenKind::Include(_) => TokenValue::Include,
+            PreprocessedTokenKind::IncludeOptional(_) => TokenValue::IncludeOptional,
+            PreprocessedTokenKind::Merge(_) => TokenValue::Merge,
+            PreprocessedTokenKind::Autorun => TokenValue::Autorun,
 
-            PreprocessedTokenKind::Conditional { .. } => TokenKind::Ifdef,
+            PreprocessedTokenKind::Conditional { .. } => TokenValue::Ifdef,
 
-            PreprocessedTokenKind::Error(error) => TokenKind::Error(error),
+            PreprocessedTokenKind::Error(error) => TokenValue::Error(error),
         };
         let actual = Token { kind: actual_kind, location: actual.location };
 
@@ -762,7 +762,7 @@ mod tests {
 
     use super::*;
 
-    const fn new_token(kind: TokenKind, location: Span) -> Token {
+    const fn new_token(kind: TokenValue, location: Span) -> Token {
         Token { kind, location }
     }
 
@@ -895,8 +895,8 @@ mod tests {
             assert_errors(
                 &text,
                 vec![ParseError::IncorrectToken {
-                    expected: TokenKind::Symbol("dummy"),
-                    actual: new_token(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                    expected: TokenKind::Symbol,
+                    actual: new_token(TokenValue::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -1218,8 +1218,8 @@ mod tests {
             assert_errors(
                 &text,
                 vec![ParseError::IncorrectToken {
-                    expected: TokenKind::Symbol("dummy"),
-                    actual: new_token(TokenKind::Integer(1), name.len() + 1..name.len() + 2),
+                    expected: TokenKind::Symbol,
+                    actual: new_token(TokenValue::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -1299,14 +1299,14 @@ mod tests {
                 "#define kDefine 1",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::ArrayOpen,
-                    actual: new_token(TokenKind::Integer(1), 16..17),
+                    actual: new_token(TokenValue::Integer(1), 16..17),
                 }],
             );
             assert_errors(
                 "#autorun kDefine",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::CommandOpen,
-                    actual: new_token(TokenKind::Symbol("kDefine"), 9..16),
+                    actual: new_token(TokenValue::Symbol("kDefine"), 9..16),
                 }],
             );
 
