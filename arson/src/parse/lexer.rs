@@ -6,243 +6,198 @@ use logos::{Logos, Span};
 
 type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Token<'src> {
     pub kind: TokenValue<'src>,
     pub location: Span,
+}
+
+impl<'src> Token<'src> {
+    pub fn to_owned(&self) -> OwnedToken {
+        OwnedToken {
+            kind: self.kind.to_owned(),
+            location: self.location.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnedToken {
+    pub kind: OwnedTokenValue,
+    pub location: Span,
+}
+
+macro_rules! param_sink {
+    ($_:tt, $($i:tt)*) => {
+        $($i)*
+    };
+}
+
+macro_rules! to_owned_type {
+    (str) => {
+        String
+    };
+    ($type:tt) => {
+        $type
+    };
+}
+
+/// wizardry
+///
+/// Type(value_type) => ("display string", "{value_format}")
+macro_rules! make_tokens {
+    (
+        $(
+            $(#[$attr:meta])*
+            $type:ident$(($value:ident $(: $life:lifetime)?))?
+                => ($display:literal $(, $format:literal)?)
+            $(,)?
+        )+
+    ) => {
+        #[derive(Logos, Debug, PartialEq)]
+        #[logos(error = LexError)]
+        #[logos(skip r#"[ \v\t\r\n\f]+"#)]
+        pub enum TokenValue<'src> {
+            $($(#[$attr])* $type$(($(& $life)? $value))?,)+
+        }
+
+        impl<'src> TokenValue<'src> {
+            pub fn get_type(&self) -> TokenKind {
+                match self {
+                    $(TokenValue::$type$((param_sink!($value, _)))? => TokenKind::$type,)+
+                }
+            }
+
+            pub fn to_owned(&self) -> OwnedTokenValue {
+                match self {
+                    $(TokenValue::$type$((param_sink!($value, ref value)))?
+                        => OwnedTokenValue::$type$(
+                            (param_sink!($value, ((*value).to_owned())))
+                        )?,
+                    )+
+                }
+            }
+        }
+
+        impl<'src> std::fmt::Display for TokenValue<'src> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(TokenValue::$type$((param_sink!($value, _value)))?
+                        => write!(f, concat!($display, $($format)?) $(,param_sink!($format, _value))?),
+                    )+
+                }
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum OwnedTokenValue {
+            $($type$((to_owned_type!($value)))?,)+
+        }
+
+        impl OwnedTokenValue {
+            pub fn get_type(&self) -> TokenKind {
+                match self {
+                    $(OwnedTokenValue::$type$((param_sink!($value, _)))? => TokenKind::$type,)+
+                }
+            }
+        }
+
+        impl std::fmt::Display for OwnedTokenValue {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(OwnedTokenValue::$type$((param_sink!($value, _value)))?
+                        => write!(f, concat!($display, $($format)?) $(,param_sink!($format, _value))?),
+                    )+
+                }
+            }
+        }
+
+        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+        pub enum TokenKind {
+            $($type,)+
+        }
+
+        impl<'src> std::fmt::Display for TokenKind {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(TokenKind::$type => write!(f, $display),)+
+                }
+            }
+        }
+    }
 }
 
 // Token regexes based on the RB3 decomp.
 // Behavior is replicated as closely as possible, all files should tokenize
 // identically to the original Flex tokenizer based on current knowledge for it.
 
-#[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(error = LexError)]
-#[logos(skip r#"[ \v\t\r\n\f]+"#)]
-pub enum TokenValue<'src> {
+make_tokens! {
     #[regex(r#"[+-]?[0-9]+"#, |lex| lex.slice().parse::<i64>(), priority = 2)]
     #[regex(r#"0x[A-Fa-f0-9]+"#, parse_hex, priority = 2)]
-    Integer(i64),
+    Integer(i64) => ("integer", "{}"),
     // This one allows some weird things, such as ".", "+.", and "-.E1"
     #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, parse_float, priority = 2)]
-    Float(f64),
+    Float(f64) => ("float", "{}"),
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    String(&'src str),
+    String(str: 'src) => ("string", "\"{}\""),
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
     #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, priority = 0)]
     #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    Symbol(&'src str),
+    Symbol(str: 'src) => ("symbol", "'{}'"),
     #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    Variable(&'src str),
+    Variable(str: 'src) => ("variable", "${}"),
     #[token("kDataUnhandled")]
-    Unhandled,
+    Unhandled => ("kDataUnhandled"),
 
     #[token("(")]
-    ArrayOpen,
+    ArrayOpen => ("array open"),
     #[token(")")]
-    ArrayClose,
+    ArrayClose => ("array close"),
     #[token("{")]
-    CommandOpen,
+    CommandOpen => ("command open"),
     #[token("}")]
-    CommandClose,
+    CommandClose => ("command close"),
     #[token("[")]
-    PropertyOpen,
+    PropertyOpen => ("property open"),
     #[token("]")]
-    PropertyClose,
+    PropertyClose => ("property close"),
 
     #[token("#define")]
-    Define,
+    Define => ("#define directive"),
     #[token("#undef")]
-    Undefine,
+    Undefine => ("#undef directive"),
     #[token("#include")]
-    Include,
+    Include => ("#include directive"),
     #[token("#include_opt")]
-    IncludeOptional,
+    IncludeOptional => ("#include_opt directive"),
     #[token("#merge")]
-    Merge,
+    Merge => ("#merge directive"),
     #[token("#autorun")]
-    Autorun,
+    Autorun => ("#autorun directive"),
 
     #[token("#ifdef")]
-    Ifdef,
+    Ifdef => ("#ifdef directive"),
     #[token("#ifndef")]
-    Ifndef,
+    Ifndef => ("#ifndef directive"),
     #[token("#else")]
-    Else,
+    Else => ("#else directive"),
     #[token("#endif")]
-    Endif,
+    Endif => ("#endif directive"),
 
     #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    BadDirective(&'src str),
+    BadDirective(str: 'src) => ("invalid directive", "#{}"),
 
     #[regex(r#";[^\n]*"#, priority = 1)]
-    Comment,
+    Comment => ("comment"),
     // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#)]
-    BlockCommentStart(&'src str),
+    BlockCommentStart(str: 'src) => ("block comment start"),
     #[regex(r#"\*+\/"#)]
-    BlockCommentEnd(&'src str),
+    BlockCommentEnd(str: 'src) => ("block comment end"),
 
-    Error(LexError),
-}
-
-impl<'src> TokenValue<'src> {
-    pub fn get_type(&self) -> TokenKind {
-        match self {
-            TokenValue::Integer(_) => TokenKind::Integer,
-            TokenValue::Float(_) => TokenKind::Float,
-            TokenValue::String(_) => TokenKind::String,
-            TokenValue::Symbol(_) => TokenKind::Symbol,
-            TokenValue::Variable(_) => TokenKind::Variable,
-            TokenValue::Unhandled => TokenKind::Unhandled,
-
-            TokenValue::ArrayOpen => TokenKind::ArrayOpen,
-            TokenValue::ArrayClose => TokenKind::ArrayClose,
-            TokenValue::CommandOpen => TokenKind::CommandOpen,
-            TokenValue::CommandClose => TokenKind::CommandClose,
-            TokenValue::PropertyOpen => TokenKind::PropertyOpen,
-            TokenValue::PropertyClose => TokenKind::PropertyClose,
-
-            TokenValue::Define => TokenKind::Define,
-            TokenValue::Undefine => TokenKind::Undefine,
-            TokenValue::Include => TokenKind::Include,
-            TokenValue::IncludeOptional => TokenKind::IncludeOptional,
-            TokenValue::Merge => TokenKind::Merge,
-            TokenValue::Autorun => TokenKind::Autorun,
-
-            TokenValue::Ifdef => TokenKind::Ifdef,
-            TokenValue::Ifndef => TokenKind::Ifndef,
-            TokenValue::Else => TokenKind::Else,
-            TokenValue::Endif => TokenKind::Endif,
-
-            TokenValue::BadDirective(_) => TokenKind::BadDirective,
-
-            TokenValue::Comment => TokenKind::Comment,
-            TokenValue::BlockCommentStart(_) => TokenKind::BlockCommentStart,
-            TokenValue::BlockCommentEnd(_) => TokenKind::BlockCommentEnd,
-
-            TokenValue::Error(_) => TokenKind::Error,
-        }
-    }
-}
-
-impl<'src> std::fmt::Display for TokenValue<'src> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenValue::Integer(value) => write!(f, "integer {value}"),
-            TokenValue::Float(value) => write!(f, "float {value}"),
-            TokenValue::String(value) => write!(f, "string \"{value}\""),
-            TokenValue::Symbol(value) => write!(f, "symbol '{value}'"),
-            TokenValue::Variable(value) => write!(f, "variable ${value}"),
-            TokenValue::Unhandled => write!(f, "kDataUnhandled"),
-
-            TokenValue::ArrayOpen => write!(f, "array open"),
-            TokenValue::ArrayClose => write!(f, "array close"),
-            TokenValue::CommandOpen => write!(f, "command open"),
-            TokenValue::CommandClose => write!(f, "command close"),
-            TokenValue::PropertyOpen => write!(f, "property open"),
-            TokenValue::PropertyClose => write!(f, "property close"),
-
-            TokenValue::Define => write!(f, "#define directive"),
-            TokenValue::Undefine => write!(f, "#undef directive"),
-            TokenValue::Include => write!(f, "#include directive"),
-            TokenValue::IncludeOptional => write!(f, "#include_opt directive"),
-            TokenValue::Merge => write!(f, "#merge directive"),
-            TokenValue::Autorun => write!(f, "#autorun directive"),
-
-            TokenValue::Ifdef => write!(f, "#ifdef directive"),
-            TokenValue::Ifndef => write!(f, "#ifndef directive"),
-            TokenValue::Else => write!(f, "#else directive"),
-            TokenValue::Endif => write!(f, "#endif directive"),
-
-            TokenValue::BadDirective(name) => write!(f, "bad #{name} directive"),
-
-            TokenValue::Comment => write!(f, "comment"),
-            TokenValue::BlockCommentStart(_) => write!(f, "block comment start"),
-            TokenValue::BlockCommentEnd(_) => write!(f, "block comment end"),
-
-            TokenValue::Error(lex_error) => write!(f, "token error: {lex_error}"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub enum TokenKind {
-    Integer,
-    Float,
-    String,
-    Symbol,
-    Variable,
-    Unhandled,
-
-    ArrayOpen,
-    ArrayClose,
-    CommandOpen,
-    CommandClose,
-    PropertyOpen,
-    PropertyClose,
-
-    Define,
-    Undefine,
-    Include,
-    IncludeOptional,
-    Merge,
-    Autorun,
-
-    Ifdef,
-    Ifndef,
-    Else,
-    Endif,
-
-    BadDirective,
-
-    Comment,
-    BlockCommentStart,
-    BlockCommentEnd,
-
-    Error,
-}
-
-impl std::fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenKind::Integer => write!(f, "integer"),
-            TokenKind::Float => write!(f, "float"),
-            TokenKind::String => write!(f, "string"),
-            TokenKind::Symbol => write!(f, "symbol"),
-            TokenKind::Variable => write!(f, "variable"),
-            TokenKind::Unhandled => write!(f, "kDataUnhandled"),
-
-            TokenKind::ArrayOpen => write!(f, "array open"),
-            TokenKind::ArrayClose => write!(f, "array close"),
-            TokenKind::CommandOpen => write!(f, "command open"),
-            TokenKind::CommandClose => write!(f, "command close"),
-            TokenKind::PropertyOpen => write!(f, "property open"),
-            TokenKind::PropertyClose => write!(f, "property close"),
-
-            TokenKind::Define => write!(f, "#define directive"),
-            TokenKind::Undefine => write!(f, "#undef directive"),
-            TokenKind::Include => write!(f, "#include directive"),
-            TokenKind::IncludeOptional => write!(f, "#include_opt directive"),
-            TokenKind::Merge => write!(f, "#merge directive"),
-            TokenKind::Autorun => write!(f, "#autorun directive"),
-
-            TokenKind::Ifdef => write!(f, "#ifdef directive"),
-            TokenKind::Ifndef => write!(f, "#ifndef directive"),
-            TokenKind::Else => write!(f, "#else directive"),
-            TokenKind::Endif => write!(f, "#endif directive"),
-
-            TokenKind::BadDirective => write!(f, "bad directive"),
-
-            TokenKind::Comment => write!(f, "comment"),
-            TokenKind::BlockCommentStart => write!(f, "block comment start"),
-            TokenKind::BlockCommentEnd => write!(f, "block comment end"),
-
-            TokenKind::Error => write!(f, "token error"),
-        }
-    }
+    Error(LexError) => ("token error", ": {}"),
 }
 
 #[derive(thiserror::Error, Debug, Clone, Default, PartialEq)]
