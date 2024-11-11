@@ -10,7 +10,7 @@ fn main() -> arson::Result<()> {
     context.register_func_by_name("print", |context, args| {
         let message = args.string(context, 1)?;
         println!("{message}");
-        Ok(NodeValue::handled())
+        Ok(NodeValue::HANDLED)
     });
 
     let file = context.load_text(include_str!("../run/main.dta"))?;

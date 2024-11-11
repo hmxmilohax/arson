@@ -5,7 +5,18 @@ use crate::{arson_assert, evaluate_node};
 
 pub fn register_funcs(context: &mut Context) {
     arithmetic::register_funcs(context);
+    bitwise::register_funcs(context);
+    boolean::register_funcs(context);
     comparison::register_funcs(context);
+}
+
+fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
+    evaluate_node! {
+        args.unevaluated(0)?;
+        RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
+        RawNodeValue::Property(_value) => todo!("op_assign property access"),
+    };
+    Ok(result)
 }
 
 mod arithmetic {
@@ -201,15 +212,6 @@ mod arithmetic {
         }
     }
 
-    fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
-        evaluate_node! {
-            args.unevaluated(0)?;
-            RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
-            RawNodeValue::Property(_value) => todo!("op_assign property access"),
-        };
-        Ok(result)
-    }
-
     fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 1);
         let add_args = [args.get(0)?.clone(), Node::from(1)];
@@ -247,6 +249,112 @@ mod arithmetic {
     fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::modulo(context, args)?;
         self::op_assign(context, args, result)
+    }
+}
+
+mod bitwise {
+    use super::*;
+
+    pub fn register_funcs(context: &mut Context) {
+        context.register_func_by_name("&", self::and);
+        context.register_func_by_name("&=", self::and_assign);
+        context.register_func_by_name("|", self::or);
+        context.register_func_by_name("|=", self::or_assign);
+        context.register_func_by_name("^", self::xor);
+        context.register_func_by_name("^=", self::xor_assign);
+        context.register_func_by_name("~", self::not);
+    }
+
+    fn bitwise_op(
+        context: &mut Context,
+        args: &NodeSlice,
+        f: fn(NodeInteger, NodeInteger) -> NodeInteger,
+    ) -> HandleResult {
+        let result = args.integer(context, 0)?;
+        let result = args
+            .slice(1..)?
+            .iter()
+            .try_fold(result, |current, n| n.integer(context).map(|value| f(current, value)))?;
+
+        Ok(NodeValue::from(result))
+    }
+
+    fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        bitwise_op(context, args, |current, value| current & value)
+    }
+
+    fn or(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        bitwise_op(context, args, |current, value| current | value)
+    }
+
+    fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 2);
+        let result = args.integer(context, 0)? ^ args.integer(context, 1)?;
+        Ok(NodeValue::from(result))
+    }
+
+    fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 1);
+        let result = !args.integer(context, 0)?;
+        Ok(NodeValue::from(result))
+    }
+
+    fn and_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        let result = self::and(context, args)?;
+        op_assign(context, args, result)
+    }
+
+    fn or_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        let result = self::or(context, args)?;
+        op_assign(context, args, result)
+    }
+
+    fn xor_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        let result = self::xor(context, args)?;
+        op_assign(context, args, result)
+    }
+}
+
+mod boolean {
+    use super::*;
+
+    pub fn register_funcs(context: &mut Context) {
+        context.register_func_by_name("&&", self::and);
+        context.register_func_by_name("||", self::or);
+        context.register_func_by_name("^^", self::xor);
+        context.register_func_by_name("!", self::not);
+    }
+
+    fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        for node in args {
+            if !node.boolean(context)? {
+                return Ok(NodeValue::FALSE);
+            }
+        }
+
+        Ok(NodeValue::TRUE)
+    }
+
+    fn or(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        for node in args {
+            if node.boolean(context)? {
+                return Ok(NodeValue::TRUE);
+            }
+        }
+
+        Ok(NodeValue::FALSE)
+    }
+
+    fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 2);
+        let result = args.boolean(context, 0)? ^ args.boolean(context, 1)?;
+        Ok(NodeValue::from(result))
+    }
+
+    fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 1);
+        let result = !args.boolean(context, 0)?;
+        Ok(NodeValue::from(result))
     }
 }
 

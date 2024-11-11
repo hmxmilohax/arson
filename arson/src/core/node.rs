@@ -168,6 +168,19 @@ macro_rules! common_getters {
             evaluate_node!(self; Self::Integer(value) => Ok(*value))
         }
 
+        pub fn boolean(&self) -> crate::Result<bool> {
+            evaluate_node! {
+                self;
+                Self::Integer(value) => Ok(*value != 0),
+                Self::String(value) => Ok(!value.is_empty()),
+                Self::Symbol(value) => Ok(!value.name().is_empty()),
+            }
+        }
+
+        pub fn boolean_strict(&self) -> crate::Result<bool> {
+            Ok(self.integer_strict()? != 0)
+        }
+
         pub fn float(&self) -> crate::Result<NodeFloat> {
             evaluate_node! {
                 self;
@@ -203,9 +216,14 @@ macro_rules! common_getters {
 }
 
 impl NodeValue {
-    pub const fn handled() -> Self {
-        Self::Integer(0)
-    }
+    /// Generic value to be returned when a script call has been handled,
+    /// but no specific value is returned from the method handling the call.
+    pub const HANDLED: NodeValue = Self::Integer(0);
+
+    /// Boolean TRUE value.
+    pub const TRUE: NodeValue = Self::Integer(1);
+    /// Boolean FALSE value.
+    pub const FALSE: NodeValue = Self::Integer(0);
 
     common_getters!();
 }
@@ -251,9 +269,14 @@ impl PartialOrd for NodeValue {
 }
 
 impl RawNodeValue {
-    pub const fn handled() -> Self {
-        Self::Integer(0)
-    }
+    /// Generic value to be returned when a script call has been handled,
+    /// but no specific value is returned from the method handling the call.
+    pub const HANDLED: RawNodeValue = Self::Integer(0);
+
+    /// Boolean TRUE value.
+    pub const TRUE: RawNodeValue = Self::Integer(1);
+    /// Boolean FALSE value.
+    pub const FALSE: RawNodeValue = Self::Integer(0);
 
     common_getters!();
 
@@ -362,6 +385,15 @@ pub struct Node {
 }
 
 impl Node {
+    /// Generic value to be returned when a script call has been handled,
+    /// but no specific value is returned from the method handling the call.
+    pub const HANDLED: Node = Self { value: RawNodeValue::HANDLED };
+
+    /// Boolean TRUE value.
+    pub const TRUE: Node = Self { value: RawNodeValue::TRUE };
+    /// Boolean FALSE value.
+    pub const FALSE: Node = Self { value: RawNodeValue::FALSE };
+
     pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
         self.value.evaluate(context)
     }
@@ -377,6 +409,14 @@ impl Node {
 
     pub fn integer_strict(&self, context: &mut Context) -> crate::Result<NodeInteger> {
         self.evaluate(context)?.integer_strict()
+    }
+
+    pub fn boolean(&self, context: &mut Context) -> crate::Result<bool> {
+        self.evaluate(context)?.boolean()
+    }
+
+    pub fn boolean_strict(&self, context: &mut Context) -> crate::Result<bool> {
+        self.evaluate(context)?.boolean_strict()
     }
 
     pub fn float(&self, context: &mut Context) -> crate::Result<NodeFloat> {
@@ -566,6 +606,15 @@ impl Deref for NodeSlice {
     }
 }
 
+impl<'slice> IntoIterator for &'slice NodeSlice {
+    type Item = <&'slice [Node] as IntoIterator>::Item;
+    type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.nodes.into_iter()
+    }
+}
+
 macro_rules! array_impl {
     () => {
         pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
@@ -595,6 +644,14 @@ macro_rules! array_impl {
             self.get(index)?.integer_strict(context)
         }
 
+        pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+            self.get(index)?.boolean(context)
+        }
+    
+        pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+            self.get(index)?.boolean_strict(context)
+        }
+    
         pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
             self.get(index)?.float(context)
         }
