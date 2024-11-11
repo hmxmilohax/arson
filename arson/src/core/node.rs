@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::rc::Rc;
+use std::{
+    borrow::Borrow,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+    slice::SliceIndex,
+};
 
 use super::{Context, Error, Object, Symbol};
 
 /// A function which is callable by a [`NodeCommand`].
-pub type HandleFn = fn(context: &mut Context, args: &NodeArray) -> HandleResult;
+pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> HandleResult;
 /// The result of a [`HandleFn`].
 pub type HandleResult = crate::Result<NodeValue>;
 
@@ -379,7 +384,8 @@ impl_from_raw!(Property, PropertyBox);
 impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
 impl_from_raw!(Property, &PropertyBox, value => value.clone());
 
-#[derive(Debug, Clone)]
+/// A contiguous collection of [`Node`]s.
+#[derive(Debug, Clone, Default)]
 pub struct NodeArray {
     nodes: Vec<Node>,
 }
@@ -393,97 +399,12 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn node(&self, index: usize) -> crate::Result<&Node> {
-        match self.nodes.get(index) {
-            Some(value) => Ok(value),
-            None => Err(Error::IndexOutOfRange { index, range: 0..self.nodes.len() }),
-        }
-    }
-
-    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
-        self.node(index)?.evaluate(context)
-    }
-
-    pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
-        Ok(self.node(index)?.unevaluated())
-    }
-
-    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-        self.node(index)?.integer(context)
-    }
-
-    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-        self.node(index)?.integer_strict(context)
-    }
-
-    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-        self.node(index)?.float(context)
-    }
-
-    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-        self.node(index)?.float_strict(context)
-    }
-
-    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
-        self.node(index)?.string(context)
-    }
-
-    pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
-        self.node(index)?.symbol(context)
-    }
-
-    pub fn variable(&self, index: usize) -> crate::Result<NodeVariable> {
-        self.node(index)?.variable()
-    }
-
-    pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
-        self.node(index)?.object(context)
-    }
-
-    pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
-        self.node(index)?.function(context)
-    }
-
-    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
-        self.node(index)?.array(context)
-    }
-
-    pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
-        self.node(index)?.command()
-    }
-
-    pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
-        self.node(index)?.property()
-    }
-
-    pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
-        for node in self.iter() {
-            let RawNodeValue::Array(array) = node.unevaluated() else {
-                continue;
-            };
-            let Ok(node) = array.unevaluated(0) else {
-                continue;
-            };
-            let Ok(symbol) = node.symbol() else {
-                continue;
-            };
-
-            if symbol == tag {
-                return Ok(array);
-            }
-        }
-
-        Err(Error::EntryNotFound(tag.clone()))
+    pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
+        NodeSlice::new(&self.nodes).slice(index)
     }
 }
 
-impl Default for NodeArray {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::ops::Deref for NodeArray {
+impl Deref for NodeArray {
     type Target = Vec<Node>;
 
     fn deref(&self) -> &Self::Target {
@@ -491,82 +412,201 @@ impl std::ops::Deref for NodeArray {
     }
 }
 
-impl std::ops::DerefMut for NodeArray {
+impl DerefMut for NodeArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.nodes
     }
 }
 
-#[derive(Debug, Clone)]
+impl Borrow<NodeSlice> for NodeArray {
+    fn borrow(&self) -> &NodeSlice {
+        NodeSlice::new(&self.nodes)
+    }
+}
+
+/// A [[`Node`]] slice with the same additional methods as [`NodeArray`].
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct NodeSlice {
+    nodes: [Node],
+}
+
+impl NodeSlice {
+    pub fn new(nodes: &[Node]) -> &NodeSlice {
+        // SAFETY: NodeSlice transparently contains a [Node], so its layout is identical
+        unsafe { &*(nodes as *const [Node] as *const NodeSlice) }
+    }
+
+    pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
+        match self.nodes.get(index) {
+            Some(value) => Ok(Self::new(value)),
+            None => Err(Error::OutOfRange(0..self.nodes.len())),
+        }
+    }
+}
+
+impl Deref for NodeSlice {
+    type Target = [Node];
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
+}
+
+macro_rules! array_impl {
+    () => {
+        pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
+            match self.nodes.get(index) {
+                Some(value) => Ok(value),
+                None => Err(Error::OutOfRange(0..self.nodes.len())),
+            }
+        }
+
+        pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
+            self.get(index)?.evaluate(context)
+        }
+
+        pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
+            Ok(self.get(index)?.unevaluated())
+        }
+
+        pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+            self.get(index)?.integer(context)
+        }
+
+        pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+            self.get(index)?.integer_strict(context)
+        }
+
+        pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+            self.get(index)?.float(context)
+        }
+
+        pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+            self.get(index)?.float_strict(context)
+        }
+
+        pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
+            self.get(index)?.string(context)
+        }
+
+        pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
+            self.get(index)?.symbol(context)
+        }
+
+        pub fn variable(&self, index: usize) -> crate::Result<NodeVariable> {
+            self.get(index)?.variable()
+        }
+
+        pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
+            self.get(index)?.object(context)
+        }
+
+        pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
+            self.get(index)?.function(context)
+        }
+
+        pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
+            self.get(index)?.array(context)
+        }
+
+        pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
+            self.get(index)?.command()
+        }
+
+        pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
+            self.get(index)?.property()
+        }
+
+        pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
+            for node in self.iter() {
+                let RawNodeValue::Array(array) = node.unevaluated() else {
+                    continue;
+                };
+                let Ok(node) = array.unevaluated(0) else {
+                    continue;
+                };
+                let Ok(symbol) = node.symbol() else {
+                    continue;
+                };
+
+                if symbol == tag {
+                    return Ok(array);
+                }
+            }
+
+            Err(Error::EntryNotFound(tag.clone()))
+        }
+    };
+}
+
+impl NodeArray {
+    array_impl!();
+}
+
+impl NodeSlice {
+    array_impl!();
+}
+
+/// An executable/evaluatable command.
+#[derive(Debug, Clone, Default)]
 pub struct NodeCommand {
     nodes: NodeArray,
 }
 
 impl NodeCommand {
-    pub const fn new() -> Self {
-        Self { nodes: NodeArray::new() }
+    pub fn execute(&self, context: &mut Context) -> crate::Result<NodeValue> {
+        context.execute(self)
     }
 }
 
-impl Default for NodeCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<NodeArray> for NodeCommand {
-    fn from(value: NodeArray) -> Self {
-        Self { nodes: value }
-    }
-}
-
-impl std::ops::Deref for NodeCommand {
-    type Target = NodeArray;
-
-    fn deref(&self) -> &Self::Target {
-        &self.nodes
-    }
-}
-
-impl std::ops::DerefMut for NodeCommand {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.nodes
-    }
-}
-
-#[derive(Debug, Clone)]
+/// A property on an object which can be manipulated.
+#[derive(Debug, Clone, Default)]
 pub struct NodeProperty {
     nodes: NodeArray,
 }
 
-impl NodeProperty {
-    pub const fn new() -> Self {
-        Self { nodes: NodeArray::new() }
-    }
+macro_rules! array_wrapper_impl {
+    ($name:ident) => {
+        impl $name {
+            pub const fn new() -> Self {
+                Self { nodes: NodeArray::new() }
+            }
+        }
+
+        impl From<NodeArray> for $name {
+            fn from(value: NodeArray) -> Self {
+                Self { nodes: value }
+            }
+        }
+
+        impl Deref for $name {
+            type Target = NodeArray;
+
+            fn deref(&self) -> &Self::Target {
+                &self.nodes
+            }
+        }
+
+        impl DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.nodes
+            }
+        }
+
+        impl Borrow<NodeArray> for $name {
+            fn borrow(&self) -> &NodeArray {
+                &self.nodes
+            }
+        }
+
+        impl Borrow<NodeSlice> for $name {
+            fn borrow(&self) -> &NodeSlice {
+                self.nodes.borrow()
+            }
+        }
+    };
 }
 
-impl Default for NodeProperty {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<NodeArray> for NodeProperty {
-    fn from(value: NodeArray) -> Self {
-        Self { nodes: value }
-    }
-}
-
-impl std::ops::Deref for NodeProperty {
-    type Target = NodeArray;
-
-    fn deref(&self) -> &Self::Target {
-        &self.nodes
-    }
-}
-
-impl std::ops::DerefMut for NodeProperty {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.nodes
-    }
-}
+array_wrapper_impl!(NodeCommand);
+array_wrapper_impl!(NodeProperty);

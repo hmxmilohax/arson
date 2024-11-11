@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::ops::Range;
+
 use crate::LoadError;
 
 use super::{NodeType, Symbol};
@@ -13,11 +15,8 @@ pub enum Error {
     #[error("Type mismatch: expected one of {expected:?}, got {actual:?}")]
     UnhandledType { expected: Vec<NodeType>, actual: NodeType },
 
-    #[error("Index {index} outside of range {range:?}")]
-    IndexOutOfRange {
-        index: usize,
-        range: std::ops::Range<usize>,
-    },
+    #[error("Index outside of range {0:?}")]
+    OutOfRange(Range<usize>),
 
     #[error("Error loading file: {0}")]
     LoadError(#[from] LoadError),
