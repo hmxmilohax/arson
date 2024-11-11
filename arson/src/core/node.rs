@@ -7,7 +7,7 @@ use super::{Context, Error, Object, Symbol};
 /// A function which is callable by a [`NodeCommand`].
 pub type HandleFn = fn(context: &mut Context, args: &NodeArray) -> HandleResult;
 /// The result of a [`HandleFn`].
-pub type HandleResult = crate::Result<Node>;
+pub type HandleResult = crate::Result<NodeValue>;
 
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
@@ -25,21 +25,22 @@ impl From<Symbol> for NodeVariable {
 
 macro_rules! define_node_types {
     ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
-        /// The type of value contained within a node.
+        /// The type of value contained within a [`Node`], [`NodeValue`], or [`RawNodeValue`].
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
         pub enum NodeType {
             $($(#[$attr])* $type,)+
         }
 
+        /// A raw, unevaluated value stored within a [`Node`].
         #[derive(Debug, Clone)]
-        pub enum NodeValue {
+        pub enum RawNodeValue {
             $($(#[$attr])* $type$(($value))?,)+
         }
 
-        impl NodeValue {
+        impl RawNodeValue {
             pub fn get_type(&self) -> NodeType {
                 match self {
-                    $(NodeValue::$type$((param_sink!($value, _)))? => NodeType::$type,)+
+                    $(Self::$type$((param_sink!($value, _)))? => NodeType::$type,)+
                 }
             }
         }
@@ -70,12 +71,42 @@ define_node_types! {
     Property(PropertyBox),
 }
 
+/// A node value which has been evaluated.
+#[derive(Debug, Clone)]
+pub enum NodeValue {
+    Integer(NodeInteger),
+    Float(NodeFloat),
+    String(StringBox),
+    Symbol(Symbol),
+    Unhandled,
+
+    Object(ObjectBox),
+    Function(HandleFn),
+    Array(ArrayBox),
+}
+
+impl NodeValue {
+    pub fn get_type(&self) -> NodeType {
+        match self {
+            NodeValue::Integer(_) => NodeType::Integer,
+            NodeValue::Float(_) => NodeType::Float,
+            NodeValue::String(_) => NodeType::String,
+            NodeValue::Symbol(_) => NodeType::Symbol,
+            NodeValue::Unhandled => NodeType::Unhandled,
+
+            NodeValue::Object(_) => NodeType::Object,
+            NodeValue::Function(_) => NodeType::Function,
+            NodeValue::Array(_) => NodeType::Array,
+        }
+    }
+}
+
 /// Helper macro for evaluating whether a node matches a single type.
 /// Used to prevent desyncs between match arms and error information.
 macro_rules! evaluate_type {
     ($node:ident, $type:ident($value:ident) => $expr:expr) => {
         match $node {
-            NodeValue::$type($value) => Ok($expr),
+            Self::$type($value) => Ok($expr),
             _ => {
                 return Err(Error::TypeMismatch {
                     expected: NodeType::$type,
@@ -86,7 +117,7 @@ macro_rules! evaluate_type {
     };
     ($node:ident; $($type:ident($value:ident) => $expr:expr$(,)?)+) => {
         match $node {
-            $(NodeValue::$type($value) => Ok($expr),)+
+            $(Self::$type($value) => Ok($expr),)+
             _ => {
                 return Err(Error::UnhandledType {
                     expected: vec![$(NodeType::$type,)+],
@@ -97,61 +128,71 @@ macro_rules! evaluate_type {
     };
 }
 
+macro_rules! common_getters {
+    () => {
+        pub fn integer(&self) -> crate::Result<NodeInteger> {
+            evaluate_type! {
+                self;
+                Integer(value) => *value,
+                Float(value) => *value as NodeInteger,
+            }
+        }
+
+        pub fn integer_strict(&self) -> crate::Result<NodeInteger> {
+            evaluate_type!(self, Integer(value) => *value)
+        }
+
+        pub fn float(&self) -> crate::Result<NodeFloat> {
+            evaluate_type! {
+                self;
+                Integer(value) => *value as NodeFloat,
+                Float(value) => *value,
+            }
+        }
+
+        pub fn float_strict(&self) -> crate::Result<NodeFloat> {
+            evaluate_type!(self, Float(value) => *value)
+        }
+
+        pub fn string(&self) -> crate::Result<&StringBox> {
+            evaluate_type!(self, String(value) => value)
+        }
+
+        pub fn symbol(&self) -> crate::Result<&Symbol> {
+            evaluate_type!(self, Symbol(value) => value)
+        }
+
+        pub fn object(&self) -> crate::Result<&ObjectBox> {
+            evaluate_type!(self, Object(value) => value)
+        }
+
+        pub fn function(&self) -> crate::Result<HandleFn> {
+            evaluate_type!(self, Function(value) => *value)
+        }
+
+        pub fn array(&self) -> crate::Result<&ArrayBox> {
+            evaluate_type!(self, Array(value) => value)
+        }
+    };
+}
+
 impl NodeValue {
     pub const fn handled() -> Self {
         Self::Integer(0)
     }
 
-    pub fn integer(&self) -> crate::Result<NodeInteger> {
-        evaluate_type! {
-            self;
-            Integer(value) => *value,
-            Float(value) => *value as NodeInteger,
-        }
+    common_getters!();
+}
+
+impl RawNodeValue {
+    pub const fn handled() -> Self {
+        Self::Integer(0)
     }
 
-    pub fn integer_strict(&self) -> crate::Result<NodeInteger> {
-        evaluate_type!(self, Integer(value) => *value)
-    }
-
-    pub fn float(&self) -> crate::Result<NodeFloat> {
-        evaluate_type! {
-            self;
-            Integer(value) => *value as NodeFloat,
-            Float(value) => *value,
-        }
-    }
-
-    pub fn float_strict(&self) -> crate::Result<NodeFloat> {
-        evaluate_type!(self, Float(value) => *value)
-    }
-
-    pub fn string(&self) -> crate::Result<&StringBox> {
-        evaluate_type!(self, String(value) => value)
-    }
-
-    pub fn symbol(&self) -> crate::Result<&Symbol> {
-        evaluate_type!(self, Symbol(value) => value)
-    }
+    common_getters!();
 
     pub fn variable(&self) -> crate::Result<&NodeVariable> {
         evaluate_type!(self, Variable(value) => value)
-    }
-
-    pub fn is_unhandled(&self) -> bool {
-        matches!(self, Self::Unhandled)
-    }
-
-    pub fn object(&self) -> crate::Result<&ObjectBox> {
-        evaluate_type!(self, Object(value) => value)
-    }
-
-    pub fn function(&self) -> crate::Result<HandleFn> {
-        evaluate_type!(self, Function(value) => *value)
-    }
-
-    pub fn array(&self) -> crate::Result<&ArrayBox> {
-        evaluate_type!(self, Array(value) => value)
     }
 
     pub fn command(&self) -> crate::Result<&CommandBox> {
@@ -161,34 +202,56 @@ impl NodeValue {
     pub fn property(&self) -> crate::Result<&PropertyBox> {
         evaluate_type!(self, Property(value) => value)
     }
+
+    pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
+        let evaluated = match &self {
+            Self::Integer(value) => NodeValue::from(value),
+            Self::Float(value) => NodeValue::from(value),
+            Self::String(value) => NodeValue::from(value),
+
+            Self::Symbol(value) => NodeValue::from(value),
+            Self::Variable(name) => context.get_variable(&name.symbol),
+            Self::Unhandled => NodeValue::Unhandled,
+
+            Self::Object(value) => NodeValue::from(value),
+            Self::Function(value) => NodeValue::from(value),
+
+            Self::Array(value) => NodeValue::from(value),
+            Self::Command(value) => context.execute(value)?,
+            Self::Property(_property) => todo!("property node evaluation"),
+        };
+        Ok(evaluated)
+    }
+}
+
+impl From<NodeValue> for RawNodeValue {
+    fn from(value: NodeValue) -> Self {
+        match value {
+            NodeValue::Integer(value) => RawNodeValue::Integer(value),
+            NodeValue::Float(value) => RawNodeValue::Float(value),
+            NodeValue::String(value) => RawNodeValue::String(value),
+            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
+            NodeValue::Unhandled => RawNodeValue::Unhandled,
+
+            NodeValue::Object(value) => RawNodeValue::Object(value),
+            NodeValue::Function(value) => RawNodeValue::Function(value),
+            NodeValue::Array(value) => RawNodeValue::Array(value),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Node {
-    value: NodeValue,
+    value: RawNodeValue,
 }
 
 impl Node {
-    pub const fn handled() -> Self {
-        Self { value: NodeValue::handled() }
-    }
-
-    pub const fn unhandled() -> Self {
-        Self { value: NodeValue::Unhandled }
-    }
-
     pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
-        let evaluated = match &self.value {
-            NodeValue::Variable(name) => context.get_variable(&name.symbol).value,
-            NodeValue::Command(command) => context.execute(command)?.value,
-            NodeValue::Property(_property) => todo!("property node evaluation"),
-            value => value.clone(),
-        };
-        Ok(evaluated)
+        self.value.evaluate(context)
     }
 
     #[inline]
-    pub const fn unevaluated(&self) -> &NodeValue {
+    pub const fn unevaluated(&self) -> &RawNodeValue {
         &self.value
     }
 
@@ -216,13 +279,8 @@ impl Node {
         self.evaluate(context)?.symbol().cloned()
     }
 
-    // No context arg here; variables are evaluated away
     pub fn variable(&self) -> crate::Result<NodeVariable> {
         self.unevaluated().variable().cloned()
-    }
-
-    pub fn is_unhandled(&self) -> bool {
-        self.unevaluated().is_unhandled()
     }
 
     pub fn object(&self, context: &mut Context) -> crate::Result<ObjectBox> {
@@ -237,15 +295,32 @@ impl Node {
         self.evaluate(context)?.array().cloned()
     }
 
-    // No context arg here; commands are evaluated away
     pub fn command(&self) -> crate::Result<CommandBox> {
         self.unevaluated().command().cloned()
     }
 
-    // No context arg here; properties are evaluated away
     pub fn property(&self) -> crate::Result<PropertyBox> {
         self.unevaluated().property().cloned()
     }
+}
+
+macro_rules! impl_from_raw {
+    ($variant:ident, $from_type:ty) => {
+        impl_from_raw!($variant, $from_type, value => value);
+    };
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
+        impl From<$from_type> for RawNodeValue {
+            fn from($value: $from_type) -> Self {
+                Self::$variant($expr)
+            }
+        }
+
+        impl From<$from_type> for Node {
+            fn from($value: $from_type) -> Self {
+                Self { value: RawNodeValue::from($value) }
+            }
+        }
+    };
 }
 
 macro_rules! impl_from {
@@ -255,51 +330,54 @@ macro_rules! impl_from {
     ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
         impl From<$from_type> for NodeValue {
             fn from($value: $from_type) -> Self {
-                NodeValue::$variant($expr)
+                Self::$variant($expr)
             }
         }
 
-        impl From<$from_type> for Node {
-            fn from($value: $from_type) -> Self {
-                Self { value: NodeValue::from($value) }
-            }
-        }
+        impl_from_raw!($variant, $from_type, $value => $expr);
     };
 }
 
 impl From<NodeValue> for Node {
     fn from(value: NodeValue) -> Self {
-        Self { value }
+        Self { value: RawNodeValue::from(value) }
     }
 }
 
 impl_from!(Integer, NodeInteger);
+impl_from!(Integer, &NodeInteger, value => *value);
 impl_from!(Integer, i32, value => value as NodeInteger);
+impl_from!(Integer, &i32, value => *value as NodeInteger);
 impl_from!(Float, NodeFloat);
+impl_from!(Float, &NodeFloat, value => *value);
 impl_from!(Float, f32, value => value as NodeFloat);
+impl_from!(Float, &f32, value => *value as NodeFloat);
 impl_from!(String, StringBox);
+impl_from!(String, &StringBox, value => value.clone());
 impl_from!(String, String, value => Rc::new(value));
 impl_from!(String, &String, value => Rc::new(value.clone()));
 impl_from!(String, &str, value => Rc::new(value.to_owned()));
 
 impl_from!(Symbol, Symbol);
 impl_from!(Symbol, &Symbol, value => value.clone());
-impl_from!(Variable, NodeVariable);
-impl_from!(Variable, &NodeVariable, value => value.clone());
 
 impl_from!(Object, ObjectBox);
 impl_from!(Object, &ObjectBox, value => value.clone());
 impl_from!(Function, HandleFn);
+impl_from!(Function, &HandleFn, value => *value);
 
 impl_from!(Array, ArrayBox);
-impl_from!(Array, NodeArray, value => Rc::new(value));
 impl_from!(Array, &ArrayBox, value => value.clone());
-impl_from!(Command, CommandBox);
-impl_from!(Command, NodeCommand, value => Rc::new(value));
-impl_from!(Command, &CommandBox, value => value.clone());
-impl_from!(Property, PropertyBox);
-impl_from!(Property, NodeProperty, value => Rc::new(value));
-impl_from!(Property, &PropertyBox, value => value.clone());
+impl_from!(Array, NodeArray, value => Rc::new(value));
+
+impl_from_raw!(Variable, NodeVariable);
+impl_from_raw!(Variable, &NodeVariable, value => value.clone());
+impl_from_raw!(Command, CommandBox);
+impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
+impl_from_raw!(Command, &CommandBox, value => value.clone());
+impl_from_raw!(Property, PropertyBox);
+impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
+impl_from_raw!(Property, &PropertyBox, value => value.clone());
 
 #[derive(Debug, Clone)]
 pub struct NodeArray {
@@ -326,7 +404,7 @@ impl NodeArray {
         self.node(index)?.evaluate(context)
     }
 
-    pub fn unevaluated(&self, index: usize) -> crate::Result<&NodeValue> {
+    pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
         Ok(self.node(index)?.unevaluated())
     }
 
@@ -380,7 +458,7 @@ impl NodeArray {
 
     pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
         for node in self.iter() {
-            let NodeValue::Array(array) = node.unevaluated() else {
+            let RawNodeValue::Array(array) = node.unevaluated() else {
                 continue;
             };
             let Ok(node) = array.unevaluated(0) else {

@@ -2,12 +2,12 @@
 
 use crate::{parse::loader, LoadError};
 
-use super::{Error, HandleFn, Node, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
+use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
     symbol_table: SymbolTable,
     macros: SymbolMap<NodeArray>,
-    variables: SymbolMap<Node>,
+    variables: SymbolMap<NodeValue>,
     functions: SymbolMap<HandleFn>,
 }
 
@@ -45,18 +45,18 @@ impl Context {
         self.macros.get(name)
     }
 
-    pub fn get_variable(&mut self, name: &Symbol) -> Node {
+    pub fn get_variable(&mut self, name: &Symbol) -> NodeValue {
         match self.variables.get(name) {
             Some(value) => value.clone(),
             None => {
-                let value = Node::from(0);
+                let value = NodeValue::from(0);
                 self.variables.insert(name.clone(), value.clone());
                 value
             },
         }
     }
 
-    pub fn set_variable(&mut self, name: Symbol, value: Node) {
+    pub fn set_variable(&mut self, name: Symbol, value: NodeValue) {
         self.variables.insert(name, value);
     }
 
@@ -78,7 +78,7 @@ impl Context {
         loader::load_text(self, text)
     }
 
-    pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {
+    pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 Some(func) => func(self, command)?,
@@ -87,10 +87,10 @@ impl Context {
             NodeValue::Object(_obj) => todo!("obj.handle(self, command)?"),
             NodeValue::Function(func) => func(self, command)?,
 
-            _ => Node::unhandled(),
+            _ => NodeValue::Unhandled,
         };
 
-        if result.is_unhandled() {
+        if let NodeValue::Unhandled = result {
             todo!("default handler")
         }
 
