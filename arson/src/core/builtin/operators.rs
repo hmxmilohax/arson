@@ -24,7 +24,7 @@ mod arithmetic {
         context.register_func_by_name("%=", self::modulo_assign);
     }
 
-    pub fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
         fn add_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
             let Some(node) = args.get_opt(0) else {
                 return Ok(NodeValue::from(left));
@@ -56,7 +56,7 @@ mod arithmetic {
         }
     }
 
-    pub fn subtract(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn subtract(context: &mut Context, args: &NodeSlice) -> HandleResult {
         if args.len() == 1 {
             // Unary negation
             return evaluate_node! {
@@ -97,7 +97,7 @@ mod arithmetic {
         }
     }
 
-    pub fn multiply(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn multiply(context: &mut Context, args: &NodeSlice) -> HandleResult {
         fn multiply_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
             let Some(node) = args.get_opt(0) else {
                 return Ok(NodeValue::from(left));
@@ -129,7 +129,7 @@ mod arithmetic {
         }
     }
 
-    pub fn divide(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn divide(context: &mut Context, args: &NodeSlice) -> HandleResult {
         fn divide_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
             let Some(node) = args.get_opt(0) else {
                 return Ok(NodeValue::from(left));
@@ -164,7 +164,7 @@ mod arithmetic {
         }
     }
 
-    pub fn modulo(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn modulo(context: &mut Context, args: &NodeSlice) -> HandleResult {
         fn divide_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
             let Some(node) = args.get_opt(0) else {
                 return Ok(NodeValue::from(left));
@@ -209,23 +209,23 @@ mod arithmetic {
         Ok(result)
     }
 
-    pub fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         self::op_assign(context, args, self::add)
     }
 
-    pub fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         self::op_assign(context, args, self::subtract)
     }
 
-    pub fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         self::op_assign(context, args, self::multiply)
     }
 
-    pub fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         self::op_assign(context, args, self::divide)
     }
 
-    pub fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         self::op_assign(context, args, self::modulo)
     }
 }
@@ -242,38 +242,38 @@ mod comparison {
         context.register_func_by_name("<=", self::less_equal);
     }
 
-    pub fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? == args.evaluate(context, 1)?,
         ))
     }
 
-    pub fn not_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn not_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? != args.evaluate(context, 1)?,
         ))
     }
 
-    pub fn greater_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn greater_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(args.evaluate(context, 0)? > args.evaluate(context, 1)?))
     }
 
-    pub fn greater_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn greater_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? >= args.evaluate(context, 1)?,
         ))
     }
 
-    pub fn less_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn less_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(args.evaluate(context, 0)? < args.evaluate(context, 1)?))
     }
 
-    pub fn less_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    fn less_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert!(args.len() == 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? <= args.evaluate(context, 1)?,
