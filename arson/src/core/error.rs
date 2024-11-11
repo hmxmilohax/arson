@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use crate::LoadError;
+
 use super::{NodeType, Symbol};
 
 #[non_exhaustive]
@@ -16,6 +18,9 @@ pub enum Error {
         index: usize,
         range: std::ops::Range<usize>,
     },
+
+    #[error("Error loading file: {0}")]
+    LoadError(#[from] LoadError),
 
     #[error("Entry for symbol {0} not found")]
     EntryNotFound(Symbol),
