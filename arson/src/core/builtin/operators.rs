@@ -13,8 +13,10 @@ mod arithmetic {
 
     pub fn register_funcs(context: &mut Context) {
         context.register_func_by_name("+", self::add);
+        context.register_func_by_name("++", self::increment);
         context.register_func_by_name("+=", self::add_assign);
         context.register_func_by_name("-", self::subtract);
+        context.register_func_by_name("--", self::decrement);
         context.register_func_by_name("-=", self::subtract_assign);
         context.register_func_by_name("*", self::multiply);
         context.register_func_by_name("*=", self::multiply_assign);
@@ -199,8 +201,7 @@ mod arithmetic {
         }
     }
 
-    fn op_assign(context: &mut Context, args: &NodeSlice, f: HandleFn) -> HandleResult {
-        let result = f(context, args)?;
+    fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
         evaluate_node! {
             args.unevaluated(0)?;
             RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
@@ -209,24 +210,43 @@ mod arithmetic {
         Ok(result)
     }
 
+    fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 1);
+        let add_args = [args.get(0)?.clone(), Node::from(1)];
+        let result = self::add(context, NodeSlice::new(&add_args))?;
+        self::op_assign(context, args, result)
+    }
+
+    fn decrement(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert!(args.len() == 1);
+        let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
+        let result = self::subtract(context, NodeSlice::new(&subtract_args))?;
+        self::op_assign(context, args, result)
+    }
+
     fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        self::op_assign(context, args, self::add)
+        let result = self::add(context, args)?;
+        self::op_assign(context, args, result)
     }
 
     fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        self::op_assign(context, args, self::subtract)
+        let result = self::subtract(context, args)?;
+        self::op_assign(context, args, result)
     }
 
     fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        self::op_assign(context, args, self::multiply)
+        let result = self::multiply(context, args)?;
+        self::op_assign(context, args, result)
     }
 
     fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        self::op_assign(context, args, self::divide)
+        let result = self::divide(context, args)?;
+        self::op_assign(context, args, result)
     }
 
     fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        self::op_assign(context, args, self::modulo)
+        let result = self::modulo(context, args)?;
+        self::op_assign(context, args, result)
     }
 }
 
