@@ -7,15 +7,15 @@ fn main() -> arson::Result<()> {
 
     let mut context = Context::new();
 
-    context.register_func_by_name("print", |_context, args| {
-        let message = args.string(1)?;
+    context.register_func_by_name("print", |context, args| {
+        let message = args.string(context, 1)?;
         println!("{message}");
-        Ok(Node::Integer(0))
+        Ok(Node::handled())
     })?;
 
     let file = context.load_text(include_str!("../run/main.dta"))?;
     let command = file.find_array(&context.add_symbol("main"))?.command(1)?;
-    context.execute(command)?;
+    context.execute(&command)?;
 
     Ok(())
 }

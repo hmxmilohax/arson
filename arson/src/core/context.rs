@@ -2,7 +2,7 @@
 
 use crate::{parse::loader, LoadError};
 
-use super::{Error, HandleFn, Node, NodeArray, NodeCommand, Symbol, SymbolMap, SymbolTable};
+use super::{Error, HandleFn, Node, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
     symbol_table: SymbolTable,
@@ -62,18 +62,18 @@ impl Context {
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {
-        let result = match command.node(0)? {
-            Node::Symbol(symbol) => match self.fn_map.get(symbol) {
+        let result = match command.evaluate(self, 0)? {
+            NodeValue::Symbol(symbol) => match self.fn_map.get(&symbol) {
                 Some(func) => func(self, command)?,
                 None => return Err(Error::EntryNotFound(symbol.clone())),
             },
-            // Node::Object(obj) => obj.handle(self, command)?,
-            Node::Function(func) => func(self, command)?,
+            NodeValue::Object(_obj) => todo!("obj.handle(self, command)?"),
+            NodeValue::Function(func) => func(self, command)?,
 
-            _ => Node::Unhandled,
+            _ => Node::unhandled(),
         };
 
-        if let Node::Unhandled = result {
+        if result.is_unhandled() {
             todo!("default handler")
         }
 

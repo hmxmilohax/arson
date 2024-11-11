@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
@@ -52,6 +53,18 @@ impl Hash for Symbol {
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.name.fmt(f)
+    }
+}
+
+// A unique identifier specifically for a scripting variable.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VarSymbol {
+    symbol: Symbol,
+}
+
+impl Borrow<Symbol> for VarSymbol {
+    fn borrow(&self) -> &Symbol {
+        &self.symbol
     }
 }
 

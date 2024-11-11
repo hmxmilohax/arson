@@ -58,16 +58,16 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
 
     fn load_node(&mut self, expr: Expression<'src>) -> NodeResult {
         let node = match expr.kind {
-            ExpressionKind::Integer(value) => Node::Integer(value),
-            ExpressionKind::Float(value) => Node::Float(value),
-            ExpressionKind::String(value) => Node::String(value.to_owned()),
-            ExpressionKind::Symbol(value) => Node::Symbol(self.context.add_symbol(value)),
-            ExpressionKind::Variable(value) => Node::Variable(self.context.add_symbol(value)),
-            ExpressionKind::Unhandled => Node::Unhandled,
+            ExpressionKind::Integer(value) => Node::from(value),
+            ExpressionKind::Float(value) => Node::from(value),
+            ExpressionKind::String(value) => Node::from(value.to_owned()),
+            ExpressionKind::Symbol(value) => Node::from(self.context.add_symbol(value)),
+            ExpressionKind::Variable(value) => Node::from(self.context.add_symbol(value)),
+            ExpressionKind::Unhandled => Node::unhandled(),
 
-            ExpressionKind::Array(exprs) => Node::Array(self.load_array(exprs.into_iter())),
-            ExpressionKind::Command(exprs) => Node::Command(NodeCommand::from(self.load_array(exprs.into_iter()))),
-            ExpressionKind::Property(exprs) => Node::Property(NodeProperty::from(self.load_array(exprs.into_iter()))),
+            ExpressionKind::Array(exprs) => Node::from(self.load_array(exprs.into_iter())),
+            ExpressionKind::Command(exprs) => Node::from(NodeCommand::from(self.load_array(exprs.into_iter()))),
+            ExpressionKind::Property(exprs) => Node::from(NodeProperty::from(self.load_array(exprs.into_iter()))),
 
             ExpressionKind::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);
@@ -108,7 +108,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     },
                 };
 
-                Node::Array(array)
+                Node::from(array)
             },
         };
 
