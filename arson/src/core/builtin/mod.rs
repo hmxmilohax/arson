@@ -2,8 +2,8 @@
 
 use super::Context;
 
-pub mod arithmetic;
+pub mod operators;
 
 pub fn register_funcs(context: &mut Context) {
-    arithmetic::register_funcs(context);
+    operators::register_funcs(context);
 }

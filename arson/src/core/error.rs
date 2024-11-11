@@ -15,6 +15,9 @@ pub enum Error {
     #[error("Type mismatch: expected one of {expected:?}, got {actual:?}")]
     UnhandledType { expected: Vec<NodeType>, actual: NodeType },
 
+    #[error("Left operand {left:?} is not compatible with right operand {right:?}")]
+    BadOperand { left: NodeType, right: NodeType },
+
     #[error("Index outside of range {0:?}")]
     OutOfRange(Range<usize>),
 
@@ -29,6 +32,12 @@ pub enum Error {
 
     #[error("{0}")]
     Failure(String),
+}
+
+impl Error {
+    pub fn bad_operand(left: NodeType, right: NodeType) -> Self {
+        Error::BadOperand { left, right }
+    }    
 }
 
 pub type Result<T> = std::result::Result<T, self::Error>;

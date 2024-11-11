@@ -210,6 +210,46 @@ impl NodeValue {
     common_getters!();
 }
 
+impl PartialEq for NodeValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (NodeValue::Integer(left), NodeValue::Integer(right)) => left == right,
+            (NodeValue::Float(left), NodeValue::Float(right)) => left == right,
+            (NodeValue::String(left), NodeValue::String(right)) => left == right,
+            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left == right,
+            (NodeValue::Unhandled, NodeValue::Unhandled) => true,
+
+            (NodeValue::Object(left), NodeValue::Object(right)) => Rc::ptr_eq(left, right),
+            (NodeValue::Function(left), NodeValue::Function(right)) => left == right,
+            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
+
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for NodeValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (NodeValue::Integer(left), NodeValue::Integer(right)) => left.partial_cmp(right),
+            (NodeValue::Float(left), NodeValue::Float(right)) => left.partial_cmp(right),
+            (NodeValue::String(left), NodeValue::String(right)) => left.partial_cmp(right),
+            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left.partial_cmp(right),
+            (NodeValue::Unhandled, NodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
+
+            (NodeValue::Object(left), NodeValue::Object(right)) => {
+                let left = Rc::as_ptr(left) as *const ();
+                let right = Rc::as_ptr(right) as *const ();
+                left.partial_cmp(&right)
+            },
+            (NodeValue::Function(left), NodeValue::Function(right)) => left.partial_cmp(right),
+            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
+
+            _ => None,
+        }
+    }
+}
+
 impl RawNodeValue {
     pub const fn handled() -> Self {
         Self::Integer(0)
@@ -262,6 +302,56 @@ impl From<NodeValue> for RawNodeValue {
             NodeValue::Object(value) => RawNodeValue::Object(value),
             NodeValue::Function(value) => RawNodeValue::Function(value),
             NodeValue::Array(value) => RawNodeValue::Array(value),
+        }
+    }
+}
+
+impl PartialEq for RawNodeValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left == right,
+            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left == right,
+            (RawNodeValue::String(left), RawNodeValue::String(right)) => left == right,
+
+            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left == right,
+            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left == right,
+            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => true,
+
+            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => Rc::ptr_eq(left, right),
+            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left == right,
+
+            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
+            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
+            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
+
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for RawNodeValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left.partial_cmp(right),
+            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left.partial_cmp(right),
+            (RawNodeValue::String(left), RawNodeValue::String(right)) => left.partial_cmp(right),
+
+            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left.partial_cmp(right),
+            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.partial_cmp(right),
+            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
+
+            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => {
+                let left = Rc::as_ptr(left) as *const ();
+                let right = Rc::as_ptr(right) as *const ();
+                left.partial_cmp(&right)
+            },
+            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left.partial_cmp(right),
+
+            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
+            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
+            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
+
+            _ => None,
         }
     }
 }
@@ -374,6 +464,8 @@ impl_from!(Integer, NodeInteger);
 impl_from!(Integer, &NodeInteger, value => *value);
 impl_from!(Integer, i32, value => value as NodeInteger);
 impl_from!(Integer, &i32, value => *value as NodeInteger);
+impl_from!(Integer, bool, value => value as NodeInteger);
+impl_from!(Integer, &bool, value => *value as NodeInteger);
 impl_from!(Float, NodeFloat);
 impl_from!(Float, &NodeFloat, value => *value);
 impl_from!(Float, f32, value => value as NodeFloat);
