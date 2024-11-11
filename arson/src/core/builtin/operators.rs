@@ -57,6 +57,15 @@ mod arithmetic {
     }
 
     pub fn subtract(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        if args.len() == 1 {
+            // Unary negation
+            return evaluate_node! {
+                args.evaluate(context, 0)?;
+                NodeValue::Integer(value) => Ok(NodeValue::from(value.overflowing_neg().0)),
+                NodeValue::Float(value) => Ok(NodeValue::from(-value)),
+            };
+        }
+
         fn subtract_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
             let Some(node) = args.get_opt(0) else {
                 return Ok(NodeValue::from(left));
