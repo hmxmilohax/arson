@@ -746,7 +746,7 @@ fn preprocess<'src>(
     }
 }
 
-pub fn parse_text<'src>(text: &'src str) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
+pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<ParseError>> {
     parse_tokens(lexer::lex_text(text))
 }
 
