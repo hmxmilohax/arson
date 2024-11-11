@@ -36,10 +36,7 @@ enum NodeResult {
 
 impl<'ctx, 'src> Loader<'ctx, 'src> {
     fn new(context: &'ctx mut Context) -> Self {
-        Self {
-            context,
-            phantom: PhantomData,
-        }
+        Self { context, phantom: PhantomData }
     }
 
     fn load_array(&mut self, ast: impl Iterator<Item = Expression<'src>>) -> NodeArray {
@@ -133,10 +130,7 @@ pub fn load_text(context: &mut Context, text: &str) -> Result<NodeArray, LoadErr
     Ok(load_ast(context, ast.into_iter()))
 }
 
-pub fn load_ast<'src>(
-    context: &mut Context,
-    ast: impl Iterator<Item = Expression<'src>>,
-) -> NodeArray {
+pub fn load_ast<'src>(context: &mut Context, ast: impl Iterator<Item = Expression<'src>>) -> NodeArray {
     let mut loader = Loader::new(context);
     loader.load_array(ast)
 }

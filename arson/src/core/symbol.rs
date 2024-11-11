@@ -100,20 +100,9 @@ impl SymbolTable {
         self.table.get(name).cloned()
     }
 
-    /// Removes a symbol from the table by its name.
-    ///
-    /// Returns whether the symbol existed prior to removal:
-    /// that is, whether it was successfully removed.
-    pub fn remove_by_name(&mut self, name: &str) -> bool {
-        self.table.remove(name).map_or(false, |_| true)
-    }
-
     /// Removes the given symbol from the table.
-    ///
-    /// Returns whether the symbol existed prior to removal:
-    /// that is, whether it was successfully removed.
-    pub fn remove_by_symbol(&mut self, symbol: &Symbol) -> bool {
-        self.table.remove(&*symbol.name).is_some()
+    pub fn remove(&mut self, symbol: &Symbol) {
+        self.table.remove(&*symbol.name);
     }
 }
 
@@ -127,11 +116,9 @@ impl Default for SymbolTable {
 mod tests {
     use super::*;
 
-    /// Tests [`Symbol`].
     mod symbol {
         use super::*;
 
-        /// Tests [`Symbol`] equality.
         #[test]
         fn eq() {
             let sym1 = new_symbol("asdf");
@@ -140,7 +127,6 @@ mod tests {
             assert_eq!(sym1, sym2)
         }
 
-        /// Ensures [`Symbol`] equality works by reference only.
         #[test]
         fn ref_equality_only() {
             let sym1 = new_symbol("asdf");
@@ -155,11 +141,9 @@ mod tests {
         }
     }
 
-    /// Tests [`SymbolTable`].
     mod table {
         use super::*;
 
-        /// Tests adding symbols to a [`SymbolTable`].
         #[test]
         fn add() {
             let mut table = SymbolTable::new();
@@ -169,7 +153,6 @@ mod tests {
             assert!(table.table.contains_key(&*symbol.name));
         }
 
-        /// Tests getting symbols from a [`SymbolTable`].
         #[test]
         fn get() {
             let mut table = SymbolTable::new();
@@ -179,25 +162,13 @@ mod tests {
             assert_eq!(symbol, symbol2);
         }
 
-        /// Tests removing symbols from a [`SymbolTable`] by name string.
         #[test]
-        fn remove_by_name() {
-            let mut table = SymbolTable::new();
-            table.add("asdf");
-
-            table.get("asdf").expect("The symbol should be added");
-            table.remove_by_name("asdf");
-            assert!(table.get("asdf") == None);
-        }
-
-        /// Tests removing symbols from a [`SymbolTable`] by symbol instance.
-        #[test]
-        fn remove_by_symbol() {
+        fn remove() {
             let mut table = SymbolTable::new();
             table.add("asdf");
 
             let symbol = table.get("asdf").expect("The symbol should be added");
-            table.remove_by_symbol(&symbol);
+            table.remove(&symbol);
             assert!(table.get("asdf") == None);
         }
     }

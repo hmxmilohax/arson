@@ -115,10 +115,7 @@ pub enum ParseError {
     BadDirective(Span),
 
     TokenError(Span, LexError),
-    IncorrectToken {
-        expected: TokenKind,
-        actual: OwnedToken,
-    },
+    IncorrectToken { expected: TokenKind, actual: OwnedToken },
 
     UnexpectedEof,
 }
@@ -319,7 +316,9 @@ impl<'src> Preprocessor<'src> {
             TokenValue::Undefine => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Undefine)
             },
-            TokenValue::Include => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include),
+            TokenValue::Include => {
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include)
+            },
             TokenValue::IncludeOptional => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::IncludeOptional)
             },
@@ -480,7 +479,7 @@ impl<'src> Parser<'src> {
             array_stack: Vec::new(),
             errors: Vec::new(),
             unexpected_eof: false,
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 

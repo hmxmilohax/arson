@@ -8,7 +8,7 @@ pub struct Context {
     symbol_table: SymbolTable,
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<Node>,
-    fn_map: SymbolMap<HandleFn>,
+    functions: SymbolMap<HandleFn>,
 }
 
 impl Context {
@@ -17,7 +17,7 @@ impl Context {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
-            fn_map: SymbolMap::new(),
+            functions: SymbolMap::new(),
         }
     }
 
@@ -25,8 +25,8 @@ impl Context {
         self.symbol_table.add(name)
     }
 
-    pub fn remove_symbol(&mut self, name: &Symbol) -> bool {
-        self.symbol_table.remove_by_symbol(name)
+    pub fn remove_symbol(&mut self, name: &Symbol) {
+        self.symbol_table.remove(name);
     }
 
     pub fn get_symbol(&mut self, name: &str) -> Option<Symbol> {
@@ -66,11 +66,11 @@ impl Context {
     }
 
     pub fn register_func(&mut self, name: Symbol, func: HandleFn) -> crate::Result<()> {
-        if self.fn_map.contains_key(&name) {
+        if self.functions.contains_key(&name) {
             return Err(Error::DuplicateEntry(name));
         }
 
-        self.fn_map.insert(name, func);
+        self.functions.insert(name, func);
         Ok(())
     }
 
@@ -80,7 +80,7 @@ impl Context {
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {
         let result = match command.evaluate(self, 0)? {
-            NodeValue::Symbol(symbol) => match self.fn_map.get(&symbol) {
+            NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 Some(func) => func(self, command)?,
                 None => return Err(Error::EntryNotFound(symbol.clone())),
             },
