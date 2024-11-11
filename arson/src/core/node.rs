@@ -106,29 +106,50 @@ impl NodeValue {
     }
 }
 
-/// Helper macro for evaluating whether a node matches a single type.
+/// Helper macro for evaluating a node against a set of types,
+/// returning an error if none of them match.
+///
 /// Used to prevent desyncs between match arms and error information.
-macro_rules! evaluate_type {
-    ($node:ident, $type:ident($value:ident) => $expr:expr) => {
+#[macro_export]
+macro_rules! evaluate_node {
+    (
+        $node:expr;
+        $($type:ident::$variant:ident($value:ident) => $expr:expr$(,)?)+
+    ) => {
         match $node {
-            Self::$type($value) => Ok($expr),
-            _ => {
-                return Err(Error::TypeMismatch {
-                    expected: NodeType::$type,
-                    actual: $node.get_type(),
-                })
+            $($type::$variant($value) => $expr,)+
+            unhandled => {
+                let expected = vec![$($crate::NodeType::$variant,)+];
+                if expected.len() == 1 {
+                    return Err($crate::Error::TypeMismatch {
+                        expected: expected[0],
+                        actual: unhandled.get_type(),
+                    })
+                } else {
+                    return Err($crate::Error::UnhandledType {
+                        expected,
+                        actual: unhandled.get_type(),
+                    })
+                }
             },
         }
     };
-    ($node:ident; $($type:ident($value:ident) => $expr:expr$(,)?)+) => {
+}
+
+/// Helper macro for evaluating an optional node result against a set of types, using a fallback case for
+/// a [`None`] result, and returning an error on the [`Some`] path if no patterns match.
+///
+/// Used for conciseness and to prevent desyncs between match arms and error information.
+#[macro_export]
+macro_rules! evaluate_node_opt {
+    (
+        Some($some_ident:ident @ $node:expr) => $some_expr:expr;
+        None => $none_expr:expr$(,)?;
+        $($type:ident::$variant:ident($value:ident) => $expr:expr,)+
+    ) => {
         match $node {
-            $(Self::$type($value) => Ok($expr),)+
-            _ => {
-                return Err(Error::UnhandledType {
-                    expected: vec![$(NodeType::$type,)+],
-                    actual: $node.get_type(),
-                })
-            },
+            Some($some_ident) => evaluate_node!($some_expr; $($type::$variant($value) => $expr,)+),
+            None => $none_expr,
         }
     };
 }
@@ -136,47 +157,47 @@ macro_rules! evaluate_type {
 macro_rules! common_getters {
     () => {
         pub fn integer(&self) -> crate::Result<NodeInteger> {
-            evaluate_type! {
+            evaluate_node! {
                 self;
-                Integer(value) => *value,
-                Float(value) => *value as NodeInteger,
+                Self::Integer(value) => Ok(*value),
+                Self::Float(value) => Ok(*value as NodeInteger),
             }
         }
 
         pub fn integer_strict(&self) -> crate::Result<NodeInteger> {
-            evaluate_type!(self, Integer(value) => *value)
+            evaluate_node!(self; Self::Integer(value) => Ok(*value))
         }
 
         pub fn float(&self) -> crate::Result<NodeFloat> {
-            evaluate_type! {
+            evaluate_node! {
                 self;
-                Integer(value) => *value as NodeFloat,
-                Float(value) => *value,
+                Self::Integer(value) => Ok(*value as NodeFloat),
+                Self::Float(value) => Ok(*value),
             }
         }
 
         pub fn float_strict(&self) -> crate::Result<NodeFloat> {
-            evaluate_type!(self, Float(value) => *value)
+            evaluate_node!(self; Self::Float(value) => Ok(*value))
         }
 
         pub fn string(&self) -> crate::Result<&StringBox> {
-            evaluate_type!(self, String(value) => value)
+            evaluate_node!(self; Self::String(value) => Ok(value))
         }
 
         pub fn symbol(&self) -> crate::Result<&Symbol> {
-            evaluate_type!(self, Symbol(value) => value)
+            evaluate_node!(self; Self::Symbol(value) => Ok(value))
         }
 
         pub fn object(&self) -> crate::Result<&ObjectBox> {
-            evaluate_type!(self, Object(value) => value)
+            evaluate_node!(self; Self::Object(value) => Ok(value))
         }
 
         pub fn function(&self) -> crate::Result<HandleFn> {
-            evaluate_type!(self, Function(value) => *value)
+            evaluate_node!(self; Self::Function(value) => Ok(*value))
         }
 
         pub fn array(&self) -> crate::Result<&ArrayBox> {
-            evaluate_type!(self, Array(value) => value)
+            evaluate_node!(self; Self::Array(value) => Ok(value))
         }
     };
 }
@@ -197,15 +218,15 @@ impl RawNodeValue {
     common_getters!();
 
     pub fn variable(&self) -> crate::Result<&NodeVariable> {
-        evaluate_type!(self, Variable(value) => value)
+        evaluate_node!(self; Self::Variable(value) => Ok(value))
     }
 
     pub fn command(&self) -> crate::Result<&CommandBox> {
-        evaluate_type!(self, Command(value) => value)
+        evaluate_node!(self; Self::Command(value) => Ok(value))
     }
 
     pub fn property(&self) -> crate::Result<&PropertyBox> {
-        evaluate_type!(self, Property(value) => value)
+        evaluate_node!(self; Self::Property(value) => Ok(value))
     }
 
     pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
@@ -460,6 +481,10 @@ macro_rules! array_impl {
                 Some(value) => Ok(value),
                 None => Err(Error::OutOfRange(0..self.nodes.len())),
             }
+        }
+
+        pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
+            self.nodes.get(index)
         }
 
         pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {

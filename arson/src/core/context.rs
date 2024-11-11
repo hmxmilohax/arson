@@ -2,7 +2,7 @@
 
 use crate::{parse::loader, LoadError};
 
-use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
+use super::{builtin, Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
     symbol_table: SymbolTable,
@@ -13,12 +13,16 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
-        Self {
+        let mut context = Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
-        }
+        };
+
+        builtin::register_funcs(&mut context);
+
+        context
     }
 
     pub fn add_symbol(&mut self, name: &str) -> Symbol {
@@ -60,18 +64,13 @@ impl Context {
         self.variables.insert(name, value);
     }
 
-    pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> crate::Result<()> {
+    pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> bool {
         let symbol = self.symbol_table.add(name);
-        self.register_func(symbol, func)
+        self.register_func(&symbol, func)
     }
 
-    pub fn register_func(&mut self, name: Symbol, func: HandleFn) -> crate::Result<()> {
-        if self.functions.contains_key(&name) {
-            return Err(Error::DuplicateEntry(name));
-        }
-
-        self.functions.insert(name, func);
-        Ok(())
+    pub fn register_func(&mut self, name: &Symbol, func: HandleFn) -> bool {
+        self.functions.insert(name.clone(), func).is_none()
     }
 
     pub fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
