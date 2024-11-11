@@ -27,12 +27,6 @@ pub struct OwnedToken {
     pub location: Span,
 }
 
-macro_rules! param_sink {
-    ($_:tt, $($i:tt)*) => {
-        $($i)*
-    };
-}
-
 macro_rules! to_owned_type {
     (str) => {
         String

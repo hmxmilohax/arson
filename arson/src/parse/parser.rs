@@ -5,7 +5,7 @@ use std::{iter::Peekable, marker::PhantomData};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use logos::Span;
 
-use super::lexer::{LexError, OwnedToken, OwnedTokenValue, Token, TokenKind, TokenValue};
+use super::lexer::{self, LexError, OwnedToken, OwnedTokenValue, Token, TokenKind, TokenValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -747,6 +747,10 @@ fn preprocess<'src>(
     }
 }
 
+pub fn parse_text<'src>(text: &'src str) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
+    parse_tokens(lexer::lex_text(text))
+}
+
 pub fn parse_tokens<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
     let preprocessed = preprocess(tokens)?;
 
@@ -760,8 +764,6 @@ pub fn parse_tokens<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<V
 
 #[cfg(test)]
 mod tests {
-    use crate::parse::lexer;
-
     use super::*;
 
     const fn new_token(kind: OwnedTokenValue, location: Span) -> OwnedToken {
@@ -1053,8 +1055,7 @@ mod tests {
         }
 
         fn assert_parsed(text: &str, expected: Vec<Expression>) {
-            let tokens = lexer::lex_text(text);
-            let ast = match parse_tokens(tokens) {
+            let ast = match parse_text(text) {
                 Ok(ast) => ast,
                 Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
             };
@@ -1062,8 +1063,7 @@ mod tests {
         }
 
         fn assert_errors(text: &str, expected: Vec<ParseError>) {
-            let tokens = lexer::lex_text(text);
-            let errors = match parse_tokens(tokens) {
+            let errors = match parse_text(text) {
                 Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
                 Err(errors) => errors,
             };

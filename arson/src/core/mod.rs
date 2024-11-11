@@ -4,7 +4,6 @@ mod context;
 mod error;
 mod node;
 mod object;
-mod parse;
 mod symbol;
 
 pub use context::*;

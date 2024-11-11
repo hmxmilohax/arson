@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use crate::{parse::loader, LoadError};
+
 use super::{Error, HandleFn, Node, NodeArray, NodeCommand, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
@@ -23,6 +25,10 @@ impl Context {
 
     pub fn remove_symbol(&mut self, name: &Symbol) -> bool {
         self.symbol_table.remove_by_symbol(name)
+    }
+
+    pub fn get_symbol(&mut self, name: &str) -> Option<Symbol> {
+        self.symbol_table.get(name)
     }
 
     pub fn add_macro(&mut self, name: Symbol, array: NodeArray) {
@@ -51,8 +57,8 @@ impl Context {
         Ok(())
     }
 
-    pub fn load_text(&mut self, text: &str) -> crate::Result<NodeArray> {
-        super::parse::parse_dta(self, text)
+    pub fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
+        loader::load_text(self, text)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<Node> {

@@ -24,19 +24,30 @@ macro_rules! define_node_types {
         pub enum Node {
             $($(#[$attr])* $type$(($value))?,)+
         }
+        
+        impl Node {
+            pub fn get_type(&self) -> NodeType {
+                match self {
+                    $(Node::$type$((param_sink!($value, _)))? => NodeType::$type,)+
+                }
+            }
+        }
     }
 }
 
-define_node_types! {
-    #[default]
-    Unhandled,
+type ObjectBox = Rc<dyn Object>;
 
+define_node_types! {
     Integer(NodeInteger),
     Float(NodeFloat),
     String(String),
-    Symbol(Symbol),
 
-    Object(Rc<dyn Object>),
+    Symbol(Symbol),
+    Variable(Symbol),
+    #[default]
+    Unhandled,
+
+    Object(ObjectBox),
     Function(HandleFn),
 
     Array(NodeArray),
@@ -72,24 +83,6 @@ macro_rules! evaluate_type {
 }
 
 impl Node {
-    pub fn get_type(&self) -> NodeType {
-        match self {
-            Self::Unhandled => NodeType::Unhandled,
-
-            Self::Integer(_) => NodeType::Integer,
-            Self::Float(_) => NodeType::Float,
-            Self::String(_) => NodeType::String,
-            Self::Symbol(_) => NodeType::Symbol,
-
-            Self::Object(_) => NodeType::Object,
-            Self::Function(_) => NodeType::Function,
-
-            Self::Array(_) => NodeType::Array,
-            Self::Command(_) => NodeType::Command,
-            Self::Property(_) => NodeType::Property,
-        }
-    }
-
     pub fn integer(&self) -> crate::Result<NodeInteger> {
         evaluate_type! {
             self;
