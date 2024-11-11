@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use super::{Context, Error, Object, Symbol, VarSymbol};
+use super::{Context, Error, Object, Symbol};
 
 /// A function which is callable by a [`NodeCommand`].
 pub type HandleFn = fn(context: &mut Context, args: &NodeArray) -> HandleResult;
@@ -11,6 +11,17 @@ pub type HandleResult = crate::Result<Node>;
 
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NodeVariable {
+    pub symbol: Symbol,
+}
+
+impl From<Symbol> for NodeVariable {
+    fn from(value: Symbol) -> Self {
+        Self { symbol: value }
+    }
+}
 
 macro_rules! define_node_types {
     ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
@@ -48,7 +59,7 @@ define_node_types! {
     String(StringBox),
 
     Symbol(Symbol),
-    Variable(VarSymbol),
+    Variable(NodeVariable),
     Unhandled,
 
     Object(ObjectBox),
@@ -123,7 +134,7 @@ impl NodeValue {
         evaluate_type!(self, Symbol(value) => value)
     }
 
-    pub fn variable(&self) -> crate::Result<&VarSymbol> {
+    pub fn variable(&self) -> crate::Result<&NodeVariable> {
         evaluate_type!(self, Variable(value) => value)
     }
 
@@ -168,7 +179,7 @@ impl Node {
 
     pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
         let evaluated = match &self.value {
-            NodeValue::Variable(_name) => todo!("variable node evaluation"),
+            NodeValue::Variable(name) => context.get_variable(&name.symbol).value,
             NodeValue::Command(command) => context.execute(command)?.value,
             NodeValue::Property(_property) => todo!("property node evaluation"),
             value => value.clone(),
@@ -206,7 +217,7 @@ impl Node {
     }
 
     // No context arg here; variables are evaluated away
-    pub fn variable(&self) -> crate::Result<VarSymbol> {
+    pub fn variable(&self) -> crate::Result<NodeVariable> {
         self.unevaluated().variable().cloned()
     }
 
@@ -273,8 +284,8 @@ impl_from!(String, &str, value => Rc::new(value.to_owned()));
 
 impl_from!(Symbol, Symbol);
 impl_from!(Symbol, &Symbol, value => value.clone());
-impl_from!(Variable, VarSymbol);
-impl_from!(Variable, &VarSymbol, value => value.clone());
+impl_from!(Variable, NodeVariable);
+impl_from!(Variable, &NodeVariable, value => value.clone());
 
 impl_from!(Object, ObjectBox);
 impl_from!(Object, &ObjectBox, value => value.clone());
@@ -343,7 +354,7 @@ impl NodeArray {
         self.node(index)?.symbol(context)
     }
 
-    pub fn variable(&self, index: usize) -> crate::Result<VarSymbol> {
+    pub fn variable(&self, index: usize) -> crate::Result<NodeVariable> {
         self.node(index)?.variable()
     }
 

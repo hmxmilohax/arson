@@ -7,6 +7,7 @@ use super::{Error, HandleFn, Node, NodeArray, NodeCommand, NodeValue, Symbol, Sy
 pub struct Context {
     symbol_table: SymbolTable,
     macros: SymbolMap<NodeArray>,
+    variables: SymbolMap<Node>,
     fn_map: SymbolMap<HandleFn>,
 }
 
@@ -15,6 +16,7 @@ impl Context {
         Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
+            variables: SymbolMap::new(),
             fn_map: SymbolMap::new(),
         }
     }
@@ -41,6 +43,21 @@ impl Context {
 
     pub fn get_macro(&mut self, name: &Symbol) -> Option<&NodeArray> {
         self.macros.get(name)
+    }
+
+    pub fn get_variable(&mut self, name: &Symbol) -> Node {
+        match self.variables.get(name) {
+            Some(value) => value.clone(),
+            None => {
+                let value = Node::from(0);
+                self.variables.insert(name.clone(), value.clone());
+                value
+            },
+        }
+    }
+
+    pub fn set_variable(&mut self, name: Symbol, value: Node) {
+        self.variables.insert(name, value);
     }
 
     pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> crate::Result<()> {

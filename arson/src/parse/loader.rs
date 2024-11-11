@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty};
+use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeVariable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
 
@@ -62,7 +62,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionKind::Float(value) => Node::from(value),
             ExpressionKind::String(value) => Node::from(value.to_owned()),
             ExpressionKind::Symbol(value) => Node::from(self.context.add_symbol(value)),
-            ExpressionKind::Variable(value) => Node::from(self.context.add_symbol(value)),
+            ExpressionKind::Variable(value) => Node::from(NodeVariable::from(self.context.add_symbol(value))),
             ExpressionKind::Unhandled => Node::unhandled(),
 
             ExpressionKind::Array(exprs) => Node::from(self.load_array(exprs.into_iter())),
