@@ -46,7 +46,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => add_integer(context, args.slice(1..)?, left.overflowing_add(right).0),
                 NodeValue::Float(right) => add_float(context, args.slice(1..)?, left as NodeFloat + right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -58,7 +58,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => add_float(context, args.slice(1..)?, left + right as NodeFloat),
                 NodeValue::Float(right) => add_float(context, args.slice(1..)?, left + right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -87,7 +87,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => subtract_integer(context, args.slice(1..)?, left.overflowing_sub(right).0),
                 NodeValue::Float(right) => subtract_float(context, args.slice(1..)?, left as NodeFloat - right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -99,7 +99,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => subtract_float(context, args.slice(1..)?, left - right as NodeFloat),
                 NodeValue::Float(right) => subtract_float(context, args.slice(1..)?, left - right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -119,7 +119,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => multiply_integer(context, args.slice(1..)?, left.overflowing_mul(right).0),
                 NodeValue::Float(right) => multiply_float(context, args.slice(1..)?, left as NodeFloat * right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -131,7 +131,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => multiply_float(context, args.slice(1..)?, left * right as NodeFloat),
                 NodeValue::Float(right) => multiply_float(context, args.slice(1..)?, left * right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -154,7 +154,7 @@ mod arithmetic {
                     divide_integer(context, args.slice(1..)?, left.overflowing_div(right).0)
                 },
                 NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left as NodeFloat / right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -166,7 +166,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => divide_float(context, args.slice(1..)?, left / right as NodeFloat),
                 NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left / right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -189,7 +189,7 @@ mod arithmetic {
                     divide_integer(context, args.slice(1..)?, left.overflowing_rem(right).0)
                 },
                 NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left as NodeFloat % right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 
@@ -201,7 +201,7 @@ mod arithmetic {
             match node.evaluate(context)? {
                 NodeValue::Integer(right) => divide_float(context, args.slice(1..)?, left % right as NodeFloat),
                 NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left % right),
-                unhandled => return Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
+                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
             }
         }
 

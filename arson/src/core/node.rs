@@ -611,6 +611,7 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
+        #[allow(clippy::into_iter_on_ref)]
         self.nodes.into_iter()
     }
 }
@@ -647,11 +648,11 @@ macro_rules! array_impl {
         pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
             self.get(index)?.boolean(context)
         }
-    
+
         pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
             self.get(index)?.boolean_strict(context)
         }
-    
+
         pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
             self.get(index)?.float(context)
         }

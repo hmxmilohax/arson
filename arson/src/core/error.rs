@@ -37,7 +37,7 @@ pub enum Error {
 impl Error {
     pub fn bad_operand(left: NodeType, right: NodeType) -> Self {
         Error::BadOperand { left, right }
-    }    
+    }
 }
 
 pub type Result<T> = std::result::Result<T, self::Error>;
