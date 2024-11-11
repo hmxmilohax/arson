@@ -240,7 +240,7 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<f64, ParseFloatError> {
     }
 }
 
-pub fn lex(text: &str) -> impl Iterator<Item = Token<'_>> {
+pub fn lex_text(text: &str) -> impl Iterator<Item = Token<'_>> {
     TokenValue::lexer(text).spanned().map(|t| match t {
         (Ok(kind), location) => Token { kind, location },
         (Err(error), location) => Token { kind: TokenValue::Error(error), location },
@@ -253,7 +253,7 @@ mod tests {
 
     fn assert_token(text: &str, kind: TokenValue<'_>, location: Span) {
         let expected = Token { kind, location };
-        let tokens = lex(text).collect::<Vec<_>>();
+        let tokens = lex_text(text).collect::<Vec<_>>();
         assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
     }
 

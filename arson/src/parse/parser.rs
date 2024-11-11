@@ -740,20 +740,20 @@ fn preprocess<'src>(
     tokens: impl Iterator<Item = Token<'src>>,
 ) -> Result<Vec<PreprocessedToken<'src>>, Vec<ParseError>> {
     let mut preprocessor = Preprocessor::new();
-    let (exprs, _) = preprocessor.preprocess(&mut tokens.peekable());
+    let (preprocessed, _) = preprocessor.preprocess(&mut tokens.peekable());
     match preprocessor.errors.is_empty() {
-        true => Ok(exprs),
+        true => Ok(preprocessed),
         false => Err(preprocessor.errors),
     }
 }
 
-pub fn parse<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
+pub fn parse_tokens<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
     let preprocessed = preprocess(tokens)?;
 
     let mut parser = Parser::new();
-    let (exprs, _) = parser.parse(&mut preprocessed.into_iter().peekable());
+    let (ast, _) = parser.parse(&mut preprocessed.into_iter().peekable());
     match parser.errors.is_empty() {
-        true => Ok(exprs),
+        true => Ok(ast),
         false => Err(parser.errors),
     }
 }
@@ -775,22 +775,22 @@ mod tests {
             PreprocessedToken { kind, location }
         }
 
-        fn assert_preprocessed(text: &str, exprs: Vec<PreprocessedToken>) {
-            let tokens = lexer::lex(text);
-            let result = match preprocess(tokens) {
-                Ok(exprs) => exprs,
-                Err(errs) => panic!("Errors encountered while preprocessing: {errs:?}"),
+        fn assert_preprocessed(text: &str, expected: Vec<PreprocessedToken>) {
+            let tokens = lexer::lex_text(text);
+            let preprocessed = match preprocess(tokens) {
+                Ok(preprocessed) => preprocessed,
+                Err(errors) => panic!("Errors encountered while preprocessing: {errors:?}"),
             };
-            assert_eq!(result, exprs, "Unexpected result for '{text}'");
+            assert_eq!(preprocessed, expected, "Unexpected result for '{text}'");
         }
 
-        fn assert_errors(text: &str, errs: Vec<ParseError>) {
-            let tokens = lexer::lex(text);
-            let result = match preprocess(tokens) {
+        fn assert_errors(text: &str, expected: Vec<ParseError>) {
+            let tokens = lexer::lex_text(text);
+            let errors = match preprocess(tokens) {
                 Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead instead.\nText: {text}\nResult: {preprocessed:?}"),
-                Err(errs) => errs,
+                Err(errors) => errors,
             };
-            assert_eq!(result, errs, "Unexpected result for '{text}'");
+            assert_eq!(errors, expected, "Unexpected result for '{text}'");
         }
 
         #[test]
@@ -1052,22 +1052,22 @@ mod tests {
             Expression { kind, location }
         }
 
-        fn assert_parsed(text: &str, exprs: Vec<Expression>) {
-            let tokens = lexer::lex(text);
-            let result = match parse(tokens) {
-                Ok(exprs) => exprs,
+        fn assert_parsed(text: &str, expected: Vec<Expression>) {
+            let tokens = lexer::lex_text(text);
+            let ast = match parse_tokens(tokens) {
+                Ok(ast) => ast,
                 Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
             };
-            assert_eq!(result, exprs, "Unexpected result for '{text}'");
+            assert_eq!(ast, expected, "Unexpected result for '{text}'");
         }
 
-        fn assert_errors(text: &str, errs: Vec<ParseError>) {
-            let tokens = lexer::lex(text);
-            let result = match parse(tokens) {
-                Ok(exprs) => panic!("Expected parsing errors, got AST instead: {exprs:?}"),
-                Err(errs) => errs,
+        fn assert_errors(text: &str, expected: Vec<ParseError>) {
+            let tokens = lexer::lex_text(text);
+            let errors = match parse_tokens(tokens) {
+                Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
+                Err(errors) => errors,
             };
-            assert_eq!(result, errs, "Unexpected result for '{text}'");
+            assert_eq!(errors, expected, "Unexpected result for '{text}'");
         }
 
         #[test]
