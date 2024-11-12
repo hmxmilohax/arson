@@ -3,6 +3,8 @@
 use crate::core::*;
 use crate::{arson_assert, arson_assert_len, evaluate_node};
 
+use super::number_chain;
+
 pub fn register_funcs(context: &mut Context) {
     unary::register_funcs(context);
     binary::register_funcs(context);
@@ -98,35 +100,12 @@ mod binary {
     }
 
     pub(super) fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        fn add_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => add_integer(context, args.slice(1..)?, left.overflowing_add(right).0),
-                NodeValue::Float(right) => add_float(context, args.slice(1..)?, left as NodeFloat + right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        fn add_float(context: &mut Context, args: &NodeSlice, left: NodeFloat) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => add_float(context, args.slice(1..)?, left + right as NodeFloat),
-                NodeValue::Float(right) => add_float(context, args.slice(1..)?, left + right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => add_integer(context, args.slice(1..)?, value),
-            NodeValue::Float(value) => add_float(context, args.slice(1..)?, value),
-        }
+        number_chain(
+            context,
+            args,
+            |left, right| Ok(left.overflowing_add(right).0),
+            |left, right| Ok(left + right),
+        )
     }
 
     pub(super) fn subtract(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -134,137 +113,45 @@ mod binary {
             return unary::negate(context, args);
         }
 
-        fn subtract_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => subtract_integer(context, args.slice(1..)?, left.overflowing_sub(right).0),
-                NodeValue::Float(right) => subtract_float(context, args.slice(1..)?, left as NodeFloat - right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        fn subtract_float(context: &mut Context, args: &NodeSlice, left: NodeFloat) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => subtract_float(context, args.slice(1..)?, left - right as NodeFloat),
-                NodeValue::Float(right) => subtract_float(context, args.slice(1..)?, left - right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => subtract_integer(context, args.slice(1..)?, value),
-            NodeValue::Float(value) => subtract_float(context, args.slice(1..)?, value),
-        }
+        number_chain(
+            context,
+            args,
+            |left, right| Ok(left.overflowing_sub(right).0),
+            |left, right| Ok(left - right),
+        )
     }
 
     fn multiply(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        fn multiply_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => multiply_integer(context, args.slice(1..)?, left.overflowing_mul(right).0),
-                NodeValue::Float(right) => multiply_float(context, args.slice(1..)?, left as NodeFloat * right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        fn multiply_float(context: &mut Context, args: &NodeSlice, left: NodeFloat) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => multiply_float(context, args.slice(1..)?, left * right as NodeFloat),
-                NodeValue::Float(right) => multiply_float(context, args.slice(1..)?, left * right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => multiply_integer(context, args.slice(1..)?, value),
-            NodeValue::Float(value) => multiply_float(context, args.slice(1..)?, value),
-        }
+        number_chain(
+            context,
+            args,
+            |left, right| Ok(left.overflowing_mul(right).0),
+            |left, right| Ok(left * right),
+        )
     }
 
     fn divide(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        fn divide_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => {
-                    arson_assert!(right != 0, "attempted to divide by zero");
-                    divide_integer(context, args.slice(1..)?, left.overflowing_div(right).0)
-                },
-                NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left as NodeFloat / right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        fn divide_float(context: &mut Context, args: &NodeSlice, left: NodeFloat) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => divide_float(context, args.slice(1..)?, left / right as NodeFloat),
-                NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left / right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => divide_integer(context, args.slice(1..)?, value),
-            NodeValue::Float(value) => divide_float(context, args.slice(1..)?, value),
-        }
+        number_chain(
+            context,
+            args,
+            |left, right| {
+                arson_assert!(right != 0, "attempted to divide by zero");
+                Ok(left.overflowing_div(right).0)
+            },
+            |left, right| Ok(left / right),
+        )
     }
 
     fn modulo(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        fn divide_integer(context: &mut Context, args: &NodeSlice, left: NodeInteger) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => {
-                    arson_assert!(right != 0, "attempted to modulo by zero");
-                    divide_integer(context, args.slice(1..)?, left.overflowing_rem(right).0)
-                },
-                NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left as NodeFloat % right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        fn divide_float(context: &mut Context, args: &NodeSlice, left: NodeFloat) -> HandleResult {
-            let Some(node) = args.get_opt(0) else {
-                return Ok(NodeValue::from(left));
-            };
-
-            match node.evaluate(context)? {
-                NodeValue::Integer(right) => divide_float(context, args.slice(1..)?, left % right as NodeFloat),
-                NodeValue::Float(right) => divide_float(context, args.slice(1..)?, left % right),
-                unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
-            }
-        }
-
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => divide_integer(context, args.slice(1..)?, value),
-            NodeValue::Float(value) => divide_float(context, args.slice(1..)?, value),
-        }
+        number_chain(
+            context,
+            args,
+            |left, right| {
+                arson_assert!(right != 0, "attempted to modulo by zero");
+                Ok(left.overflowing_rem(right).0)
+            },
+            |left, right| Ok(left % right),
+        )
     }
 
     fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -313,8 +200,8 @@ mod binary {
         match (left, right) {
             (NodeValue::Integer(left), NodeValue::Integer(right)) => div_rem(left, right),
             (NodeValue::Float(left), NodeValue::Float(right)) => div_rem(left, right),
-            (NodeValue::Integer(left), NodeValue::Float(right)) => div_rem(left as f64, right),
-            (NodeValue::Float(left), NodeValue::Integer(right)) => div_rem(left, right as f64),
+            (NodeValue::Integer(left), NodeValue::Float(right)) => div_rem(left as NodeFloat, right),
+            (NodeValue::Float(left), NodeValue::Integer(right)) => div_rem(left, right as NodeFloat),
             (left, right) => Err(Error::bad_operand(left.get_type(), right.get_type())),
         }
     }
@@ -396,21 +283,21 @@ mod bitwise {
     fn highest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value, (0..i32::BITS).rev());
+        let result = first_active_bit(value, (0..NodeInteger::BITS).rev());
         op_assign(context, args, NodeValue::from(result))
     }
 
     fn lowest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value, 0..i32::BITS);
+        let result = first_active_bit(value, 0..NodeInteger::BITS);
         op_assign(context, args, NodeValue::from(result))
     }
 
     fn count_bits(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.count_ones();
-        op_assign(context, args, NodeValue::from(result as i64))
+        op_assign(context, args, NodeValue::from(result as NodeInteger))
     }
 }
 
