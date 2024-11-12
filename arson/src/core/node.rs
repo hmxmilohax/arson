@@ -500,6 +500,12 @@ impl From<NodeValue> for Node {
     }
 }
 
+impl From<RawNodeValue> for Node {
+    fn from(value: RawNodeValue) -> Self {
+        Self { value }
+    }
+}
+
 impl_from!(Integer, NodeInteger);
 impl_from!(Integer, &NodeInteger, value => *value);
 impl_from!(Integer, i32, value => value as NodeInteger);
@@ -554,6 +560,27 @@ impl NodeArray {
 
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         NodeSlice::new(&self.nodes).slice(index)
+    }
+}
+
+impl FromIterator<Node> for NodeArray {
+    fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
+        Self { nodes: Vec::from_iter(iter) }
+    }
+}
+
+impl FromIterator<NodeValue> for NodeArray {
+    fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
+        Self {
+            nodes: Vec::from_iter(iter.into_iter().map(|v| Node::from(v))),
+        }
+    }
+}
+impl FromIterator<RawNodeValue> for NodeArray {
+    fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
+        Self {
+            nodes: Vec::from_iter(iter.into_iter().map(|v| Node::from(v))),
+        }
     }
 }
 
@@ -752,6 +779,23 @@ macro_rules! array_wrapper_impl {
         impl From<NodeArray> for $name {
             fn from(value: NodeArray) -> Self {
                 Self { nodes: value }
+            }
+        }
+
+        impl FromIterator<Node> for $name {
+            fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
+                Self { nodes: NodeArray::from_iter(iter) }
+            }
+        }
+
+        impl FromIterator<NodeValue> for $name {
+            fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
+                Self { nodes: NodeArray::from_iter(iter) }
+            }
+        }
+        impl FromIterator<RawNodeValue> for $name {
+            fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
+                Self { nodes: NodeArray::from_iter(iter) }
             }
         }
 
