@@ -32,8 +32,8 @@ pub mod basic {
         arson_assert_len!(args, 1);
         evaluate_node! {
             args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => Ok(NodeValue::from(value.saturating_abs())),
-            NodeValue::Float(value) => Ok(NodeValue::from(value.abs())),
+            NodeValue::Integer(value) => Ok(value.saturating_abs().into()),
+            NodeValue::Float(value) => Ok(value.abs().into()),
         }
     }
 

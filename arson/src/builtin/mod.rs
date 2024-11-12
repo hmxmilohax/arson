@@ -45,7 +45,7 @@ pub fn number_chain<
         f_float: FF,
     ) -> HandleResult {
         let Some(node) = args.get_opt(0) else {
-            return Ok(NodeValue::from(left));
+            return Ok(left.into());
         };
 
         match node.evaluate(context)? {
@@ -64,7 +64,7 @@ pub fn number_chain<
         f_float: FF,
     ) -> HandleResult {
         let Some(node) = args.get_opt(0) else {
-            return Ok(NodeValue::from(left));
+            return Ok(left.into());
         };
 
         match node.evaluate(context)? {

@@ -7,7 +7,7 @@ use std::{
     path::Path,
 };
 
-use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, NodeVariable};
+use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeVariable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
 
@@ -57,16 +57,16 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
 
     fn load_node(&mut self, expr: Expression<'src>) -> NodeResult {
         let node = match expr.kind {
-            ExpressionKind::Integer(value) => Node::from(value),
-            ExpressionKind::Float(value) => Node::from(value),
-            ExpressionKind::String(value) => Node::from(value.to_owned()),
-            ExpressionKind::Symbol(value) => Node::from(self.context.add_symbol(value)),
-            ExpressionKind::Variable(value) => Node::from(NodeVariable::from(self.context.add_symbol(value))),
-            ExpressionKind::Unhandled => Node::from(NodeValue::Unhandled),
+            ExpressionKind::Integer(value) => value.into(),
+            ExpressionKind::Float(value) => value.into(),
+            ExpressionKind::String(value) => value.into(),
+            ExpressionKind::Symbol(value) => self.context.add_symbol(value).into(),
+            ExpressionKind::Variable(value) => NodeVariable::from(self.context.add_symbol(value)).into(),
+            ExpressionKind::Unhandled => Node::UNHANDLED,
 
-            ExpressionKind::Array(exprs) => Node::from(self.load_array(exprs.into_iter())),
-            ExpressionKind::Command(exprs) => Node::from(NodeCommand::from(self.load_array(exprs.into_iter()))),
-            ExpressionKind::Property(exprs) => Node::from(NodeProperty::from(self.load_array(exprs.into_iter()))),
+            ExpressionKind::Array(exprs) => self.load_array(exprs.into_iter()).into(),
+            ExpressionKind::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())).into(),
+            ExpressionKind::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())).into(),
 
             ExpressionKind::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);

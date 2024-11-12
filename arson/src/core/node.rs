@@ -385,6 +385,8 @@ pub struct Node {
 }
 
 impl Node {
+    /// Value returned when a script call has not been handled by a receiver.
+    pub const UNHANDLED: Node = Self { value: RawNodeValue::Unhandled };
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
     pub const HANDLED: Node = Self { value: RawNodeValue::HANDLED };

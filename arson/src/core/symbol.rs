@@ -58,7 +58,7 @@ impl std::fmt::Display for Symbol {
 /// Private helper method to create a new Symbol from a string.
 #[inline]
 fn new_symbol(str: &str) -> Symbol {
-    Symbol { name: Rc::from(String::from(str)) }
+    Symbol { name: Rc::new(str.to_owned()) }
 }
 
 pub struct SymbolTable {

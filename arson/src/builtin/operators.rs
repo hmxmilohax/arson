@@ -46,15 +46,15 @@ pub mod unary {
         arson_assert_len!(args, 1);
         evaluate_node! {
             args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => Ok(NodeValue::from(value.overflowing_neg().0)),
-            NodeValue::Float(value) => Ok(NodeValue::from(-value)),
+            NodeValue::Integer(value) => Ok(value.overflowing_neg().0.into()),
+            NodeValue::Float(value) => Ok((-value).into()),
         }
     }
 
     pub fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let result = !args.integer(context, 0)?;
-        Ok(NodeValue::from(result))
+        Ok(result.into())
     }
 }
 
@@ -178,7 +178,7 @@ pub mod bitwise {
             .iter()
             .try_fold(result, |current, n| n.integer(context).map(|value| f(current, value)))?;
 
-        Ok(NodeValue::from(result))
+        Ok(result.into())
     }
 
     pub fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -192,7 +192,7 @@ pub mod bitwise {
     pub fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? ^ args.integer(context, 1)?;
-        Ok(NodeValue::from(result))
+        Ok(result.into())
     }
 
     pub fn and_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -244,13 +244,13 @@ pub mod logical {
     pub fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
         let result = args.boolean(context, 0)? ^ args.boolean(context, 1)?;
-        Ok(NodeValue::from(result))
+        Ok(result.into())
     }
 
     pub fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let result = !args.boolean(context, 0)?;
-        Ok(NodeValue::from(result))
+        Ok(result.into())
     }
 }
 
@@ -268,39 +268,37 @@ pub mod comparison {
 
     pub fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(
-            args.evaluate(context, 0)? == args.evaluate(context, 1)?,
-        ))
+        let result = args.evaluate(context, 0)? == args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 
     pub fn not_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(
-            args.evaluate(context, 0)? != args.evaluate(context, 1)?,
-        ))
+        let result = args.evaluate(context, 0)? != args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 
     pub fn greater_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(args.evaluate(context, 0)? > args.evaluate(context, 1)?))
+        let result = args.evaluate(context, 0)? > args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 
     pub fn greater_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(
-            args.evaluate(context, 0)? >= args.evaluate(context, 1)?,
-        ))
+        let result = args.evaluate(context, 0)? >= args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 
     pub fn less_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(args.evaluate(context, 0)? < args.evaluate(context, 1)?))
+        let result = args.evaluate(context, 0)? < args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 
     pub fn less_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        Ok(NodeValue::from(
-            args.evaluate(context, 0)? <= args.evaluate(context, 1)?,
-        ))
+        let result = args.evaluate(context, 0)? <= args.evaluate(context, 1)?;
+        Ok(result.into())
     }
 }
