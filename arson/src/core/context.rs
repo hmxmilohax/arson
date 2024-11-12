@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{parse::loader, LoadError};
+use crate::parse::loader;
+use crate::{builtin, LoadError};
 
-use super::{builtin, Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
+use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
 pub struct Context {
     symbol_table: SymbolTable,

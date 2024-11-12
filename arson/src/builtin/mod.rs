@@ -4,15 +4,15 @@ use crate::{arson_fail, evaluate_node, Error, NodeFloat, NodeInteger, NodeType, 
 
 use super::{Context, HandleResult, Node, NodeSlice, NodeValue};
 
-pub mod math;
+pub mod flow;
 pub mod operators;
 
 pub fn register_funcs(context: &mut Context) {
-    math::register_funcs(context);
+    flow::register_funcs(context);
     operators::register_funcs(context);
 }
 
-fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleResult {
+pub fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleResult {
     match arg.unevaluated() {
         RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
         RawNodeValue::Property(_value) => todo!("op_assign property access"),
@@ -21,11 +21,11 @@ fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleR
     Ok(result)
 }
 
-fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
+pub fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
     set_variable(context, args.get(0)?, result)
 }
 
-fn number_chain<
+pub fn number_chain<
     IF: Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
     FF: Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
 >(

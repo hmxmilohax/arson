@@ -8,8 +8,10 @@ macro_rules! param_sink {
     };
 }
 
+mod builtin;
 mod core;
 pub mod parse;
+pub mod stdlib;
 
 pub use core::*;
 
