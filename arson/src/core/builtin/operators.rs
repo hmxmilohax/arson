@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use crate::core::*;
-use crate::{arson_assert, evaluate_node};
+use crate::{arson_assert, arson_assert_len, evaluate_node};
 
 pub fn register_funcs(context: &mut Context) {
     arithmetic::register_funcs(context);
@@ -213,14 +213,14 @@ mod arithmetic {
     }
 
     fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 1);
+        arson_assert_len!(args, 1);
         let add_args = [args.get(0)?.clone(), Node::from(1)];
         let result = self::add(context, NodeSlice::new(&add_args))?;
         self::op_assign(context, args, result)
     }
 
     fn decrement(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 1);
+        arson_assert_len!(args, 1);
         let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
         let result = self::subtract(context, NodeSlice::new(&subtract_args))?;
         self::op_assign(context, args, result)
@@ -288,13 +288,13 @@ mod bitwise {
     }
 
     fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? ^ args.integer(context, 1)?;
         Ok(NodeValue::from(result))
     }
 
     fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 1);
+        arson_assert_len!(args, 1);
         let result = !args.integer(context, 0)?;
         Ok(NodeValue::from(result))
     }
@@ -346,13 +346,13 @@ mod boolean {
     }
 
     fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         let result = args.boolean(context, 0)? ^ args.boolean(context, 1)?;
         Ok(NodeValue::from(result))
     }
 
     fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 1);
+        arson_assert_len!(args, 1);
         let result = !args.boolean(context, 0)?;
         Ok(NodeValue::from(result))
     }
@@ -371,38 +371,38 @@ mod comparison {
     }
 
     fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? == args.evaluate(context, 1)?,
         ))
     }
 
     fn not_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? != args.evaluate(context, 1)?,
         ))
     }
 
     fn greater_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(args.evaluate(context, 0)? > args.evaluate(context, 1)?))
     }
 
     fn greater_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? >= args.evaluate(context, 1)?,
         ))
     }
 
     fn less_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(args.evaluate(context, 0)? < args.evaluate(context, 1)?))
     }
 
     fn less_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert!(args.len() == 2);
+        arson_assert_len!(args, 2);
         Ok(NodeValue::from(
             args.evaluate(context, 0)? <= args.evaluate(context, 1)?,
         ))

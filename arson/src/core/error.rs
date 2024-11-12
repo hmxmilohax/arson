@@ -18,6 +18,9 @@ pub enum Error {
     #[error("Left operand {left:?} is not compatible with right operand {right:?}")]
     BadOperand { left: NodeType, right: NodeType },
 
+    #[error("Bad array length {actual}, expected {expected}")]
+    LengthMismatch { expected: usize, actual: usize },
+
     #[error("Index outside of range {0:?}")]
     OutOfRange(Range<usize>),
 
@@ -60,5 +63,14 @@ macro_rules! arson_assert {
 macro_rules! arson_fail {
     ($($arg:tt)+) => {
         return Err($crate::Error::Failure(format!($($arg)+)))
+    };
+}
+
+#[macro_export]
+macro_rules! arson_assert_len {
+    ($array:ident, $len:literal) => {
+        if $array.len() != $len {
+            return Err($crate::Error::LengthMismatch { expected: $len, actual: $array.len() });
+        }
     };
 }
