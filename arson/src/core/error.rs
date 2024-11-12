@@ -73,4 +73,9 @@ macro_rules! arson_assert_len {
             return Err($crate::Error::LengthMismatch { expected: $len, actual: $array.len() });
         }
     };
+    ($array:ident, $len:literal, $($arg:tt)+) => {
+        if $array.len() != $len {
+            $crate::arson_fail!($($arg)+);
+        }
+    };
 }

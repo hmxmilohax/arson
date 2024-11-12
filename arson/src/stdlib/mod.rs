@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::Context;
+use crate::core::*;
 
 pub mod math;
 
