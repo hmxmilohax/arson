@@ -61,8 +61,8 @@ impl Context {
         }
     }
 
-    pub fn set_variable(&mut self, name: Symbol, value: NodeValue) {
-        self.variables.insert(name, value);
+    pub fn set_variable(&mut self, name: &Symbol, value: NodeValue) {
+        self.variables.insert(name.clone(), value);
     }
 
     pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> bool {

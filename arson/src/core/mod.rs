@@ -5,9 +5,11 @@ mod error;
 mod node;
 mod object;
 mod symbol;
+mod variable;
 
 pub use context::*;
 pub use error::*;
 pub use node::*;
 pub use object::*;
 pub use symbol::*;
+pub use variable::*;

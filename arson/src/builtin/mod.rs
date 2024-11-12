@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{arson_fail, evaluate_node, Error, NodeFloat, NodeInteger, NodeType, RawNodeValue};
-
-use super::{Context, HandleResult, Node, NodeSlice, NodeValue};
+use crate::core::*;
+use crate::{arson_fail, evaluate_node};
 
 pub mod flow;
 pub mod operators;
@@ -14,7 +13,7 @@ pub fn register_funcs(context: &mut Context) {
 
 pub fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleResult {
     match arg.unevaluated() {
-        RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
+        RawNodeValue::Variable(value) => value.set(context, result.clone()),
         RawNodeValue::Property(_value) => todo!("op_assign property access"),
         unhandled => arson_fail!("Cannot set non-variable {:?}", unhandled.get_type()),
     };

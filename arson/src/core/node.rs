@@ -7,7 +7,7 @@ use std::{
     slice::SliceIndex,
 };
 
-use super::{Context, Error, Object, Symbol};
+use super::{Context, Error, Object, Symbol, Variable};
 
 /// A function which is callable by a [`NodeCommand`].
 pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> HandleResult;
@@ -16,17 +16,6 @@ pub type HandleResult = crate::Result<NodeValue>;
 
 pub type NodeInteger = i64;
 pub type NodeFloat = f64;
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeVariable {
-    pub symbol: Symbol,
-}
-
-impl From<Symbol> for NodeVariable {
-    fn from(value: Symbol) -> Self {
-        Self { symbol: value }
-    }
-}
 
 macro_rules! define_node_types {
     ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
@@ -65,7 +54,7 @@ define_node_types! {
     String(StringBox),
 
     Symbol(Symbol),
-    Variable(NodeVariable),
+    Variable(Variable),
     Unhandled,
 
     Object(ObjectBox),
@@ -280,7 +269,7 @@ impl RawNodeValue {
 
     common_getters!();
 
-    pub fn variable(&self) -> crate::Result<&NodeVariable> {
+    pub fn variable(&self) -> crate::Result<&Variable> {
         evaluate_node!(self; Self::Variable(value) => Ok(value))
     }
 
@@ -299,7 +288,7 @@ impl RawNodeValue {
             Self::String(value) => NodeValue::from(value),
 
             Self::Symbol(value) => NodeValue::from(value),
-            Self::Variable(name) => context.get_variable(&name.symbol),
+            Self::Variable(variable) => variable.get(context),
             Self::Unhandled => NodeValue::Unhandled,
 
             Self::Object(value) => NodeValue::from(value),
@@ -337,7 +326,7 @@ impl PartialEq for RawNodeValue {
             (RawNodeValue::String(left), RawNodeValue::String(right)) => left == right,
 
             (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left == right,
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left == right,
+            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol() == right.symbol(),
             (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => true,
 
             (RawNodeValue::Object(left), RawNodeValue::Object(right)) => Rc::ptr_eq(left, right),
@@ -360,7 +349,7 @@ impl PartialOrd for RawNodeValue {
             (RawNodeValue::String(left), RawNodeValue::String(right)) => left.partial_cmp(right),
 
             (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left.partial_cmp(right),
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.partial_cmp(right),
+            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol().partial_cmp(right.symbol()),
             (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
 
             (RawNodeValue::Object(left), RawNodeValue::Object(right)) => {
@@ -437,7 +426,7 @@ impl Node {
         self.evaluate(context)?.symbol().cloned()
     }
 
-    pub fn variable(&self) -> crate::Result<NodeVariable> {
+    pub fn variable(&self) -> crate::Result<Variable> {
         self.unevaluated().variable().cloned()
     }
 
@@ -536,8 +525,8 @@ impl_from!(Array, ArrayBox);
 impl_from!(Array, &ArrayBox, value => value.clone());
 impl_from!(Array, NodeArray, value => Rc::new(value));
 
-impl_from_raw!(Variable, NodeVariable);
-impl_from_raw!(Variable, &NodeVariable, value => value.clone());
+impl_from_raw!(Variable, Variable);
+impl_from_raw!(Variable, &Variable, value => value.clone());
 impl_from_raw!(Command, CommandBox);
 impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
 impl_from_raw!(Command, &CommandBox, value => value.clone());
@@ -698,7 +687,7 @@ macro_rules! array_impl {
             self.get(index)?.symbol(context)
         }
 
-        pub fn variable(&self, index: usize) -> crate::Result<NodeVariable> {
+        pub fn variable(&self, index: usize) -> crate::Result<Variable> {
             self.get(index)?.variable()
         }
 
