@@ -1,13 +1,28 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{evaluate_node, Error, NodeFloat, NodeInteger, NodeType};
+use crate::{arson_fail, evaluate_node, Error, NodeFloat, NodeInteger, NodeType, RawNodeValue};
 
-use super::{Context, HandleResult, NodeSlice, NodeValue};
+use super::{Context, HandleResult, Node, NodeSlice, NodeValue};
 
+pub mod math;
 pub mod operators;
 
 pub fn register_funcs(context: &mut Context) {
+    math::register_funcs(context);
     operators::register_funcs(context);
+}
+
+fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleResult {
+    match arg.unevaluated() {
+        RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
+        RawNodeValue::Property(_value) => todo!("op_assign property access"),
+        unhandled => arson_fail!("Cannot set non-variable {:?}", unhandled.get_type()),
+    };
+    Ok(result)
+}
+
+fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
+    set_variable(context, args.get(0)?, result)
 }
 
 fn number_chain<

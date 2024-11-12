@@ -3,7 +3,7 @@
 use crate::core::*;
 use crate::{arson_assert, arson_assert_len, evaluate_node};
 
-use super::number_chain;
+use super::{number_chain, op_assign};
 
 pub fn register_funcs(context: &mut Context) {
     unary::register_funcs(context);
@@ -11,15 +11,6 @@ pub fn register_funcs(context: &mut Context) {
     bitwise::register_funcs(context);
     logical::register_funcs(context);
     comparison::register_funcs(context);
-}
-
-fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
-    evaluate_node! {
-        args.unevaluated(0)?;
-        RawNodeValue::Variable(value) => context.set_variable(value.symbol.clone(), result.clone()),
-        RawNodeValue::Property(_value) => todo!("op_assign property access"),
-    };
-    Ok(result)
 }
 
 mod unary {
@@ -31,8 +22,6 @@ mod unary {
         // context.register_func_by_name("+", self::promote); // No need for a promotion operator
         // context.register_func_by_name("-", self::negate); // "-" registered by binary module
         context.register_func_by_name("~", self::not);
-
-        context.register_func_by_name("abs", self::abs);
     }
 
     fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -41,7 +30,7 @@ mod unary {
         // Forward to arithmetic operator
         let add_args = [args.get(0)?.clone(), Node::from(1)];
         let result = binary::add(context, NodeSlice::new(&add_args))?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn decrement(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -50,7 +39,7 @@ mod unary {
         // Forward to arithmetic operator
         let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
         let result = binary::subtract(context, NodeSlice::new(&subtract_args))?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     pub(super) fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -67,20 +56,9 @@ mod unary {
         let result = !args.integer(context, 0)?;
         Ok(NodeValue::from(result))
     }
-
-    fn abs(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert_len!(args, 1);
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => Ok(NodeValue::from(value.saturating_abs())),
-            NodeValue::Float(value) => Ok(NodeValue::from(value.abs())),
-        }
-    }
 }
 
 mod binary {
-    use std::ops::{Div, Rem};
-
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
@@ -96,7 +74,6 @@ mod binary {
         context.register_func_by_name("%=", self::modulo_assign);
 
         context.register_func_by_name("mod", self::modulo);
-        context.register_func_by_name("div_rem", self::divide_remainder);
     }
 
     pub(super) fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -156,54 +133,27 @@ mod binary {
 
     fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::add(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::subtract(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::multiply(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::divide(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::modulo(context, args)?;
-        op_assign(context, args, result)
-    }
-
-    fn divide_remainder(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        arson_assert_len!(args, 2);
-
-        fn div_rem<T: Copy + Div + Rem>(left: T, right: T) -> HandleResult
-        where
-            node::NodeValue: From<<T as Div>::Output> + From<<T as Rem>::Output>,
-        {
-            let quotient = left / right;
-            let remainder = left % right;
-            Ok(NodeValue::from(NodeArray::from_iter([
-                NodeValue::from(quotient),
-                NodeValue::from(remainder),
-            ])))
-        }
-
-        let left = args.evaluate(context, 0)?;
-        let right = args.evaluate(context, 1)?;
-
-        match (left, right) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => div_rem(left, right),
-            (NodeValue::Float(left), NodeValue::Float(right)) => div_rem(left, right),
-            (NodeValue::Integer(left), NodeValue::Float(right)) => div_rem(left as NodeFloat, right),
-            (NodeValue::Float(left), NodeValue::Integer(right)) => div_rem(left, right as NodeFloat),
-            (left, right) => Err(Error::bad_operand(left.get_type(), right.get_type())),
-        }
+        super::op_assign(context, args, result)
     }
 }
 
@@ -254,23 +204,23 @@ mod bitwise {
 
     fn and_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::and(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn or_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::or(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn xor_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::xor(context, args)?;
-        op_assign(context, args, result)
+        super::op_assign(context, args, result)
     }
 
     fn mask_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? & !args.integer(context, 1)?;
-        op_assign(context, args, NodeValue::from(result))
+        super::op_assign(context, args, NodeValue::from(result))
     }
 
     fn first_active_bit<I: Iterator<Item = u32>>(value: NodeInteger, mut bit_range: I) -> NodeInteger {
@@ -284,20 +234,20 @@ mod bitwise {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value, (0..NodeInteger::BITS).rev());
-        op_assign(context, args, NodeValue::from(result))
+        super::op_assign(context, args, NodeValue::from(result))
     }
 
     fn lowest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value, 0..NodeInteger::BITS);
-        op_assign(context, args, NodeValue::from(result))
+        super::op_assign(context, args, NodeValue::from(result))
     }
 
     fn count_bits(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.count_ones();
-        op_assign(context, args, NodeValue::from(result as NodeInteger))
+        super::op_assign(context, args, NodeValue::from(result as NodeInteger))
     }
 }
 
