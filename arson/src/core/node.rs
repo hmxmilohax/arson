@@ -574,14 +574,14 @@ impl FromIterator<Node> for NodeArray {
 impl FromIterator<NodeValue> for NodeArray {
     fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
         Self {
-            nodes: Vec::from_iter(iter.into_iter().map(|v| Node::from(v))),
+            nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
         }
     }
 }
 impl FromIterator<RawNodeValue> for NodeArray {
     fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
         Self {
-            nodes: Vec::from_iter(iter.into_iter().map(|v| Node::from(v))),
+            nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
         }
     }
 }
