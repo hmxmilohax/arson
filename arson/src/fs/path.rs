@@ -15,7 +15,7 @@ pub enum VirtualComponent<'path> {
     Normal(&'path str),
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[error("prefix not found")]
 pub struct StripPrefixError(());
 
@@ -59,38 +59,12 @@ impl VirtualPath {
         self.inner.starts_with('/')
     }
 
-    pub fn components(&self) -> impl Iterator<Item = VirtualComponent<'_>> {
-        // Special handling required for the starting component
-        let start = self.inner.split_inclusive('/').take(1).map(|s| match s {
-            // Root/current directory are only allowed as the starting component
-            "/" => VirtualComponent::RootDir,
-            "./" => VirtualComponent::CurDir,
-            "../" => VirtualComponent::ParentDir,
-            component => VirtualComponent::Normal(&component[..component.len() - 1]),
-        });
-
-        let splits = self.inner.split('/').skip(1).filter_map(|s| match s {
-            // Filter out repeated separators and non-starting '.'
-            "" | "." => None,
-            ".." => Some(VirtualComponent::ParentDir),
-            component => Some(VirtualComponent::Normal(component)),
-        });
-
-        start.chain(splits)
+    pub fn components(&self) -> VirtualComponents<'_> {
+        VirtualComponents::new(self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &str> {
-        let start = self.inner.split_inclusive('/').take(1).map(|s| match s {
-            "/" => "/",
-            component => &component[..component.len() - 1],
-        });
-
-        let splits = self.inner.split('/').skip(1).filter_map(|s| match s {
-            "" | "." => None,
-            component => Some(component),
-        });
-
-        start.chain(splits)
+    pub fn iter(&self) -> VirtualPathIter<'_> {
+        VirtualPathIter { inner: VirtualComponents::new(self) }
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = &VirtualPath> {
@@ -125,21 +99,21 @@ impl VirtualPath {
         self.parent_file_name().map(|s| s.1)
     }
 
-    fn file_stem_extension(&self) -> Option<(Option<&str>, Option<&str>)> {
+    fn file_stem_extension(&self) -> Option<(&str, Option<&str>)> {
         self.file_name().map(|name| match name.rsplit_once('.') {
             Some((stem, extension)) => match stem.is_empty() {
                 // Leading '.' and no extension, e.g. ".gitignore"
-                true => (Some(name), None),
+                true => (name, None),
                 // Typical stem + extension
-                false => (Some(stem), Some(extension)),
+                false => (stem, Some(extension)),
             },
             // No extension, e.g. "README"
-            None => (Some(name), None),
+            None => (name, None),
         })
     }
 
     pub fn file_stem(&self) -> Option<&str> {
-        self.file_stem_extension().and_then(|(stem, _)| stem)
+        self.file_stem_extension().map(|(stem, _)| stem)
     }
 
     // Unstable feature on Path, not to be implemented until that stabilizes
@@ -149,24 +123,44 @@ impl VirtualPath {
         self.file_stem_extension().and_then(|(_, ext)| ext)
     }
 
-    pub fn starts_with<P: AsRef<VirtualPath>>(&self, _base: P) -> bool {
-        todo!("VirtualPath::starts_with")
+    fn match_prefix<'a, 'b, A, B>(mut iter: A, prefix: B) -> Option<A>
+    where
+        A: Iterator<Item = VirtualComponent<'a>>,
+        B: Iterator<Item = VirtualComponent<'b>>,
+    {
+        for component in prefix {
+            if iter.next() != Some(component) {
+                return None;
+            }
+        }
+
+        Some(iter)
     }
 
-    pub fn ends_with<P: AsRef<VirtualPath>>(&self, _child: P) -> bool {
-        todo!("VirtualPath::ends_with")
+    pub fn starts_with<P: AsRef<VirtualPath>>(&self, base: P) -> bool {
+        Self::match_prefix(self.components(), base.as_ref().components()).is_some()
     }
 
-    pub fn strip_prefix<P: AsRef<VirtualPath>>(&self, _base: P) -> Result<&VirtualPath, StripPrefixError> {
-        todo!("VirtualPath::strip_prefix")
+    pub fn ends_with<P: AsRef<VirtualPath>>(&self, child: P) -> bool {
+        Self::match_prefix(self.components().rev(), child.as_ref().components().rev()).is_some()
     }
 
-    pub fn with_file_name<S: AsRef<str>>(&self, _file_name: S) -> VirtualPathBuf {
-        todo!("VirtualPath::with_file_name")
+    pub fn strip_prefix<P: AsRef<VirtualPath>>(&self, base: P) -> Result<&VirtualPath, StripPrefixError> {
+        Self::match_prefix(self.components(), base.as_ref().components())
+            .map(|c| c.as_path())
+            .ok_or(StripPrefixError(()))
     }
 
-    pub fn with_extension<S: AsRef<str>>(&self, _extension: S) -> VirtualPathBuf {
-        todo!("VirtualPath::with_extension")
+    pub fn with_file_name<S: AsRef<str>>(&self, file_name: S) -> VirtualPathBuf {
+        let mut buf = self.to_buf();
+        buf.set_file_name(file_name);
+        buf
+    }
+
+    pub fn with_extension<S: AsRef<str>>(&self, extension: S) -> VirtualPathBuf {
+        let mut buf = self.to_buf();
+        buf.set_extension(extension);
+        buf
     }
 
     // Unstable feature on Path, not to be implemented until that stabilizes
@@ -174,7 +168,7 @@ impl VirtualPath {
 
     pub fn join<P: AsRef<VirtualPath>>(&self, path: P) -> VirtualPathBuf {
         let mut buf = self.to_buf();
-        buf.push(path.as_ref());
+        buf.push(path);
         buf
     }
 
@@ -265,12 +259,39 @@ impl VirtualPathBuf {
         }
     }
 
-    pub fn set_file_name<S: AsRef<str>>(&mut self, _file_name: S) {
-        todo!("VirtualPathBuf::set_file_name")
+    pub fn set_file_name<S: AsRef<str>>(&mut self, file_name: S) {
+        if self.file_name().is_some() {
+            self.pop();
+        }
+        self.push(file_name.as_ref());
     }
 
-    pub fn set_extension<S: AsRef<str>>(&mut self, _extension: S) -> bool {
-        todo!("VirtualPathBuf::set_extension")
+    pub fn set_extension<S: AsRef<str>>(&mut self, extension: S) -> bool {
+        let extension = extension.as_ref();
+        if extension.contains('/') {
+            // This would typically be a panic, but allowing scripts to
+            // cause a panic through bad input is not the best idea lol
+            return false;
+        }
+
+        // Perform file name check and grab the extension in one call
+        let Some((_, existing)) = self.file_stem_extension() else {
+            return false;
+        };
+
+        // Remove existing extension
+        if let Some(existing) = existing {
+            self.inner.truncate(self.inner.len() - (existing.len() + 1));
+        }
+
+        // Add new extension
+        if !extension.is_empty() {
+            self.inner.reserve(extension.len() + 1);
+            self.inner.push('.');
+            self.inner.push_str(extension);
+        }
+
+        true
     }
 
     // Unstable feature on PathBuf, not to be implemented until that stabilizes
@@ -381,6 +402,144 @@ impl From<&VirtualPath> for VirtualPathBuf {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct VirtualComponents<'path> {
+    path: &'path str,
+    remaining: &'path str,
+}
+
+#[derive(Clone, Copy)]
+pub struct VirtualPathIter<'path> {
+    inner: VirtualComponents<'path>,
+}
+
+impl<'path> VirtualComponents<'path> {
+    fn new(path: &'path VirtualPath) -> Self {
+        Self { path: &path.inner, remaining: &path.inner }
+    }
+
+    pub fn as_path(&self) -> &'path VirtualPath {
+        VirtualPath::new(self.remaining)
+    }
+
+    #[inline]
+    fn set_remaining_front(&mut self, remaining: &'path str) {
+        self.remaining = remaining.trim_start_matches('/');
+    }
+
+    #[inline]
+    fn set_remaining_back(&mut self, remaining: &'path str) {
+        self.remaining = remaining.trim_end_matches('/');
+    }
+
+    #[inline]
+    fn bump_remaining_front(&mut self, amount: usize) {
+        self.set_remaining_front(&self.remaining[amount..]);
+    }
+
+    #[inline]
+    fn handle_first_component(&self, text: &'path str) -> Option<(VirtualComponent<'path>, usize)> {
+        if std::ptr::addr_eq(text, self.path) {
+            if self.path.starts_with('/') {
+                return Some((VirtualComponent::RootDir, 1));
+            } else if self.path.starts_with("./") {
+                return Some((VirtualComponent::CurDir, 2));
+            }
+        }
+
+        None
+    }
+
+    #[inline]
+    fn parse_component(text: &'path str) -> Option<VirtualComponent<'path>> {
+        match text {
+            // Filter out repeated separators and non-starting '.'
+            "" => None,
+            "." => None,
+            ".." => Some(VirtualComponent::ParentDir),
+            current => Some(VirtualComponent::Normal(current)),
+        }
+    }
+}
+
+impl<'path> Iterator for VirtualComponents<'path> {
+    type Item = VirtualComponent<'path>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((component, amount_matched)) = self.handle_first_component(self.remaining) {
+            self.bump_remaining_front(amount_matched);
+            return Some(component);
+        }
+
+        loop {
+            return match self.remaining.split_once('/') {
+                Some((current, remaining)) => {
+                    self.set_remaining_front(remaining);
+                    match Self::parse_component(current) {
+                        Some(c) => Some(c),
+                        None => continue,
+                    }
+                },
+                None => {
+                    let current = self.remaining;
+                    self.remaining = "";
+                    Self::parse_component(current)
+                },
+            };
+        }
+    }
+}
+
+impl<'path> DoubleEndedIterator for VirtualComponents<'path> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            return match self.remaining.rsplit_once('/') {
+                Some((remaining, current)) => {
+                    self.set_remaining_back(remaining);
+                    match Self::parse_component(current) {
+                        Some(c) => Some(c),
+                        None => continue,
+                    }
+                },
+                None => {
+                    let last = self.remaining;
+                    self.remaining = "";
+
+                    match self.handle_first_component(last) {
+                        Some((component, _)) => Some(component),
+                        None => Self::parse_component(last),
+                    }
+                },
+            };
+        }
+    }
+}
+
+impl<'path> VirtualPathIter<'path> {
+    fn map_component(component: VirtualComponent<'path>) -> &'path str {
+        match component {
+            VirtualComponent::RootDir => "/",
+            VirtualComponent::CurDir => ".",
+            VirtualComponent::ParentDir => "..",
+            VirtualComponent::Normal(name) => name,
+        }
+    }
+}
+
+impl<'path> Iterator for VirtualPathIter<'path> {
+    type Item = &'path str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Self::map_component)
+    }
+}
+
+impl<'path> DoubleEndedIterator for VirtualPathIter<'path> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back().map(Self::map_component)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -411,6 +570,7 @@ mod test {
 
         #[test]
         fn components() {
+            // forward
             let mut components = Path::new("/foo/bar.rs").components();
             assert_eq!(components.next(), Some(VirtualComponent::RootDir));
             assert_eq!(components.next(), Some(VirtualComponent::Normal("foo")));
@@ -423,10 +583,41 @@ mod test {
             assert_eq!(components.next(), Some(VirtualComponent::ParentDir));
             assert_eq!(components.next(), Some(VirtualComponent::Normal("bar")));
             assert_eq!(components.next(), None);
+
+            // backward
+            let mut components = Path::new("/foo/bar.rs").components();
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("bar.rs")));
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next_back(), Some(VirtualComponent::RootDir));
+            assert_eq!(components.next_back(), None);
+
+            let mut components = Path::new("./foo/..//bar/").components();
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("bar")));
+            assert_eq!(components.next_back(), Some(VirtualComponent::ParentDir));
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next_back(), Some(VirtualComponent::CurDir));
+            assert_eq!(components.next_back(), None);
+
+            // alternating
+            let mut components = Path::new("/foo/bar.rs").components();
+            assert_eq!(components.next(), Some(VirtualComponent::RootDir));
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("bar.rs")));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next_back(), None);
+            assert_eq!(components.next(), None);
+
+            let mut components = Path::new("./foo/..//bar/").components();
+            assert_eq!(components.next(), Some(VirtualComponent::CurDir));
+            assert_eq!(components.next_back(), Some(VirtualComponent::Normal("bar")));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next_back(), Some(VirtualComponent::ParentDir));
+            assert_eq!(components.next(), None);
+            assert_eq!(components.next_back(), None);
         }
 
         #[test]
         fn iter() {
+            // forward
             let mut iter = Path::new("/foo/bar.rs").iter();
             assert_eq!(iter.next(), Some("/"));
             assert_eq!(iter.next(), Some("foo"));
@@ -439,6 +630,36 @@ mod test {
             assert_eq!(iter.next(), Some(".."));
             assert_eq!(iter.next(), Some("bar"));
             assert_eq!(iter.next(), None);
+
+            // backward
+            let mut iter = Path::new("/foo/bar.rs").iter();
+            assert_eq!(iter.next_back(), Some("bar.rs"));
+            assert_eq!(iter.next_back(), Some("foo"));
+            assert_eq!(iter.next_back(), Some("/"));
+            assert_eq!(iter.next_back(), None);
+
+            let mut iter = Path::new("./foo/..//bar/").iter();
+            assert_eq!(iter.next_back(), Some("bar"));
+            assert_eq!(iter.next_back(), Some(".."));
+            assert_eq!(iter.next_back(), Some("foo"));
+            assert_eq!(iter.next_back(), Some("."));
+            assert_eq!(iter.next_back(), None);
+
+            // alternating
+            let mut iter = Path::new("/foo/bar.rs").iter();
+            assert_eq!(iter.next(), Some("/"));
+            assert_eq!(iter.next_back(), Some("bar.rs"));
+            assert_eq!(iter.next(), Some("foo"));
+            assert_eq!(iter.next_back(), None);
+            assert_eq!(iter.next(), None);
+
+            let mut iter = Path::new("./foo/..//bar/").iter();
+            assert_eq!(iter.next(), Some("."));
+            assert_eq!(iter.next_back(), Some("bar"));
+            assert_eq!(iter.next(), Some("foo"));
+            assert_eq!(iter.next_back(), Some(".."));
+            assert_eq!(iter.next(), None);
+            assert_eq!(iter.next_back(), None);
         }
 
         #[test]
@@ -492,6 +713,69 @@ mod test {
         }
 
         #[test]
+        fn starts_with() {
+            assert!(Path::new("/foo/bar.rs").starts_with("/"));
+            assert!(Path::new("/foo/bar.rs").starts_with("/foo"));
+            assert!(Path::new("/foo/bar.rs/").starts_with("/foo"));
+            assert!(Path::new("//foo/bar.rs").starts_with("/foo"));
+            assert!(Path::new("/foo//bar.rs").starts_with("/foo"));
+            assert!(Path::new("/foo/bar.rs").starts_with("/foo/"));
+            assert!(Path::new("/foo/bar.rs").starts_with("/foo///"));
+            assert!(Path::new("./foo/..//bar/").starts_with("."));
+            assert!(Path::new("./foo/..//bar/").starts_with("./foo"));
+
+            assert!(!Path::new("/foo/bar.rs").starts_with("/f"));
+            assert!(!Path::new("/foo/bar.rs").starts_with("foo"));
+            assert!(!Path::new("/foo/bar.rs").starts_with("/foo/bar"));
+            assert!(!Path::new("/foo/bar").starts_with("/foo/bar.rs"));
+        }
+
+        #[test]
+        fn ends_with() {
+            assert!(Path::new("/foo/bar.rs").ends_with("bar.rs"));
+            assert!(Path::new("/foo/bar.rs/").ends_with("bar.rs"));
+            assert!(Path::new("//foo/bar.rs").ends_with("bar.rs"));
+            assert!(Path::new("/foo//bar.rs").ends_with("bar.rs"));
+            assert!(Path::new("/foo/bar.rs").ends_with("bar.rs/"));
+            assert!(Path::new("/foo/bar.rs").ends_with("bar.rs///"));
+            assert!(Path::new("./foo/..//bar/").ends_with("bar"));
+
+            assert!(!Path::new("/foo/bar.rs").ends_with("b"));
+            assert!(!Path::new("/foo/bar.rs").ends_with("bar"));
+            assert!(!Path::new("/foo/bar.rs").ends_with(".rs"));
+            assert!(!Path::new("/foo/bar.rs").ends_with("/bar.rs"));
+            assert!(!Path::new("/foo/bar.rs").ends_with("/foo/bar"));
+            assert!(!Path::new("/foo/bar").ends_with("/foo/bar.rs"));
+        }
+
+        #[test]
+        fn strip_prefix() {
+            fn assert_stripped(start: &str, strip: &str, expected: &str) {
+                assert_eq!(Path::new(start).strip_prefix(strip), Ok(Path::new(expected)));
+            }
+
+            fn assert_err(start: &str, strip: &str) {
+                assert_eq!(Path::new(start).strip_prefix(strip), Err(StripPrefixError(())));
+            }
+
+            assert_stripped("/foo/bar.rs", "/foo", "bar.rs");
+            assert_stripped("/foo/bar.rs/", "/foo", "bar.rs/");
+            assert_stripped("//foo/bar.rs", "/foo", "bar.rs");
+            assert_stripped("/foo//bar.rs", "/foo", "bar.rs");
+            assert_stripped("/foo/bar.rs", "/foo/", "bar.rs");
+            assert_stripped("/foo/bar.rs", "/foo///", "bar.rs");
+            assert_stripped("/foo/bar.rs", "/foo/bar.rs", "");
+
+            assert_stripped("./foo/..//bar/", "./foo/..", "bar/");
+            assert_stripped("./foo/..//bar/", "./foo/../", "bar/");
+            assert_stripped("./foo/..//bar/", "./foo/..//", "bar/");
+
+            assert_err("/foo/bar.rs", "/f");
+            assert_err("/foo/bar.rs", "foo");
+            assert_err("/foo/bar.rs", "/foo/bar");
+        }
+
+        #[test]
         fn join() {
             assert_eq!(Path::new("/foo").join("bar"), PathBuf::from("/foo/bar"));
             assert_eq!(Path::new("foo").join("bar/qux"), PathBuf::from("foo/bar/qux"));
@@ -531,6 +815,40 @@ mod test {
             assert_pop("/bar", "/");
 
             assert!(!PathBuf::from("/").pop());
+        }
+
+        #[test]
+        fn set_file_name() {
+            fn assert_name(start: &str, set: &str, expected: &str) {
+                let mut path = PathBuf::from(start);
+                path.set_file_name(set);
+                assert_eq!(path, PathBuf::from(expected));
+            }
+
+            assert_name("/foo/bar", "bar.rs", "/foo/bar.rs");
+            assert_name("/foo/bar.rs", "bar", "/foo/bar");
+            assert_name("/foo/bar/", "bar", "/foo/bar");
+            assert_name("/foo/bar", "bar/", "/foo/bar/");
+
+            assert_name("/foo/bar", "/.bar/", "/.bar/");
+        }
+
+        #[test]
+        fn set_extension() {
+            fn assert_extension(start: &str, set: &str, expected: &str) {
+                let mut path = PathBuf::from(start);
+                path.set_extension(set);
+                assert_eq!(path, PathBuf::from(expected));
+            }
+
+            assert_extension("/foo/bar", "rs", "/foo/bar.rs");
+            assert_extension("/foo/bar", "tar.gz", "/foo/bar.tar.gz");
+
+            assert_extension("/foo/bar.rs", "tar.gz", "/foo/bar.tar.gz");
+            assert_extension("/foo/bar.tar.gz", "rs", "/foo/bar.tar.rs");
+
+            assert_extension("/foo/bar.rs", "", "/foo/bar");
+            assert_extension("/foo/bar.tar.gz", "", "/foo/bar.tar");
         }
     }
 }
