@@ -10,6 +10,7 @@ macro_rules! param_sink {
 
 mod builtin;
 mod core;
+pub mod fs;
 pub mod parse;
 pub mod stdlib;
 
