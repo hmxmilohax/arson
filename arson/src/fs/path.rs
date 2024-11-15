@@ -98,7 +98,23 @@ impl VirtualPath {
     }
 
     fn parent_file_name(&self) -> Option<(&str, &str)> {
-        self.inner.trim_end_matches('/').rsplit_once('/')
+        // Trim all trailing remaining separators
+        let trimmed = self.inner.trim_end_matches('/');
+
+        match trimmed.rsplit_once('/') {
+            Some((mut parent, file_name)) => {
+                // Trim any spurious remaining separators
+                parent = parent.trim_end_matches('/');
+
+                // Ensure root directory is preserved as the last parent
+                if parent.is_empty() && trimmed.starts_with('/') {
+                    parent = "/";
+                }
+
+                Some((parent, file_name))
+            },
+            None => None,
+        }
     }
 
     pub fn parent(&self) -> Option<&VirtualPath> {
@@ -113,7 +129,7 @@ impl VirtualPath {
         self.file_name().map(|name| match name.rsplit_once('.') {
             Some((stem, extension)) => match stem.is_empty() {
                 // Leading '.' and no extension, e.g. ".gitignore"
-                true => (Some(extension), None),
+                true => (Some(name), None),
                 // Typical stem + extension
                 false => (Some(stem), Some(extension)),
             },
@@ -157,8 +173,8 @@ impl VirtualPath {
     // pub fn with_added_extension<S: AsRef<str>>(&self, extension: S) -> VirtualPathBuf;
 
     pub fn join<P: AsRef<VirtualPath>>(&self, path: P) -> VirtualPathBuf {
-        let mut buf = path.as_ref().to_buf();
-        buf.push(self);
+        let mut buf = self.to_buf();
+        buf.push(path.as_ref());
         buf
     }
 
@@ -362,5 +378,159 @@ impl From<String> for VirtualPathBuf {
 impl From<&VirtualPath> for VirtualPathBuf {
     fn from(value: &VirtualPath) -> Self {
         Self { inner: value.inner.to_owned() }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use VirtualPath as Path;
+    use VirtualPathBuf as PathBuf;
+
+    mod path {
+        use super::*;
+
+        #[test]
+        fn is_absolute() {
+            assert!(Path::new("/foo/bar.rs").is_absolute());
+            assert!(!Path::new("foo/bar.rs").is_absolute());
+        }
+
+        #[test]
+        fn is_relative() {
+            assert!(!Path::new("/foo/bar.rs").is_relative());
+            assert!(Path::new("foo/bar.rs").is_relative());
+        }
+
+        #[test]
+        fn has_root() {
+            assert!(Path::new("/foo/bar.rs").has_root());
+            assert!(!Path::new("foo/bar.rs").has_root());
+        }
+
+        #[test]
+        fn components() {
+            let mut components = Path::new("/foo/bar.rs").components();
+            assert_eq!(components.next(), Some(VirtualComponent::RootDir));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("bar.rs")));
+            assert_eq!(components.next(), None);
+
+            let mut components = Path::new("./foo/..//bar/").components();
+            assert_eq!(components.next(), Some(VirtualComponent::CurDir));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("foo")));
+            assert_eq!(components.next(), Some(VirtualComponent::ParentDir));
+            assert_eq!(components.next(), Some(VirtualComponent::Normal("bar")));
+            assert_eq!(components.next(), None);
+        }
+
+        #[test]
+        fn iter() {
+            let mut iter = Path::new("/foo/bar.rs").iter();
+            assert_eq!(iter.next(), Some("/"));
+            assert_eq!(iter.next(), Some("foo"));
+            assert_eq!(iter.next(), Some("bar.rs"));
+            assert_eq!(iter.next(), None);
+
+            let mut iter = Path::new("./foo/..//bar/").iter();
+            assert_eq!(iter.next(), Some("."));
+            assert_eq!(iter.next(), Some("foo"));
+            assert_eq!(iter.next(), Some(".."));
+            assert_eq!(iter.next(), Some("bar"));
+            assert_eq!(iter.next(), None);
+        }
+
+        #[test]
+        fn ancestors() {
+            let mut ancestors = Path::new("/foo/bar.rs").ancestors();
+            assert_eq!(ancestors.next(), Some(Path::new("/foo/bar.rs")));
+            assert_eq!(ancestors.next(), Some(Path::new("/foo")));
+            assert_eq!(ancestors.next(), Some(Path::new("/")));
+            assert_eq!(ancestors.next(), None);
+
+            let mut ancestors = Path::new("./foo/..//bar/").ancestors();
+            assert_eq!(ancestors.next(), Some(Path::new("./foo/..//bar/")));
+            assert_eq!(ancestors.next(), Some(Path::new("./foo/..")));
+            assert_eq!(ancestors.next(), Some(Path::new("./foo")));
+            assert_eq!(ancestors.next(), Some(Path::new(".")));
+            assert_eq!(ancestors.next(), None);
+        }
+
+        #[test]
+        fn parent() {
+            assert_eq!(Path::new("/foo/bar.rs").parent(), Some(Path::new("/foo")));
+            assert_eq!(Path::new("/foo/").parent(), Some(Path::new("/")));
+            assert_eq!(Path::new("/").parent(), None);
+        }
+
+        #[test]
+        fn file_name() {
+            assert_eq!(Path::new("/foo/bar.rs").file_name(), Some("bar.rs"));
+            assert_eq!(Path::new("/foo").file_name(), Some("foo"));
+            assert_eq!(Path::new("/").file_name(), None);
+        }
+
+        #[test]
+        fn file_stem() {
+            assert_eq!(Path::new("/foo/bar.rs").file_stem(), Some("bar"));
+            assert_eq!(Path::new("/foo/bar.tar.gz").file_stem(), Some("bar.tar"));
+            assert_eq!(Path::new("/foo/.bar.rs").file_stem(), Some(".bar"));
+            assert_eq!(Path::new("/foo/.bar").file_stem(), Some(".bar"));
+            assert_eq!(Path::new("/foo").file_stem(), Some("foo"));
+            assert_eq!(Path::new("/").file_stem(), None);
+        }
+
+        #[test]
+        fn extension() {
+            assert_eq!(Path::new("/foo/bar.rs").extension(), Some("rs"));
+            assert_eq!(Path::new("/foo/bar.tar.gz").extension(), Some("gz"));
+            assert_eq!(Path::new("/foo/.bar.rs").extension(), Some("rs"));
+            assert_eq!(Path::new("/foo/.bar").extension(), None);
+            assert_eq!(Path::new("/foo").extension(), None);
+            assert_eq!(Path::new("/").extension(), None);
+        }
+
+        #[test]
+        fn join() {
+            assert_eq!(Path::new("/foo").join("bar"), PathBuf::from("/foo/bar"));
+            assert_eq!(Path::new("foo").join("bar/qux"), PathBuf::from("foo/bar/qux"));
+            assert_eq!(Path::new("/foo").join("..//bar"), PathBuf::from("/foo/..//bar"));
+            assert_eq!(Path::new("/foo").join("/bar"), PathBuf::from("/bar"));
+        }
+    }
+
+    mod pathbuf {
+        use super::*;
+
+        #[test]
+        fn push() {
+            fn assert_push(start: &str, add: &str, expected: &str) {
+                let mut path = PathBuf::from(start);
+                path.push(add);
+                assert_eq!(path, PathBuf::from(expected));
+            }
+
+            assert_push("/foo", "bar", "/foo/bar");
+            assert_push("foo", "bar/qux", "foo/bar/qux");
+            assert_push("/foo", "..//bar/", "/foo/..//bar/");
+            assert_push("/foo", "/bar", "/bar");
+        }
+
+        #[test]
+        fn pop() {
+            fn assert_pop(start: &str, expected: &str) {
+                let mut path = PathBuf::from(start);
+                assert!(path.pop());
+                assert_eq!(path, PathBuf::from(expected));
+            }
+
+            assert_pop("/foo/bar", "/foo");
+            assert_pop("foo/bar/qux", "foo/bar");
+            assert_pop("/foo/..//bar", "/foo/..");
+            assert_pop("/bar", "/");
+
+            assert!(!PathBuf::from("/").pop());
+        }
     }
 }
