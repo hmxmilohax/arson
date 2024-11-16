@@ -2,6 +2,7 @@
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    cmp::Ordering,
     ops::{Deref, DerefMut},
     rc::Rc,
     slice::SliceIndex,
@@ -18,82 +19,319 @@ pub type NodeInteger = i64;
 pub type NodeFloat = f64;
 
 macro_rules! define_node_types {
-    ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
+    (
+        make_types!(),
+        $(#[$name_attr:meta])*
+        pub enum $name:ident {
+            $(
+                $(#[$type_attr:meta])*
+                $type:ident$(($value:ty) $({
+                    eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
+                    cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                })?)?
+                $(,)?
+            )+
+        }
+    ) => {
         /// The type of value contained within a [`Node`], [`NodeValue`], or [`RawNodeValue`].
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
         pub enum NodeType {
-            $($(#[$attr])* $type,)+
+            $($(#[$type_attr])* $type,)+
         }
 
-        /// A raw, unevaluated value stored within a [`Node`].
-        #[derive(Debug, Clone)]
-        pub enum RawNodeValue {
-            $($(#[$attr])* $type$(($value))?,)+
+        $(
+            $(
+                impl From<$value> for Node {
+                    fn from(value: $value) -> Self {
+                        Self { value: RawNodeValue::from(value) }
+                    }
+                }
+
+                impl From<&$value> for Node {
+                    fn from(value: &$value) -> Self {
+                        Self::from(value.clone())
+                    }
+                }
+            )?
+        )+
+
+        define_node_types! {
+            $(#[$name_attr])*
+            pub enum $name {
+                $(
+                    $(#[$type_attr])*
+                    $type$(($value) $({
+                        eq: |$eq_left, $eq_right| $eq_expr,
+                        cmp: |$cmp_left, $cmp_right| $cmp_expr,
+                    })?)?
+                )+
+            }
+        }
+    };
+    (
+        $(#[$name_attr:meta])*
+        pub enum $name:ident {
+            $(
+                $(#[$type_attr:meta])*
+                $type:ident$(($value:ty) $({
+                    eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
+                    cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                })?)?
+                $(,)?
+            )+
+        }
+    ) => {
+        $(#[$name_attr])*
+        pub enum $name {
+            $($(#[$type_attr])* $type$(($value))?,)+
         }
 
-        impl RawNodeValue {
+        impl $name {
             pub fn get_type(&self) -> NodeType {
                 match self {
-                    $(Self::$type$((param_sink!($value, _)))? => NodeType::$type,)+
+                    $(Self::$type$((meta_morph!($value => _)))? => NodeType::$type,)+
                 }
             }
         }
+
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                match (self, other) {
+                    $(
+                        (
+                            Self::$type$((meta_morph!($value => meta_select!($($eq_left)?, left))))?,
+                            Self::$type$((meta_morph!($value => meta_select!($($eq_right)?, right))))?
+                        )
+                        => meta_select!(
+                            $(meta_morph!($value => meta_select!($($eq_expr)?, left == right)))?,
+                            true
+                        ),
+                    )+
+
+                    _ => false,
+                }
+            }
+        }
+
+        impl PartialOrd for $name {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                match (self, other) {
+                    $(
+                        (
+                            Self::$type$((meta_morph!($value => meta_select!($($cmp_left)?, left))))?,
+                            Self::$type$((meta_morph!($value => meta_select!($($cmp_right)?, right))))?
+                        )
+                        => meta_select!(
+                            $(meta_morph!($value => meta_select!($($cmp_expr)?, left.partial_cmp(right))))?,
+                            Some(Ordering::Equal)
+                        ),
+                    )+
+
+                    _ => None,
+                }
+            }
+        }
+
+        $(
+            $(
+                impl From<$value> for $name {
+                    fn from(value: $value) -> Self {
+                        Self::$type(value)
+                    }
+                }
+
+                impl From<&$value> for $name {
+                    fn from(value: &$value) -> Self {
+                        Self::from(value.clone())
+                    }
+                }
+
+                impl PartialEq<$value> for $name {
+                    fn eq(&self, meta_select!($($eq_right)?, other): &$value) -> bool {
+                        match self {
+                            Self::$type(meta_select!($($eq_left)?, value)) => meta_select!($($eq_expr)?, value == other),
+                            _ => false,
+                        }
+                    }
+                }
+
+                impl PartialEq<$name> for $value {
+                    fn eq(&self, other: &$name) -> bool {
+                        other.eq(self)
+                    }
+                }
+
+                impl PartialOrd<$value> for $name {
+                    fn partial_cmp(&self, meta_select!($($cmp_right)?, other): &$value) -> Option<Ordering> {
+                        match self {
+                            Self::$type(meta_select!($($cmp_left)?, value)) => meta_select!($($cmp_expr)?, value.partial_cmp(other)),
+                            _ => None,
+                        }
+                    }
+                }
+
+                impl PartialOrd<$name> for $value {
+                    fn partial_cmp(&self, other: &$name) -> Option<Ordering> {
+                        other.partial_cmp(self)
+                    }
+                }
+            )?
+        )+
     }
 }
 
-// type aliases to avoid syntax errors in the macro below
+// Type aliases to avoid syntax errors in the macro invocations below.
+// Strings and arrays are boxed and reference-counted to make cloning cheap.
 type StringBox = Rc<String>;
 type ObjectBox = Rc<dyn Object>;
 type ArrayBox = Rc<NodeArray>;
 type CommandBox = Rc<NodeCommand>;
 type PropertyBox = Rc<NodeProperty>;
 
+fn rc_cmp<T: ?Sized>(left: &Rc<T>, right: &Rc<T>) -> Option<Ordering> {
+    let left = Rc::as_ptr(left) as *const ();
+    let right = Rc::as_ptr(right) as *const ();
+    left.partial_cmp(&right)
+}
+
+fn array_eq(_left: &NodeSlice, _right: &NodeSlice) -> bool {
+    todo!("array equality (yes or no?)")
+}
+
+fn array_cmp(_left: &NodeSlice, _right: &NodeSlice) -> Option<Ordering> {
+    todo!("array comparison (yes or no?)")
+}
+
 define_node_types! {
-    Integer(NodeInteger),
-    Float(NodeFloat),
-    String(StringBox),
+    make_types!(),
 
-    Symbol(Symbol),
-    Variable(Variable),
-    Unhandled,
+    /// A raw, unevaluated value stored within a [`Node`].
+    #[derive(Debug, Clone)]
+    pub enum RawNodeValue {
+        Integer(NodeInteger),
+        Float(NodeFloat),
+        String(StringBox),
 
-    Object(ObjectBox),
-    Function(HandleFn),
+        Symbol(Symbol),
+        Variable(Variable) {
+            eq: |left, right| left.symbol() == right.symbol(),
+            cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
+        },
+        Unhandled,
 
-    Array(ArrayBox),
-    Command(CommandBox),
-    Property(PropertyBox),
+        Object(ObjectBox) {
+            eq: |left, right| Rc::ptr_eq(left, right),
+            cmp: |left, right| rc_cmp(left, right),
+        },
+        Function(HandleFn),
+
+        Array(ArrayBox) {
+            eq: |left, right| array_eq(left, right),
+            cmp: |left, right| array_cmp(left, right),
+        },
+        Command(CommandBox) {
+            eq: |left, right| array_eq(left, right),
+            cmp: |left, right| array_cmp(left, right),
+        },
+        Property(PropertyBox) {
+            eq: |left, right| array_eq(left, right),
+            cmp: |left, right| array_cmp(left, right),
+        },
+    }
 }
 
-/// A node value which has been evaluated.
-#[derive(Debug, Clone)]
-pub enum NodeValue {
-    Integer(NodeInteger),
-    Float(NodeFloat),
-    String(StringBox),
-    Symbol(Symbol),
-    Unhandled,
+define_node_types! {
+    /// A node value which has been evaluated.
+    #[derive(Debug, Clone)]
+    pub enum NodeValue {
+        Integer(NodeInteger),
+        Float(NodeFloat),
+        String(StringBox),
+        Symbol(Symbol),
+        Unhandled,
 
-    Object(ObjectBox),
-    Function(HandleFn),
-    Array(ArrayBox),
+        Object(ObjectBox) {
+            eq: |left, right| Rc::ptr_eq(left, right),
+            cmp: |left, right| rc_cmp(left, right),
+        },
+        Function(HandleFn),
+        Array(ArrayBox) {
+            eq: |left, right| array_eq(left, right),
+            cmp: |left, right| array_cmp(left, right),
+        },
+    }
 }
 
-impl NodeValue {
-    pub fn get_type(&self) -> NodeType {
-        match self {
-            NodeValue::Integer(_) => NodeType::Integer,
-            NodeValue::Float(_) => NodeType::Float,
-            NodeValue::String(_) => NodeType::String,
-            NodeValue::Symbol(_) => NodeType::Symbol,
-            NodeValue::Unhandled => NodeType::Unhandled,
+impl From<NodeValue> for Node {
+    fn from(value: NodeValue) -> Self {
+        Self { value: RawNodeValue::from(value) }
+    }
+}
 
-            NodeValue::Object(_) => NodeType::Object,
-            NodeValue::Function(_) => NodeType::Function,
-            NodeValue::Array(_) => NodeType::Array,
+impl From<RawNodeValue> for Node {
+    fn from(value: RawNodeValue) -> Self {
+        Self { value }
+    }
+}
+
+impl From<NodeValue> for RawNodeValue {
+    fn from(value: NodeValue) -> Self {
+        match value {
+            NodeValue::Integer(value) => RawNodeValue::Integer(value),
+            NodeValue::Float(value) => RawNodeValue::Float(value),
+            NodeValue::String(value) => RawNodeValue::String(value),
+            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
+            NodeValue::Unhandled => RawNodeValue::Unhandled,
+
+            NodeValue::Object(value) => RawNodeValue::Object(value),
+            NodeValue::Function(value) => RawNodeValue::Function(value),
+            NodeValue::Array(value) => RawNodeValue::Array(value),
         }
     }
 }
+
+macro_rules! impl_from_raw {
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
+        impl From<$from_type> for RawNodeValue {
+            fn from($value: $from_type) -> Self {
+                Self::$variant($expr)
+            }
+        }
+
+        impl From<$from_type> for Node {
+            fn from($value: $from_type) -> Self {
+                Self { value: RawNodeValue::from($value) }
+            }
+        }
+    };
+}
+
+macro_rules! impl_from {
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
+        impl From<$from_type> for NodeValue {
+            fn from($value: $from_type) -> Self {
+                Self::$variant($expr)
+            }
+        }
+
+        impl_from_raw!($variant, $from_type, $value => $expr);
+    };
+}
+
+impl_from!(Integer, i32, value => value as NodeInteger);
+impl_from!(Integer, &i32, value => *value as NodeInteger);
+impl_from!(Integer, bool, value => value as NodeInteger);
+impl_from!(Integer, &bool, value => *value as NodeInteger);
+impl_from!(Float, f32, value => value as NodeFloat);
+impl_from!(Float, &f32, value => *value as NodeFloat);
+impl_from!(String, String, value => Rc::new(value));
+impl_from!(String, &String, value => Rc::new(value.clone()));
+impl_from!(String, &str, value => Rc::new(value.to_owned()));
+
+impl_from!(Array, NodeArray, value => Rc::new(value));
+
+impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
+impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
 
 /// Helper macro for evaluating a node against a set of types,
 /// returning an error if none of them match.
@@ -217,46 +455,6 @@ impl NodeValue {
     common_getters!();
 }
 
-impl PartialEq for NodeValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => left == right,
-            (NodeValue::Float(left), NodeValue::Float(right)) => left == right,
-            (NodeValue::String(left), NodeValue::String(right)) => left == right,
-            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left == right,
-            (NodeValue::Unhandled, NodeValue::Unhandled) => true,
-
-            (NodeValue::Object(left), NodeValue::Object(right)) => Rc::ptr_eq(left, right),
-            (NodeValue::Function(left), NodeValue::Function(right)) => left == right,
-            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for NodeValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => left.partial_cmp(right),
-            (NodeValue::Float(left), NodeValue::Float(right)) => left.partial_cmp(right),
-            (NodeValue::String(left), NodeValue::String(right)) => left.partial_cmp(right),
-            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left.partial_cmp(right),
-            (NodeValue::Unhandled, NodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
-
-            (NodeValue::Object(left), NodeValue::Object(right)) => {
-                let left = Rc::as_ptr(left) as *const ();
-                let right = Rc::as_ptr(right) as *const ();
-                left.partial_cmp(&right)
-            },
-            (NodeValue::Function(left), NodeValue::Function(right)) => left.partial_cmp(right),
-            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => None,
-        }
-    }
-}
-
 impl RawNodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
@@ -299,72 +497,6 @@ impl RawNodeValue {
             Self::Property(_property) => todo!("property node evaluation"),
         };
         Ok(evaluated)
-    }
-}
-
-impl From<NodeValue> for RawNodeValue {
-    fn from(value: NodeValue) -> Self {
-        match value {
-            NodeValue::Integer(value) => RawNodeValue::Integer(value),
-            NodeValue::Float(value) => RawNodeValue::Float(value),
-            NodeValue::String(value) => RawNodeValue::String(value),
-            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
-            NodeValue::Unhandled => RawNodeValue::Unhandled,
-
-            NodeValue::Object(value) => RawNodeValue::Object(value),
-            NodeValue::Function(value) => RawNodeValue::Function(value),
-            NodeValue::Array(value) => RawNodeValue::Array(value),
-        }
-    }
-}
-
-impl PartialEq for RawNodeValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left == right,
-            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left == right,
-            (RawNodeValue::String(left), RawNodeValue::String(right)) => left == right,
-
-            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left == right,
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol() == right.symbol(),
-            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => true,
-
-            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => Rc::ptr_eq(left, right),
-            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left == right,
-
-            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for RawNodeValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left.partial_cmp(right),
-            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left.partial_cmp(right),
-            (RawNodeValue::String(left), RawNodeValue::String(right)) => left.partial_cmp(right),
-
-            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left.partial_cmp(right),
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol().partial_cmp(right.symbol()),
-            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
-
-            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => {
-                let left = Rc::as_ptr(left) as *const ();
-                let right = Rc::as_ptr(right) as *const ();
-                left.partial_cmp(&right)
-            },
-            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left.partial_cmp(right),
-
-            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => None,
-        }
     }
 }
 
@@ -450,89 +582,6 @@ impl Node {
         self.unevaluated().property().cloned()
     }
 }
-
-macro_rules! impl_from_raw {
-    ($variant:ident, $from_type:ty) => {
-        impl_from_raw!($variant, $from_type, value => value);
-    };
-    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
-        impl From<$from_type> for RawNodeValue {
-            fn from($value: $from_type) -> Self {
-                Self::$variant($expr)
-            }
-        }
-
-        impl From<$from_type> for Node {
-            fn from($value: $from_type) -> Self {
-                Self { value: RawNodeValue::from($value) }
-            }
-        }
-    };
-}
-
-macro_rules! impl_from {
-    ($variant:ident, $from_type:ty) => {
-        impl_from!($variant, $from_type, value => value);
-    };
-    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
-        impl From<$from_type> for NodeValue {
-            fn from($value: $from_type) -> Self {
-                Self::$variant($expr)
-            }
-        }
-
-        impl_from_raw!($variant, $from_type, $value => $expr);
-    };
-}
-
-impl From<NodeValue> for Node {
-    fn from(value: NodeValue) -> Self {
-        Self { value: RawNodeValue::from(value) }
-    }
-}
-
-impl From<RawNodeValue> for Node {
-    fn from(value: RawNodeValue) -> Self {
-        Self { value }
-    }
-}
-
-impl_from!(Integer, NodeInteger);
-impl_from!(Integer, &NodeInteger, value => *value);
-impl_from!(Integer, i32, value => value as NodeInteger);
-impl_from!(Integer, &i32, value => *value as NodeInteger);
-impl_from!(Integer, bool, value => value as NodeInteger);
-impl_from!(Integer, &bool, value => *value as NodeInteger);
-impl_from!(Float, NodeFloat);
-impl_from!(Float, &NodeFloat, value => *value);
-impl_from!(Float, f32, value => value as NodeFloat);
-impl_from!(Float, &f32, value => *value as NodeFloat);
-impl_from!(String, StringBox);
-impl_from!(String, &StringBox, value => value.clone());
-impl_from!(String, String, value => Rc::new(value));
-impl_from!(String, &String, value => Rc::new(value.clone()));
-impl_from!(String, &str, value => Rc::new(value.to_owned()));
-
-impl_from!(Symbol, Symbol);
-impl_from!(Symbol, &Symbol, value => value.clone());
-
-impl_from!(Object, ObjectBox);
-impl_from!(Object, &ObjectBox, value => value.clone());
-impl_from!(Function, HandleFn);
-impl_from!(Function, &HandleFn, value => *value);
-
-impl_from!(Array, ArrayBox);
-impl_from!(Array, &ArrayBox, value => value.clone());
-impl_from!(Array, NodeArray, value => Rc::new(value));
-
-impl_from_raw!(Variable, Variable);
-impl_from_raw!(Variable, &Variable, value => value.clone());
-impl_from_raw!(Command, CommandBox);
-impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
-impl_from_raw!(Command, &CommandBox, value => value.clone());
-impl_from_raw!(Property, PropertyBox);
-impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
-impl_from_raw!(Property, &PropertyBox, value => value.clone());
 
 /// A contiguous collection of [`Node`]s.
 #[derive(Debug, Clone, Default)]
