@@ -16,4 +16,4 @@ pub mod stdlib;
 
 pub use core::*;
 
-pub use parse::loader::LoadError;
+pub use parse::loader::{LoadError, LoadOptions};

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::parse::loader;
+use crate::fs::{FileSystem, VirtualPath};
+use crate::parse::loader::{self, LoadOptions};
 use crate::{builtin, LoadError};
 
 use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
@@ -10,15 +11,17 @@ pub struct Context {
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<NodeValue>,
     functions: SymbolMap<HandleFn>,
+    file_system: Box<dyn FileSystem>,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(file_system: Box<dyn FileSystem>) -> Self {
         let mut context = Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
+            file_system,
         };
 
         builtin::register_funcs(&mut context);
@@ -74,8 +77,20 @@ impl Context {
         self.functions.insert(name.clone(), func).is_none()
     }
 
-    pub fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
-        loader::load_text(self, text)
+    pub fn file_system(&self) -> &dyn FileSystem {
+        self.file_system.as_ref()
+    }
+
+    pub fn file_system_mut(&mut self) -> &mut dyn FileSystem {
+        self.file_system.as_mut()
+    }
+
+    pub fn load_path(&mut self, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
+        loader::load_path(self, options, path)
+    }
+
+    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
+        loader::load_text(self, options, text)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
@@ -95,11 +110,5 @@ impl Context {
         }
 
         Ok(result)
-    }
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    fs::{self, File},
-    io,
-    marker::PhantomData,
-    path::Path,
-};
+use std::{io, marker::PhantomData};
 
-use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
+use crate::{fs::VirtualPath, Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
+
+#[derive(Clone)]
+pub struct LoadOptions {
+    pub allow_include: bool,
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum LoadError {
@@ -18,44 +18,69 @@ pub enum LoadError {
 
     #[error("Failed to parse the given file")]
     Parse(Vec<ParseError>),
-}
 
-impl From<io::ErrorKind> for LoadError {
-    fn from(value: io::ErrorKind) -> Self {
-        Self::from(io::Error::from(value))
-    }
+    #[error("A required macro definition was not found")]
+    MacroNotFound,
+
+    #[error("Inclusion is disallowed by the given load options")]
+    IncludeNotAllowed,
+
+    #[error("Encountered errors while including other files")]
+    Inner {
+        recovered: NodeArray,
+        errors: Vec<LoadError>,
+    },
 }
 
 struct Loader<'ctx, 'src> {
     context: &'ctx mut Context,
+    options: LoadOptions,
     phantom: PhantomData<&'src ()>,
 }
 
-enum NodeResult {
+enum NodeResult<'define> {
     Value(Node),
+    Include(NodeArray),
+    MergeFile(NodeArray),
+    MergeMacro(&'define NodeArray),
     Skip,
 }
 
 impl<'ctx, 'src> Loader<'ctx, 'src> {
-    fn new(context: &'ctx mut Context) -> Self {
-        Self { context, phantom: PhantomData }
+    fn new(context: &'ctx mut Context, options: LoadOptions) -> Self {
+        Self { context, options, phantom: PhantomData }
     }
 
-    fn load_array(&mut self, ast: impl Iterator<Item = Expression<'src>>) -> NodeArray {
+    fn load_array(&mut self, ast: impl Iterator<Item = Expression<'src>>) -> Result<NodeArray, LoadError> {
         let mut array = NodeArray::with_capacity(4);
+        let mut errors = vec![];
 
         for expr in ast {
             match self.load_node(expr) {
-                NodeResult::Value(node) => array.push(node),
-                NodeResult::Skip => continue,
+                Ok(result) => match result {
+                    NodeResult::Value(node) => array.push(node),
+                    NodeResult::Include(mut file) => array.append(&mut file),
+                    NodeResult::MergeFile(_file) => todo!("array merging"),
+                    NodeResult::MergeMacro(_define) => todo!("array merging"),
+                    NodeResult::Skip => continue,
+                },
+                Err(error) => {
+                    errors.push(error);
+                    continue;
+                },
             }
         }
 
         array.shrink_to_fit();
-        array
+
+        if !errors.is_empty() {
+            Err(LoadError::Inner { recovered: array, errors })
+        } else {
+            Ok(array)
+        }
     }
 
-    fn load_node(&mut self, expr: Expression<'src>) -> NodeResult {
+    fn load_node(&mut self, expr: Expression<'src>) -> Result<NodeResult<'_>, LoadError> {
         let node = match expr.kind {
             ExpressionKind::Integer(value) => value.into(),
             ExpressionKind::Float(value) => value.into(),
@@ -64,30 +89,54 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionKind::Variable(value) => Variable::from(self.context.add_symbol(value)).into(),
             ExpressionKind::Unhandled => Node::UNHANDLED,
 
-            ExpressionKind::Array(exprs) => self.load_array(exprs.into_iter()).into(),
-            ExpressionKind::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())).into(),
-            ExpressionKind::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())).into(),
+            ExpressionKind::Array(exprs) => self.load_array(exprs.into_iter())?.into(),
+            ExpressionKind::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())?).into(),
+            ExpressionKind::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())?).into(),
 
             ExpressionKind::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);
-                let define = self.load_array(exprs.exprs.into_iter());
+                let define = self.load_array(exprs.exprs.into_iter())?;
                 self.context.add_macro(name, define);
-                return NodeResult::Skip;
+                return Ok(NodeResult::Skip);
             },
             ExpressionKind::Undefine(name) => {
                 if let Some(name) = self.context.get_symbol(name.text) {
                     self.context.remove_macro(&name);
                 }
-                return NodeResult::Skip;
+                return Ok(NodeResult::Skip);
             },
-            ExpressionKind::Include(_path) => {
-                todo!("#include loading")
+            ExpressionKind::Include(path) => {
+                if !self.options.allow_include {
+                    return Err(LoadError::IncludeNotAllowed);
+                }
+
+                let file = self.load_path(path.text)?;
+                return Ok(NodeResult::Include(file));
             },
-            ExpressionKind::IncludeOptional(_path) => {
-                todo!("#include_opt loading")
+            ExpressionKind::IncludeOptional(path) => {
+                if !self.options.allow_include {
+                    return Ok(NodeResult::Skip);
+                }
+
+                match self.load_path_optional(path.text)? {
+                    Some(file) => return Ok(NodeResult::Include(file)),
+                    None => return Ok(NodeResult::Skip),
+                }
             },
-            ExpressionKind::Merge(_name) => {
-                todo!("#merge loading")
+            ExpressionKind::Merge(name) => {
+                if let Some(symbol) = self.context.get_symbol(name.text) {
+                    match self.context.get_macro(&symbol) {
+                        Some(define) => return Ok(NodeResult::MergeMacro(define)),
+                        None => return Err(LoadError::MacroNotFound),
+                    }
+                } else {
+                    if !self.options.allow_include {
+                        return Err(LoadError::IncludeNotAllowed);
+                    }
+
+                    let file = self.load_path(name.text)?;
+                    return Ok(NodeResult::MergeFile(file));
+                }
             },
             ExpressionKind::Autorun(_exprs) => {
                 todo!("#autorun loading")
@@ -100,10 +149,10 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 };
 
                 let array = match defined == is_positive {
-                    true => self.load_array(true_branch.exprs.into_iter()),
+                    true => self.load_array(true_branch.exprs.into_iter())?,
                     false => match false_branch {
-                        Some(false_branch) => self.load_array(false_branch.exprs.into_iter()),
-                        None => return NodeResult::Skip,
+                        Some(false_branch) => self.load_array(false_branch.exprs.into_iter())?,
+                        None => return Ok(NodeResult::Skip),
                     },
                 };
 
@@ -111,28 +160,45 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             },
         };
 
-        NodeResult::Value(node)
+        Ok(NodeResult::Value(node))
+    }
+
+    fn load_path_optional(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
+        match self.context.file_system().exists(VirtualPath::new(path)) {
+            true => self.load_path(path).map(|a| Some(a)),
+            false => Ok(None),
+        }
+    }
+
+    fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
+        load_path(self.context, self.options.clone(), VirtualPath::new(path))
     }
 }
 
-pub fn load_path(context: &mut Context, path: &Path) -> Result<NodeArray, LoadError> {
-    load_text(context, &fs::read_to_string(path)?)
+pub fn load_path(context: &mut Context, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
+    let file_system = context.file_system_mut();
+
+    let mut file = file_system.open_execute(path)?;
+    let text = io::read_to_string(file.as_mut())?;
+
+    file_system.set_cwd(path)?;
+
+    load_text(context, options, &text)
 }
 
-pub fn load_file(context: &mut Context, file: File) -> Result<NodeArray, LoadError> {
-    let text = io::read_to_string(file)?;
-    load_text(context, &text)
-}
-
-pub fn load_text(context: &mut Context, text: &str) -> Result<NodeArray, LoadError> {
+pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
     let ast = match parser::parse_text(text) {
         Ok(ast) => ast,
         Err(errors) => return Err(LoadError::Parse(errors)),
     };
-    Ok(load_ast(context, ast.into_iter()))
+    load_ast(context, options, ast.into_iter())
 }
 
-pub fn load_ast<'src>(context: &mut Context, ast: impl Iterator<Item = Expression<'src>>) -> NodeArray {
-    let mut loader = Loader::new(context);
+pub fn load_ast<'src>(
+    context: &mut Context,
+    options: LoadOptions,
+    ast: impl Iterator<Item = Expression<'src>>,
+) -> Result<NodeArray, LoadError> {
+    let mut loader = Loader::new(context, options);
     loader.load_array(ast)
 }
