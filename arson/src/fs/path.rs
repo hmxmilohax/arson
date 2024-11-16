@@ -19,6 +19,10 @@ pub enum VirtualComponent<'path> {
 #[error("prefix not found")]
 pub struct StripPrefixError(());
 
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[error("base path is not absolute")]
+pub struct CanonicalizeError(());
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct VirtualPath {
@@ -172,8 +176,39 @@ impl VirtualPath {
         buf
     }
 
-    // available via VirtualFileSystem
-    // pub fn canonicalize(&self) -> VirtualPathBuf;
+    /// Constructs the absolute form of this path using the provided base path.
+    ///
+    /// Relative paths are resolved according to the provided base path.
+    /// Then, all current directory (`.`) and parent directory (`..`) components are resolved,
+    /// ignoring any attempts to go beyond the root path.
+    pub fn canonicalize(&self, base: &VirtualPath) -> Result<VirtualPathBuf, CanonicalizeError> {
+        if !base.is_absolute() {
+            return Err(CanonicalizeError(()));
+        }
+
+        let path = base.join(self);
+
+        // Sanity check to ensure path starts with the root at this point
+        assert_eq!(path.components().next(), Some(VirtualComponent::RootDir));
+
+        // Resolve all path components
+        let mut path_stack = vec![];
+        for component in path.components() {
+            match component {
+                VirtualComponent::RootDir => continue,
+                VirtualComponent::CurDir => continue,
+                VirtualComponent::ParentDir => {
+                    path_stack.pop();
+                },
+                VirtualComponent::Normal(name) => path_stack.push(name),
+            };
+        }
+
+        // Collect everything into the final path, starting with the root prefix
+        let mut path = VirtualPathBuf::from("/");
+        path.push(path_stack.join("/"));
+        Ok(path)
+    }
 
     pub fn to_buf(&self) -> VirtualPathBuf {
         VirtualPathBuf::from(self)
@@ -195,6 +230,12 @@ impl Display for VirtualPath {
 impl AsRef<VirtualPath> for VirtualPath {
     fn as_ref(&self) -> &VirtualPath {
         self
+    }
+}
+
+impl AsRef<VirtualPath> for String {
+    fn as_ref(&self) -> &VirtualPath {
+        VirtualPath::new(self)
     }
 }
 
@@ -781,6 +822,27 @@ mod test {
             assert_eq!(Path::new("foo").join("bar/qux"), PathBuf::from("foo/bar/qux"));
             assert_eq!(Path::new("/foo").join("..//bar"), PathBuf::from("/foo/..//bar"));
             assert_eq!(Path::new("/foo").join("/bar"), PathBuf::from("/bar"));
+        }
+
+        #[test]
+        fn canonicalize() {
+            fn assert_canonicalized(base: &str, path: &str, expected: &str) {
+                let base = Path::new(base);
+                assert_eq!(Path::new(path).canonicalize(base), Ok(PathBuf::from(expected)));
+            }
+
+            assert_canonicalized("/foo", "", "/foo");
+            assert_canonicalized("/foo", "bar", "/foo/bar");
+            assert_canonicalized("/foo", "/bar", "/bar");
+            assert_canonicalized("/foo", "bar/qux", "/foo/bar/qux");
+            assert_canonicalized("/foo", "bar/../qux", "/foo/qux");
+            assert_canonicalized("/foo", "..//bar", "/bar");
+            assert_canonicalized("/foo", "../../../../bar", "/bar");
+
+            assert_eq!(
+                Path::new("bar").canonicalize(Path::new("foo")),
+                Err(CanonicalizeError(()))
+            );
         }
     }
 
