@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, BorrowMut},
     ops::{Deref, DerefMut},
     rc::Rc,
     slice::SliceIndex,
@@ -549,8 +549,60 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
-        NodeSlice::new(&self.nodes).slice(index)
+    pub fn capacity(&self) -> usize {
+        self.nodes.capacity()
+    }
+
+    pub fn push<N: Into<Node>>(&mut self, value: N) {
+        self.nodes.push(value.into())
+    }
+
+    pub fn pop(&mut self) -> Option<Node> {
+        self.nodes.pop()
+    }
+
+    pub fn insert<N: Into<Node>>(&mut self, index: usize, value: N) {
+        self.nodes.insert(index, value.into())
+    }
+
+    pub fn remove(&mut self, index: usize) -> Node {
+        self.nodes.remove(index)
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        self.nodes.append(&mut other.nodes)
+    }
+
+    pub fn extend_from_slice(&mut self, other: &[Node]) {
+        self.nodes.extend_from_slice(other)
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear()
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        self.nodes.reserve(additional)
+    }
+
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.nodes.reserve_exact(additional)
+    }
+
+    pub fn resize(&mut self, index: usize, value: Node) {
+        self.nodes.resize(index, value)
+    }
+
+    pub fn truncate(&mut self, len: usize) {
+        self.nodes.truncate(len)
+    }
+
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.nodes.shrink_to(min_capacity)
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.nodes.shrink_to_fit()
     }
 }
 
@@ -576,22 +628,28 @@ impl FromIterator<RawNodeValue> for NodeArray {
 }
 
 impl Deref for NodeArray {
-    type Target = Vec<Node>;
+    type Target = NodeSlice;
 
     fn deref(&self) -> &Self::Target {
-        &self.nodes
+        NodeSlice::new(&self.nodes)
     }
 }
 
 impl DerefMut for NodeArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.nodes
+        NodeSlice::from_mut(&mut self.nodes)
     }
 }
 
-impl Borrow<NodeSlice> for NodeArray {
-    fn borrow(&self) -> &NodeSlice {
-        NodeSlice::new(&self.nodes)
+impl Borrow<Vec<Node>> for NodeArray {
+    fn borrow(&self) -> &Vec<Node> {
+        &self.nodes
+    }
+}
+
+impl BorrowMut<Vec<Node>> for NodeArray {
+    fn borrow_mut(&mut self) -> &mut Vec<Node> {
+        &mut self.nodes
     }
 }
 
@@ -608,11 +666,111 @@ impl NodeSlice {
         unsafe { &*(nodes as *const [Node] as *const NodeSlice) }
     }
 
+    pub fn from_mut(nodes: &mut [Node]) -> &mut NodeSlice {
+        // SAFETY: NodeSlice transparently contains a [Node], so its layout is identical
+        unsafe { &mut *(nodes as *mut [Node] as *mut NodeSlice) }
+    }
+
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         match self.nodes.get(index) {
             Some(value) => Ok(Self::new(value)),
             None => Err(Error::OutOfRange(0..self.nodes.len())),
         }
+    }
+
+    pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
+        match self.nodes.get(index) {
+            Some(value) => Ok(value),
+            None => Err(Error::OutOfRange(0..self.nodes.len())),
+        }
+    }
+
+    pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
+        self.nodes.get(index)
+    }
+
+    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
+        self.get(index)?.evaluate(context)
+    }
+
+    pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
+        Ok(self.get(index)?.unevaluated())
+    }
+
+    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+        self.get(index)?.integer(context)
+    }
+
+    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+        self.get(index)?.integer_strict(context)
+    }
+
+    pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean(context)
+    }
+
+    pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean_strict(context)
+    }
+
+    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+        self.get(index)?.float(context)
+    }
+
+    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+        self.get(index)?.float_strict(context)
+    }
+
+    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
+        self.get(index)?.string(context)
+    }
+
+    pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
+        self.get(index)?.symbol(context)
+    }
+
+    pub fn variable(&self, index: usize) -> crate::Result<Variable> {
+        self.get(index)?.variable()
+    }
+
+    pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
+        self.get(index)?.object(context)
+    }
+
+    pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
+        self.get(index)?.function(context)
+    }
+
+    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
+        self.get(index)?.array(context)
+    }
+
+    pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
+        self.get(index)?.command()
+    }
+
+    pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
+        self.get(index)?.property()
+    }
+
+    pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
+        for node in self.iter() {
+            let RawNodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(node) = array.unevaluated(0) else {
+                continue;
+            };
+            let Ok(symbol) = node.symbol() else {
+                continue;
+            };
+
+            if symbol == tag {
+                return Ok(array);
+            }
+        }
+
+        Err(Error::EntryNotFound(tag.clone()))
     }
 }
 
@@ -632,113 +790,6 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
         #[allow(clippy::into_iter_on_ref)]
         self.nodes.into_iter()
     }
-}
-
-macro_rules! array_impl {
-    () => {
-        pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
-            match self.nodes.get(index) {
-                Some(value) => Ok(value),
-                None => Err(Error::OutOfRange(0..self.nodes.len())),
-            }
-        }
-
-        pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
-            self.nodes.get(index)
-        }
-
-        pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
-            self.get(index)?.evaluate(context)
-        }
-
-        pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
-            Ok(self.get(index)?.unevaluated())
-        }
-
-        pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-            self.get(index)?.integer(context)
-        }
-
-        pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-            self.get(index)?.integer_strict(context)
-        }
-
-        pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-            self.get(index)?.boolean(context)
-        }
-
-        pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-            self.get(index)?.boolean_strict(context)
-        }
-
-        pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-            self.get(index)?.float(context)
-        }
-
-        pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-            self.get(index)?.float_strict(context)
-        }
-
-        pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
-            self.get(index)?.string(context)
-        }
-
-        pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
-            self.get(index)?.symbol(context)
-        }
-
-        pub fn variable(&self, index: usize) -> crate::Result<Variable> {
-            self.get(index)?.variable()
-        }
-
-        pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
-            self.get(index)?.object(context)
-        }
-
-        pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
-            self.get(index)?.function(context)
-        }
-
-        pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
-            self.get(index)?.array(context)
-        }
-
-        pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
-            self.get(index)?.command()
-        }
-
-        pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
-            self.get(index)?.property()
-        }
-
-        pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
-            for node in self.iter() {
-                let RawNodeValue::Array(array) = node.unevaluated() else {
-                    continue;
-                };
-                let Ok(node) = array.unevaluated(0) else {
-                    continue;
-                };
-                let Ok(symbol) = node.symbol() else {
-                    continue;
-                };
-
-                if symbol == tag {
-                    return Ok(array);
-                }
-            }
-
-            Err(Error::EntryNotFound(tag.clone()))
-        }
-    };
-}
-
-impl NodeArray {
-    array_impl!();
-}
-
-impl NodeSlice {
-    array_impl!();
 }
 
 /// An executable/evaluatable command.
@@ -807,12 +858,6 @@ macro_rules! array_wrapper_impl {
         impl Borrow<NodeArray> for $name {
             fn borrow(&self) -> &NodeArray {
                 &self.nodes
-            }
-        }
-
-        impl Borrow<NodeSlice> for $name {
-            fn borrow(&self) -> &NodeSlice {
-                self.nodes.borrow()
             }
         }
     };
