@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use super::{VirtualPath, VirtualPathBuf};
+use super::{AbsolutePath, AbsolutePathBuf, VirtualPath};
 
 /// Conjunction of the [`Read`] and [`Write`] traits.
 ///
@@ -19,7 +19,7 @@ impl<T: Read + Write> ReadWrite for T {}
 /// of the file system.
 pub trait FileSystem {
     /// Gets the current working directory, used to resolve relative paths.
-    fn cwd(&self) -> &VirtualPath;
+    fn cwd(&self) -> &AbsolutePath;
 
     /// Sets a new working directory and returns the old one.
     ///
@@ -29,7 +29,7 @@ pub trait FileSystem {
     /// # Errors
     ///
     /// Returns an error if the given path does not exist as a directory.
-    fn set_cwd(&mut self, path: &VirtualPath) -> io::Result<VirtualPathBuf>;
+    fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePathBuf;
 
     /// Determines whether the given path exists in the file system.
     fn exists(&self, path: &VirtualPath) -> bool;
@@ -61,8 +61,7 @@ pub trait FileSystem {
     /// By default this resolves relative to the
     /// [current working directory](FileSystem::cwd) of the file system.
     /// See [`VirtualPath::canonicalize`] for full details.
-    fn canonicalize_path(&self, path: &VirtualPath) -> io::Result<VirtualPathBuf> {
-        path.canonicalize(self.cwd())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
+    fn canonicalize_path(&self, path: &VirtualPath) -> AbsolutePathBuf {
+        path.make_absolute(self.cwd())
     }
 }

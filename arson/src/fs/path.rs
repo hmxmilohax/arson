@@ -19,10 +19,6 @@ pub enum VirtualComponent<'path> {
 #[error("prefix not found")]
 pub struct StripPrefixError(());
 
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[error("base path is not absolute")]
-pub struct CanonicalizeError(());
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct VirtualPath {
@@ -178,14 +174,10 @@ impl VirtualPath {
 
     /// Constructs the absolute form of this path using the provided base path.
     ///
-    /// Relative paths are resolved according to the provided base path.
+    /// Relative paths are resolved according to the base path.
     /// Then, all current directory (`.`) and parent directory (`..`) components are resolved,
     /// ignoring any attempts to go beyond the root path.
-    pub fn canonicalize(&self, base: &VirtualPath) -> Result<VirtualPathBuf, CanonicalizeError> {
-        if !base.is_absolute() {
-            return Err(CanonicalizeError(()));
-        }
-
+    pub fn make_absolute(&self, base: &AbsolutePath) -> AbsolutePathBuf {
         let path = base.join(self);
 
         // Sanity check to ensure path starts with the root at this point
@@ -205,9 +197,9 @@ impl VirtualPath {
         }
 
         // Collect everything into the final path, starting with the root prefix
-        let mut path = VirtualPathBuf::from("/");
+        let mut path = AbsolutePathBuf::new();
         path.push(path_stack.join("/"));
-        Ok(path)
+        path
     }
 
     pub fn to_buf(&self) -> VirtualPathBuf {
@@ -242,6 +234,14 @@ impl AsRef<VirtualPath> for String {
 impl AsRef<VirtualPath> for str {
     fn as_ref(&self) -> &VirtualPath {
         VirtualPath::new(self)
+    }
+}
+
+impl ToOwned for VirtualPath {
+    type Owned = VirtualPathBuf;
+
+    fn to_owned(&self) -> Self::Owned {
+        VirtualPathBuf::from(&self.inner)
     }
 }
 
@@ -440,6 +440,333 @@ impl From<String> for VirtualPathBuf {
 impl From<&VirtualPath> for VirtualPathBuf {
     fn from(value: &VirtualPath) -> Self {
         Self { inner: value.inner.to_owned() }
+    }
+}
+
+/// A path which is verified to be absolute.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct AbsolutePath {
+    inner: VirtualPath,
+}
+
+impl AbsolutePath {
+    pub fn try_new<S: AsRef<VirtualPath> + ?Sized>(s: &S) -> Option<&AbsolutePath> {
+        let path = s.as_ref();
+        if !path.is_absolute() {
+            return None;
+        }
+
+        // SAFETY: Path has been verified to be absolute
+        Some(unsafe { Self::new_unchecked(path) })
+    }
+
+    // CONTRACT: path must be verified to be absolute
+    unsafe fn new_unchecked(path: &VirtualPath) -> &AbsolutePath {
+        // SAFETY: VirtualPath transparently contains a str, so its layout is identical
+        unsafe { &*(path as *const VirtualPath as *const AbsolutePath) }
+    }
+
+    // CONTRACT: path must be verified to be absolute
+    unsafe fn from_inner_mut_unchecked(path: &mut VirtualPath) -> &mut AbsolutePath {
+        // SAFETY: VirtualPath transparently contains a str, so its layout is identical
+        unsafe { &mut *(path as *mut VirtualPath as *mut AbsolutePath) }
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.inner.as_str()
+    }
+
+    pub fn as_mut_str(&mut self) -> &mut str {
+        self.inner.as_mut_str()
+    }
+
+    pub fn components(&self) -> VirtualComponents<'_> {
+        self.inner.components()
+    }
+
+    pub fn iter(&self) -> VirtualPathIter<'_> {
+        self.inner.iter()
+    }
+
+    pub fn ancestors(&self) -> impl Iterator<Item = &VirtualPath> {
+        self.inner.ancestors()
+    }
+
+    pub fn parent(&self) -> Option<&VirtualPath> {
+        self.inner.parent()
+    }
+
+    pub fn file_name(&self) -> Option<&str> {
+        self.inner.file_name()
+    }
+
+    pub fn file_stem(&self) -> Option<&str> {
+        self.inner.file_stem()
+    }
+
+    pub fn extension(&self) -> Option<&str> {
+        self.inner.extension()
+    }
+
+    pub fn starts_with<P: AsRef<VirtualPath>>(&self, base: P) -> bool {
+        self.inner.starts_with(base)
+    }
+
+    pub fn ends_with<P: AsRef<VirtualPath>>(&self, child: P) -> bool {
+        self.inner.ends_with(child)
+    }
+
+    pub fn strip_prefix<P: AsRef<VirtualPath>>(&self, base: P) -> Result<&VirtualPath, StripPrefixError> {
+        self.inner.strip_prefix(base)
+    }
+
+    pub fn with_file_name<S: AsRef<str>>(&self, file_name: S) -> VirtualPathBuf {
+        self.inner.with_file_name(file_name)
+    }
+
+    pub fn with_extension<S: AsRef<str>>(&self, extension: S) -> VirtualPathBuf {
+        self.inner.with_extension(extension)
+    }
+
+    pub fn join<P: AsRef<VirtualPath>>(&self, path: P) -> VirtualPathBuf {
+        self.inner.join(path)
+    }
+
+    pub fn to_buf(&self) -> VirtualPathBuf {
+        self.inner.to_buf()
+    }
+}
+
+impl Debug for AbsolutePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.inner, f)
+    }
+}
+
+impl Display for AbsolutePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.inner, f)
+    }
+}
+
+impl AsRef<AbsolutePath> for AbsolutePath {
+    fn as_ref(&self) -> &AbsolutePath {
+        self
+    }
+}
+
+impl AsRef<VirtualPath> for AbsolutePath {
+    fn as_ref(&self) -> &VirtualPath {
+        &self.inner
+    }
+}
+
+impl Borrow<VirtualPath> for AbsolutePath {
+    fn borrow(&self) -> &VirtualPath {
+        self.as_ref()
+    }
+}
+
+impl ToOwned for AbsolutePath {
+    type Owned = AbsolutePathBuf;
+
+    fn to_owned(&self) -> Self::Owned {
+        AbsolutePathBuf { inner: self.inner.to_buf() }
+    }
+}
+
+/// A path buffer which is guaranteed to be absolute.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AbsolutePathBuf {
+    inner: VirtualPathBuf,
+}
+
+impl AbsolutePathBuf {
+    pub fn new() -> Self {
+        Self { inner: VirtualPathBuf::from("/") }
+    }
+
+    pub fn as_path(&self) -> &VirtualPath {
+        self.inner.as_path()
+    }
+
+    pub fn as_string(&self) -> &String {
+        self.inner.as_string()
+    }
+
+    pub fn as_mut_string(&mut self) -> &mut String {
+        self.inner.as_mut_string()
+    }
+
+    pub fn push<P: AsRef<VirtualPath>>(&mut self, path: P) {
+        // INVARIANTS: push ensures the final state of the buffer will be absolute
+        // when either the initial state or the path to be added are absolute
+        self.inner.push(path)
+    }
+
+    pub fn pop(&mut self) -> bool {
+        // INVARIANTS: parent() returns None for the root path,
+        // so pop() will never cause an absolute path to lose its absoluteness
+        self.inner.pop()
+    }
+
+    pub fn set_file_name<S: AsRef<str>>(&mut self, file_name: S) {
+        // INVARIANTS: set_file_name uses pop() and push() to perform its modifications,
+        // and those are both verified to maintain absoluteness
+        self.inner.set_file_name(file_name)
+    }
+
+    pub fn set_extension<S: AsRef<str>>(&mut self, extension: S) -> bool {
+        // INVARIANTS: same as set_file_name
+        self.inner.set_extension(extension)
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
+    pub fn clear(&mut self) {
+        // INVARIANTS: inner.clear() *will* cause the path to lose its absoluteness,
+        // so we instead push the root path, which will replace the buffer
+        self.inner.push("/")
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.reserve(additional)
+    }
+
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.try_reserve(additional)
+    }
+
+    pub fn reserve_exact(&mut self, additional: usize) {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.reserve_exact(additional)
+    }
+
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.try_reserve_exact(additional)
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.shrink_to_fit()
+    }
+
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
+        self.inner.shrink_to(min_capacity)
+    }
+}
+
+impl Debug for AbsolutePathBuf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.inner, f)
+    }
+}
+
+impl Display for AbsolutePathBuf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.inner, f)
+    }
+}
+
+impl Default for AbsolutePathBuf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Deref for AbsolutePathBuf {
+    type Target = AbsolutePath;
+
+    fn deref(&self) -> &Self::Target {
+        // SAFETY: Path is guaranteed to be absolute by constructor and all other methods
+        unsafe { AbsolutePath::new_unchecked(&self.inner) }
+    }
+}
+
+impl DerefMut for AbsolutePathBuf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { AbsolutePath::from_inner_mut_unchecked(&mut self.inner) }
+    }
+}
+
+impl<T> AsRef<T> for AbsolutePathBuf
+where
+    T: ?Sized,
+    <AbsolutePathBuf as Deref>::Target: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
+    }
+}
+
+impl<T> Borrow<T> for AbsolutePathBuf
+where
+    T: ?Sized,
+    <AbsolutePathBuf as Deref>::Target: Borrow<T>,
+{
+    fn borrow(&self) -> &T {
+        self.deref().borrow()
+    }
+}
+
+impl Borrow<VirtualPathBuf> for AbsolutePathBuf {
+    fn borrow(&self) -> &VirtualPathBuf {
+        &self.inner
+    }
+}
+
+impl From<&AbsolutePath> for AbsolutePathBuf {
+    fn from(value: &AbsolutePath) -> Self {
+        Self { inner: value.inner.to_owned() }
+    }
+}
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[error("given path is not absolute")]
+pub struct AbsoluteTryFromError(());
+
+impl TryFrom<&str> for AbsolutePathBuf {
+    type Error = AbsoluteTryFromError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(VirtualPath::new(value))
+    }
+}
+
+impl TryFrom<&String> for AbsolutePathBuf {
+    type Error = AbsoluteTryFromError;
+
+    fn try_from(value: &String) -> Result<Self, Self::Error> {
+        Self::try_from(VirtualPath::new(value))
+    }
+}
+
+impl TryFrom<String> for AbsolutePathBuf {
+    type Error = AbsoluteTryFromError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match AbsolutePath::try_new(&value) {
+            Some(_) => Ok(Self { inner: VirtualPathBuf::from(value) }),
+            None => Err(AbsoluteTryFromError(())),
+        }
+    }
+}
+
+impl TryFrom<&VirtualPath> for AbsolutePathBuf {
+    type Error = AbsoluteTryFromError;
+
+    fn try_from(value: &VirtualPath) -> Result<Self, Self::Error> {
+        match AbsolutePath::try_new(value) {
+            Some(path) => Ok(path.to_owned()),
+            None => Err(AbsoluteTryFromError(())),
+        }
     }
 }
 
@@ -825,24 +1152,20 @@ mod test {
         }
 
         #[test]
-        fn canonicalize() {
-            fn assert_canonicalized(base: &str, path: &str, expected: &str) {
-                let base = Path::new(base);
-                assert_eq!(Path::new(path).canonicalize(base), Ok(PathBuf::from(expected)));
+        fn make_absolute() {
+            fn assert_result(base: &str, path: &str, expected: &str) {
+                let base = AbsolutePath::try_new(base).expect("the base path must be absolute");
+                let expected = AbsolutePathBuf::try_from(expected).expect("the expected path must be absolute");
+                assert_eq!(Path::new(path).make_absolute(base), expected);
             }
 
-            assert_canonicalized("/foo", "", "/foo");
-            assert_canonicalized("/foo", "bar", "/foo/bar");
-            assert_canonicalized("/foo", "/bar", "/bar");
-            assert_canonicalized("/foo", "bar/qux", "/foo/bar/qux");
-            assert_canonicalized("/foo", "bar/../qux", "/foo/qux");
-            assert_canonicalized("/foo", "..//bar", "/bar");
-            assert_canonicalized("/foo", "../../../../bar", "/bar");
-
-            assert_eq!(
-                Path::new("bar").canonicalize(Path::new("foo")),
-                Err(CanonicalizeError(()))
-            );
+            assert_result("/foo", "", "/foo");
+            assert_result("/foo", "bar", "/foo/bar");
+            assert_result("/foo", "/bar", "/bar");
+            assert_result("/foo", "bar/qux", "/foo/bar/qux");
+            assert_result("/foo", "bar/../qux", "/foo/qux");
+            assert_result("/foo", "..//bar", "/bar");
+            assert_result("/foo", "../../../../bar", "/bar");
         }
     }
 

@@ -206,14 +206,14 @@ pub fn load_path(context: &mut Context, options: LoadOptions, path: &VirtualPath
     let mut file = context.file_system().open_execute(path)?;
     let text = io::read_to_string(file.as_mut())?;
 
-    let canon = context.file_system().canonicalize_path(path)?;
+    let canon = context.file_system().canonicalize_path(path);
     let Some(dir) = canon.parent() else {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
     };
 
-    let old_cwd = context.file_system_mut().set_cwd(dir)?;
+    let old_cwd = context.file_system_mut().set_cwd(dir);
     let array = load_text(context, options, &text)?;
-    context.file_system_mut().set_cwd(&old_cwd)?;
+    context.file_system_mut().set_cwd(old_cwd.as_ref());
 
     Ok(array)
 }
