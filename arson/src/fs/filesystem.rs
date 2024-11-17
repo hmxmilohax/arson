@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use super::{AbsolutePath, AbsolutePathBuf, FileSystemDriver, ReadWrite, VirtualPath};
+use super::{AbsolutePath, FileSystemDriver, ReadWrite, VirtualPath};
 
 /// A file system implementation to be used from scripts.
 ///
@@ -11,13 +11,13 @@ use super::{AbsolutePath, AbsolutePathBuf, FileSystemDriver, ReadWrite, VirtualP
 /// of the file system.
 pub struct FileSystem {
     driver: Box<dyn FileSystemDriver>,
-    cwd: AbsolutePathBuf,
+    cwd: AbsolutePath,
 }
 
 impl FileSystem {
     /// Creates a new [`FileSystem`] with the given driver.
     pub fn new(driver: Box<dyn FileSystemDriver>) -> Self {
-        Self { driver, cwd: AbsolutePathBuf::new() }
+        Self { driver, cwd: AbsolutePath::new() }
     }
 
     /// Gets the current working directory, used to resolve relative paths.
@@ -33,7 +33,7 @@ impl FileSystem {
     /// # Errors
     ///
     /// Returns an error if the given path does not exist as a directory.
-    pub fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePathBuf {
+    pub fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePath {
         let mut path = self.canonicalize(path);
         std::mem::swap(&mut self.cwd, &mut path);
         path
@@ -43,7 +43,7 @@ impl FileSystem {
     /// [current working directory](FileSystem::cwd).
     ///
     /// See [`VirtualPath::canonicalize`] for full details.
-    pub fn canonicalize(&self, path: &VirtualPath) -> AbsolutePathBuf {
+    pub fn canonicalize(&self, path: &VirtualPath) -> AbsolutePath {
         path.make_absolute(&self.cwd)
     }
 

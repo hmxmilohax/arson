@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crate::fs::{AbsolutePath, AbsolutePathBuf, FileSystem, FileSystemDriver, VirtualPath};
+use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::loader::{self, LoadOptions};
 use crate::{builtin, LoadError};
 
@@ -98,7 +98,7 @@ impl Context {
         self.file_system.as_ref().map(|fs| fs.cwd())
     }
 
-    pub fn set_cwd(&mut self, path: &VirtualPath) -> Option<AbsolutePathBuf> {
+    pub fn set_cwd(&mut self, path: &VirtualPath) -> Option<AbsolutePath> {
         self.file_system.as_mut().map(|fs| fs.set_cwd(path))
     }
 

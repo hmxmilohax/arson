@@ -7,14 +7,6 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum VirtualComponent<'path> {
-    RootDir,
-    CurDir,
-    ParentDir,
-    Normal(&'path str),
-}
-
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[error("prefix not found")]
 pub struct StripPrefixError(());
@@ -177,7 +169,7 @@ impl VirtualPath {
     /// Relative paths are resolved according to the base path.
     /// Then, all current directory (`.`) and parent directory (`..`) components are resolved,
     /// ignoring any attempts to go beyond the root path.
-    pub fn make_absolute(&self, base: &AbsolutePath) -> AbsolutePathBuf {
+    pub fn make_absolute(&self, base: &AbsolutePath) -> AbsolutePath {
         let path = base.join(self);
 
         // Sanity check to ensure path starts with the root at this point
@@ -197,8 +189,9 @@ impl VirtualPath {
         }
 
         // Collect everything into the final path, starting with the root prefix
-        let mut path = AbsolutePathBuf::new();
-        path.push(path_stack.join("/"));
+        let mut path = AbsolutePath::new();
+        path.inner.push(path_stack.join("/"));
+        assert!(path.inner.is_absolute());
         path
     }
 
@@ -444,49 +437,39 @@ impl From<&VirtualPath> for VirtualPathBuf {
 }
 
 /// A path which is verified to be absolute.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbsolutePath {
-    inner: VirtualPath,
+    inner: VirtualPathBuf,
 }
 
 impl AbsolutePath {
-    pub fn try_new<S: AsRef<VirtualPath> + ?Sized>(s: &S) -> Option<&AbsolutePath> {
+    pub fn new() -> Self {
+        Self { inner: VirtualPathBuf::from("/") }
+    }
+
+    pub fn try_new<S: AsRef<VirtualPath> + ?Sized>(s: &S) -> Option<AbsolutePath> {
         let path = s.as_ref();
         if !path.is_absolute() {
             return None;
         }
 
-        // SAFETY: Path has been verified to be absolute
-        Some(unsafe { Self::new_unchecked(path) })
+        Some(Self { inner: path.to_buf() })
     }
 
-    // CONTRACT: path must be verified to be absolute
-    unsafe fn new_unchecked(path: &VirtualPath) -> &AbsolutePath {
-        // SAFETY: VirtualPath transparently contains a str, so its layout is identical
-        unsafe { &*(path as *const VirtualPath as *const AbsolutePath) }
+    pub fn as_path(&self) -> &VirtualPath {
+        self.inner.as_path()
     }
 
-    // CONTRACT: path must be verified to be absolute
-    unsafe fn from_inner_mut_unchecked(path: &mut VirtualPath) -> &mut AbsolutePath {
-        // SAFETY: VirtualPath transparently contains a str, so its layout is identical
-        unsafe { &mut *(path as *mut VirtualPath as *mut AbsolutePath) }
+    pub fn as_string(&self) -> &String {
+        self.inner.as_string()
     }
 
     pub fn as_str(&self) -> &str {
         self.inner.as_str()
     }
 
-    pub fn as_mut_str(&mut self) -> &mut str {
-        self.inner.as_mut_str()
-    }
-
-    pub fn components(&self) -> VirtualComponents<'_> {
-        self.inner.components()
-    }
-
-    pub fn iter(&self) -> VirtualPathIter<'_> {
-        self.inner.iter()
+    pub fn iter(&self) -> AbsolutePathIter<'_> {
+        AbsolutePathIter { remaining: self.as_str() }
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = &VirtualPath> {
@@ -533,8 +516,12 @@ impl AbsolutePath {
         self.inner.join(path)
     }
 
+    pub fn join_absolute<P: AsRef<VirtualPath>>(&self, path: P) -> AbsolutePath {
+        path.as_ref().make_absolute(self)
+    }
+
     pub fn to_buf(&self) -> VirtualPathBuf {
-        self.inner.to_buf()
+        self.inner.clone()
     }
 }
 
@@ -547,6 +534,12 @@ impl Debug for AbsolutePath {
 impl Display for AbsolutePath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&self.inner, f)
+    }
+}
+
+impl Default for AbsolutePath {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -568,206 +561,60 @@ impl Borrow<VirtualPath> for AbsolutePath {
     }
 }
 
-impl ToOwned for AbsolutePath {
-    type Owned = AbsolutePathBuf;
-
-    fn to_owned(&self) -> Self::Owned {
-        AbsolutePathBuf { inner: self.inner.to_buf() }
-    }
-}
-
-/// A path buffer which is guaranteed to be absolute.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AbsolutePathBuf {
-    inner: VirtualPathBuf,
-}
-
-impl AbsolutePathBuf {
-    pub fn new() -> Self {
-        Self { inner: VirtualPathBuf::from("/") }
-    }
-
-    pub fn as_path(&self) -> &VirtualPath {
-        self.inner.as_path()
-    }
-
-    pub fn as_string(&self) -> &String {
-        self.inner.as_string()
-    }
-
-    pub fn as_mut_string(&mut self) -> &mut String {
-        self.inner.as_mut_string()
-    }
-
-    pub fn push<P: AsRef<VirtualPath>>(&mut self, path: P) {
-        // INVARIANTS: push ensures the final state of the buffer will be absolute
-        // when either the initial state or the path to be added are absolute
-        self.inner.push(path)
-    }
-
-    pub fn pop(&mut self) -> bool {
-        // INVARIANTS: parent() returns None for the root path,
-        // so pop() will never cause an absolute path to lose its absoluteness
-        self.inner.pop()
-    }
-
-    pub fn set_file_name<S: AsRef<str>>(&mut self, file_name: S) {
-        // INVARIANTS: set_file_name uses pop() and push() to perform its modifications,
-        // and those are both verified to maintain absoluteness
-        self.inner.set_file_name(file_name)
-    }
-
-    pub fn set_extension<S: AsRef<str>>(&mut self, extension: S) -> bool {
-        // INVARIANTS: same as set_file_name
-        self.inner.set_extension(extension)
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.inner.capacity()
-    }
-
-    pub fn clear(&mut self) {
-        // INVARIANTS: inner.clear() *will* cause the path to lose its absoluteness,
-        // so we instead push the root path, which will replace the buffer
-        self.inner.push("/")
-    }
-
-    pub fn reserve(&mut self, additional: usize) {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.reserve(additional)
-    }
-
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.try_reserve(additional)
-    }
-
-    pub fn reserve_exact(&mut self, additional: usize) {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.reserve_exact(additional)
-    }
-
-    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.try_reserve_exact(additional)
-    }
-
-    pub fn shrink_to_fit(&mut self) {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.shrink_to_fit()
-    }
-
-    pub fn shrink_to(&mut self, min_capacity: usize) {
-        // INVARIANTS: does not modify the contents of the underlying buffer, only its capacity
-        self.inner.shrink_to(min_capacity)
-    }
-}
-
-impl Debug for AbsolutePathBuf {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.inner, f)
-    }
-}
-
-impl Display for AbsolutePathBuf {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.inner, f)
-    }
-}
-
-impl Default for AbsolutePathBuf {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Deref for AbsolutePathBuf {
-    type Target = AbsolutePath;
-
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: Path is guaranteed to be absolute by constructor and all other methods
-        unsafe { AbsolutePath::new_unchecked(&self.inner) }
-    }
-}
-
-impl DerefMut for AbsolutePathBuf {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { AbsolutePath::from_inner_mut_unchecked(&mut self.inner) }
-    }
-}
-
-impl<T> AsRef<T> for AbsolutePathBuf
-where
-    T: ?Sized,
-    <AbsolutePathBuf as Deref>::Target: AsRef<T>,
-{
-    fn as_ref(&self) -> &T {
-        self.deref().as_ref()
-    }
-}
-
-impl<T> Borrow<T> for AbsolutePathBuf
-where
-    T: ?Sized,
-    <AbsolutePathBuf as Deref>::Target: Borrow<T>,
-{
-    fn borrow(&self) -> &T {
-        self.deref().borrow()
-    }
-}
-
-impl Borrow<VirtualPathBuf> for AbsolutePathBuf {
+impl Borrow<VirtualPathBuf> for AbsolutePath {
     fn borrow(&self) -> &VirtualPathBuf {
         &self.inner
     }
 }
 
-impl From<&AbsolutePath> for AbsolutePathBuf {
-    fn from(value: &AbsolutePath) -> Self {
-        Self { inner: value.inner.to_owned() }
-    }
-}
-
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[error("given path is not absolute")]
-pub struct AbsoluteTryFromError(());
+pub struct TryFromPathError(());
 
-impl TryFrom<&str> for AbsolutePathBuf {
-    type Error = AbsoluteTryFromError;
+impl TryFrom<&str> for AbsolutePath {
+    type Error = TryFromPathError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::try_from(VirtualPath::new(value))
     }
 }
 
-impl TryFrom<&String> for AbsolutePathBuf {
-    type Error = AbsoluteTryFromError;
+impl TryFrom<&String> for AbsolutePath {
+    type Error = TryFromPathError;
 
     fn try_from(value: &String) -> Result<Self, Self::Error> {
         Self::try_from(VirtualPath::new(value))
     }
 }
 
-impl TryFrom<String> for AbsolutePathBuf {
-    type Error = AbsoluteTryFromError;
+impl TryFrom<String> for AbsolutePath {
+    type Error = TryFromPathError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match AbsolutePath::try_new(&value) {
             Some(_) => Ok(Self { inner: VirtualPathBuf::from(value) }),
-            None => Err(AbsoluteTryFromError(())),
+            None => Err(TryFromPathError(())),
         }
     }
 }
 
-impl TryFrom<&VirtualPath> for AbsolutePathBuf {
-    type Error = AbsoluteTryFromError;
+impl TryFrom<&VirtualPath> for AbsolutePath {
+    type Error = TryFromPathError;
 
     fn try_from(value: &VirtualPath) -> Result<Self, Self::Error> {
         match AbsolutePath::try_new(value) {
             Some(path) => Ok(path.to_owned()),
-            None => Err(AbsoluteTryFromError(())),
+            None => Err(TryFromPathError(())),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VirtualComponent<'path> {
+    RootDir,
+    CurDir,
+    ParentDir,
+    Normal(&'path str),
 }
 
 #[derive(Clone, Copy)]
@@ -905,6 +752,37 @@ impl<'path> Iterator for VirtualPathIter<'path> {
 impl<'path> DoubleEndedIterator for VirtualPathIter<'path> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(Self::map_component)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct AbsolutePathIter<'path> {
+    remaining: &'path str,
+}
+
+impl<'path> Iterator for AbsolutePathIter<'path> {
+    type Item = &'path str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.remaining.trim_start_matches('/').split_once('/') {
+            Some((component, remaining)) => {
+                self.remaining = remaining;
+                Some(component)
+            },
+            None => None,
+        }
+    }
+}
+
+impl<'path> DoubleEndedIterator for AbsolutePathIter<'path> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self.remaining.trim_end_matches('/').rsplit_once('/') {
+            Some((component, remaining)) => {
+                self.remaining = remaining;
+                Some(component)
+            },
+            None => None,
+        }
     }
 }
 
@@ -1155,8 +1033,8 @@ mod test {
         fn make_absolute() {
             fn assert_result(base: &str, path: &str, expected: &str) {
                 let base = AbsolutePath::try_new(base).expect("the base path must be absolute");
-                let expected = AbsolutePathBuf::try_from(expected).expect("the expected path must be absolute");
-                assert_eq!(Path::new(path).make_absolute(base), expected);
+                let expected = AbsolutePath::try_from(expected).expect("the expected path must be absolute");
+                assert_eq!(Path::new(path).make_absolute(&base), expected);
             }
 
             assert_result("/foo", "", "/foo");
