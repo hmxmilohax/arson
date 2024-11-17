@@ -145,7 +145,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     return Ok(NodeResult::Skip);
                 }
 
-                match self.load_path_optional(path.text)? {
+                match self.load_path_opt(path.text)? {
                     Some(file) => return Ok(NodeResult::Include(file)),
                     None => return Ok(NodeResult::Skip),
                 }
@@ -190,32 +190,20 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
         Ok(NodeResult::Value(node))
     }
 
-    fn load_path_optional(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
-        match self.context.file_system().exists(VirtualPath::new(path)) {
+    fn load_path_opt(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
+        let Some(file_system) = self.context.file_system_opt() else {
+            return Ok(None);
+        };
+
+        match file_system.exists(VirtualPath::new(path)) {
             true => self.load_path(path).map(|a| Some(a)),
             false => Ok(None),
         }
     }
 
     fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
-        load_path(self.context, self.options.clone(), VirtualPath::new(path))
+        self.context.load_path(self.options.clone(), VirtualPath::new(path))
     }
-}
-
-pub fn load_path(context: &mut Context, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
-    let mut file = context.file_system().open_execute(path)?;
-    let text = io::read_to_string(file.as_mut())?;
-
-    let canon = context.file_system().canonicalize_path(path);
-    let Some(dir) = canon.parent() else {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
-    };
-
-    let old_cwd = context.file_system_mut().set_cwd(dir);
-    let array = load_text(context, options, &text)?;
-    context.file_system_mut().set_cwd(old_cwd.as_ref());
-
-    Ok(array)
 }
 
 pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {

@@ -2,24 +2,28 @@
 
 use std::io::{self, Read, Write};
 
-use super::{AbsolutePath, AbsolutePathBuf, VirtualPath};
-
-/// Conjunction of the [`Read`] and [`Write`] traits.
-///
-/// This trait exists to work around `dyn Read + Write` not being allowed,
-/// and has no unique functionality. It is auto-implemented for all types
-/// which implement both traits.
-pub trait ReadWrite: Read + Write {}
-impl<T: Read + Write> ReadWrite for T {}
+use super::{AbsolutePath, AbsolutePathBuf, FileSystemDriver, ReadWrite, VirtualPath};
 
 /// A file system implementation to be used from scripts.
 ///
 /// All methods which take a path accept relative paths,
 /// and resolve them relative to the [current working directory](FileSystem::cwd)
 /// of the file system.
-pub trait FileSystem {
+pub struct FileSystem {
+    driver: Box<dyn FileSystemDriver>,
+    cwd: AbsolutePathBuf,
+}
+
+impl FileSystem {
+    /// Creates a new [`FileSystem`] with the given driver.
+    pub fn new(driver: Box<dyn FileSystemDriver>) -> Self {
+        Self { driver, cwd: AbsolutePathBuf::new() }
+    }
+
     /// Gets the current working directory, used to resolve relative paths.
-    fn cwd(&self) -> &AbsolutePath;
+    pub fn cwd(&self) -> &AbsolutePath {
+        &self.cwd
+    }
 
     /// Sets a new working directory and returns the old one.
     ///
@@ -29,39 +33,59 @@ pub trait FileSystem {
     /// # Errors
     ///
     /// Returns an error if the given path does not exist as a directory.
-    fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePathBuf;
+    pub fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePathBuf {
+        let mut path = self.canonicalize(path);
+        std::mem::swap(&mut self.cwd, &mut path);
+        path
+    }
+
+    /// Constructs the absolute form of a given path, resolving relative to the
+    /// [current working directory](FileSystem::cwd).
+    ///
+    /// See [`VirtualPath::canonicalize`] for full details.
+    pub fn canonicalize(&self, path: &VirtualPath) -> AbsolutePathBuf {
+        path.make_absolute(&self.cwd)
+    }
 
     /// Determines whether the given path exists in the file system.
-    fn exists(&self, path: &VirtualPath) -> bool;
+    pub fn exists(&self, path: &VirtualPath) -> bool {
+        let path = self.canonicalize(path);
+        self.driver.exists(&path)
+    }
 
     /// Determines whether the given path exists and refers to a file.
-    fn is_file(&self, path: &VirtualPath) -> bool;
+    pub fn is_file(&self, path: &VirtualPath) -> bool {
+        let path = self.canonicalize(path);
+        self.driver.is_file(&path)
+    }
 
     /// Determines whether the given path exists and refers to a directory.
-    fn is_dir(&self, path: &VirtualPath) -> bool;
+    pub fn is_dir(&self, path: &VirtualPath) -> bool {
+        let path = self.canonicalize(path);
+        self.driver.is_dir(&path)
+    }
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.
-    fn create(&self, path: &VirtualPath) -> io::Result<Box<dyn Write>>;
+    pub fn create(&self, path: &VirtualPath) -> io::Result<Box<dyn Write>> {
+        let path = self.canonicalize(path);
+        self.driver.create(&path)
+    }
 
     /// Creates a new file in read-write mode. Errors if the file already exists.
-    fn create_new(&self, path: &VirtualPath) -> io::Result<Box<dyn ReadWrite>>;
+    pub fn create_new(&self, path: &VirtualPath) -> io::Result<Box<dyn ReadWrite>> {
+        let path = self.canonicalize(path);
+        self.driver.create_new(&path)
+    }
 
     /// Opens a file with read permissions.
-    fn open(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>>;
+    pub fn open(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>> {
+        let path = self.canonicalize(path);
+        self.driver.open(&path)
+    }
 
     /// Opens a file with execute permissions.
-    ///
-    /// This function is used when opening a file which is to be executed as a script.
-    /// The file otherwise has standard read permissions, and this function exists
-    /// primarily to allow for additional filtering where desired.
-    fn open_execute(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>>;
-
-    /// Constructs the absolute form of a given path.
-    ///
-    /// By default this resolves relative to the
-    /// [current working directory](FileSystem::cwd) of the file system.
-    /// See [`VirtualPath::canonicalize`] for full details.
-    fn canonicalize_path(&self, path: &VirtualPath) -> AbsolutePathBuf {
-        path.make_absolute(self.cwd())
+    pub fn open_execute(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>> {
+        let path = self.canonicalize(path);
+        self.driver.open_execute(&path)
     }
 }

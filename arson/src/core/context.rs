@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::fs::{FileSystem, VirtualPath};
+use std::io;
+
+use crate::fs::{AbsolutePath, AbsolutePathBuf, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::loader::{self, LoadOptions};
 use crate::{builtin, LoadError};
 
@@ -11,21 +13,27 @@ pub struct Context {
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<NodeValue>,
     functions: SymbolMap<HandleFn>,
-    file_system: Box<dyn FileSystem>,
+    file_system: Option<FileSystem>,
 }
 
 impl Context {
-    pub fn new(file_system: Box<dyn FileSystem>) -> Self {
+    pub fn new() -> Self {
         let mut context = Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
-            file_system,
+            file_system: None,
         };
 
         builtin::register_funcs(&mut context);
 
+        context
+    }
+
+    pub fn with_file_driver(driver: Box<dyn FileSystemDriver>) -> Self {
+        let mut context = Self::new();
+        context.file_system = Some(FileSystem::new(driver));
         context
     }
 
@@ -77,16 +85,39 @@ impl Context {
         self.functions.insert(name.clone(), func).is_none()
     }
 
-    pub fn file_system(&self) -> &dyn FileSystem {
+    pub fn file_system(&self) -> io::Result<&FileSystem> {
+        self.file_system_opt()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "no file system registered").into())
+    }
+
+    pub fn file_system_opt(&self) -> Option<&FileSystem> {
         self.file_system.as_ref()
     }
 
-    pub fn file_system_mut(&mut self) -> &mut dyn FileSystem {
-        self.file_system.as_mut()
+    pub fn cwd(&self) -> Option<&AbsolutePath> {
+        self.file_system.as_ref().map(|fs| fs.cwd())
+    }
+
+    pub fn set_cwd(&mut self, path: &VirtualPath) -> Option<AbsolutePathBuf> {
+        self.file_system.as_mut().map(|fs| fs.set_cwd(path))
     }
 
     pub fn load_path(&mut self, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
-        loader::load_path(self, options, path)
+        let file_system = self.file_system()?;
+
+        let mut file = file_system.open_execute(path)?;
+        let text = io::read_to_string(file.as_mut())?;
+
+        let canon = file_system.canonicalize(path);
+        let Some(dir) = canon.parent() else {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
+        };
+
+        let old_cwd = self.set_cwd(dir).expect("file system is known to be registered");
+        let array = loader::load_text(self, options, &text)?;
+        self.set_cwd(old_cwd.as_ref());
+
+        Ok(array)
     }
 
     pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {

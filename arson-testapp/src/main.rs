@@ -5,7 +5,7 @@ use arson::{Context, LoadOptions, NodeValue};
 fn main() -> arson::Result<()> {
     println!("Hello from native!");
 
-    let mut context: Context = todo!("file system implementation"); // Context::new();
+    let mut context = Context::new();
 
     context.register_func_by_name("print", |context, args| {
         let message = args.string(context, 1)?;

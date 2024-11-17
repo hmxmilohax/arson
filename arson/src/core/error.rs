@@ -24,6 +24,9 @@ pub enum Error {
     #[error("Index outside of range {0:?}")]
     OutOfRange(Range<usize>),
 
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
     #[error("Error loading file: {0}")]
     LoadError(#[from] LoadError),
 
