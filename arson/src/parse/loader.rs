@@ -203,14 +203,19 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
 }
 
 pub fn load_path(context: &mut Context, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
-    let file_system = context.file_system_mut();
-
-    let mut file = file_system.open_execute(path)?;
+    let mut file = context.file_system().open_execute(path)?;
     let text = io::read_to_string(file.as_mut())?;
 
-    file_system.set_cwd(path)?;
+    let canon = context.file_system().canonicalize_path(path)?;
+    let Some(dir) = canon.parent() else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
+    };
 
-    load_text(context, options, &text)
+    let old_cwd = context.file_system_mut().set_cwd(dir)?;
+    let array = load_text(context, options, &text)?;
+    context.file_system_mut().set_cwd(&old_cwd)?;
+
+    Ok(array)
 }
 
 pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {

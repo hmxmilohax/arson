@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use super::{CanonicalizeError, VirtualPath, VirtualPathBuf};
+use super::{VirtualPath, VirtualPathBuf};
 
 /// Conjunction of the [`Read`] and [`Write`] traits.
 ///
@@ -21,7 +21,7 @@ pub trait FileSystem {
     /// Gets the current working directory, used to resolve relative paths.
     fn cwd(&self) -> &VirtualPath;
 
-    /// Sets the current working directory.
+    /// Sets a new working directory and returns the old one.
     ///
     /// Relative paths are resolved relative to the existing working directory,
     /// and this resolved path is what will become the new working directory.
@@ -29,7 +29,7 @@ pub trait FileSystem {
     /// # Errors
     ///
     /// Returns an error if the given path does not exist as a directory.
-    fn set_cwd(&mut self, path: &VirtualPath) -> io::Result<()>;
+    fn set_cwd(&mut self, path: &VirtualPath) -> io::Result<VirtualPathBuf>;
 
     /// Determines whether the given path exists in the file system.
     fn exists(&self, path: &VirtualPath) -> bool;
@@ -55,14 +55,14 @@ pub trait FileSystem {
     /// The file otherwise has standard read permissions, and this function exists
     /// primarily to allow for additional filtering where desired.
     fn open_execute(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>>;
-}
 
-impl dyn FileSystem {
-    /// Constructs the absolute form of a given path, using the
-    /// [current working directory](FileSystem::cwd) of the file system.
+    /// Constructs the absolute form of a given path.
     ///
+    /// By default this resolves relative to the
+    /// [current working directory](FileSystem::cwd) of the file system.
     /// See [`VirtualPath::canonicalize`] for full details.
-    pub fn canonicalize_path(&self, path: &VirtualPath) -> Result<VirtualPathBuf, CanonicalizeError> {
+    fn canonicalize_path(&self, path: &VirtualPath) -> io::Result<VirtualPathBuf> {
         path.canonicalize(self.cwd())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
     }
 }
