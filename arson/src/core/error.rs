@@ -27,8 +27,8 @@ pub enum Error {
     #[error("Error loading file: {0}")]
     LoadError(#[from] LoadError),
 
-    #[error("Entry for symbol {0} not found")]
-    EntryNotFound(Symbol),
+    #[error("Requested entry was not found")]
+    EntryNotFound,
 
     #[error("Duplicate entry for symbol {0}")]
     DuplicateEntry(Symbol),

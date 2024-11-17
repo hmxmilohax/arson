@@ -802,7 +802,11 @@ impl NodeSlice {
         self.get(index)?.property()
     }
 
-    pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
+    pub fn find_array<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> crate::Result<Rc<NodeArray>> {
+        self.find_array_opt(tag).ok_or(Error::EntryNotFound)
+    }
+
+    pub fn find_array_opt<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> Option<Rc<NodeArray>> {
         for node in self.iter() {
             let RawNodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -810,16 +814,13 @@ impl NodeSlice {
             let Ok(node) = array.unevaluated(0) else {
                 continue;
             };
-            let Ok(symbol) = node.symbol() else {
-                continue;
-            };
 
-            if symbol == tag {
-                return Ok(array);
+            if *tag == *node {
+                return Some(array.clone());
             }
         }
 
-        Err(Error::EntryNotFound(tag.clone()))
+        None
     }
 }
 

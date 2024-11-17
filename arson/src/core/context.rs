@@ -97,7 +97,7 @@ impl Context {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 Some(func) => func(self, command.slice(1..)?)?,
-                None => return Err(Error::EntryNotFound(symbol.clone())),
+                None => return Err(Error::EntryNotFound),
             },
             NodeValue::Object(_obj) => todo!("obj.handle(self, command)?"),
             NodeValue::Function(func) => func(self, command.slice(1..)?)?,

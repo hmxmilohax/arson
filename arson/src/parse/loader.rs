@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{io, marker::PhantomData};
+use std::{io, marker::PhantomData, rc::Rc};
 
-use crate::{fs::VirtualPath, Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
+use crate::{fs::VirtualPath, Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, RawNodeValue, Variable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
 
@@ -60,8 +60,8 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 Ok(result) => match result {
                     NodeResult::Value(node) => array.push(node),
                     NodeResult::Include(mut file) => array.append(&mut file),
-                    NodeResult::MergeFile(_file) => todo!("array merging"),
-                    NodeResult::MergeMacro(_define) => todo!("array merging"),
+                    NodeResult::MergeFile(file) => Self::merge_array(&mut array, &file),
+                    NodeResult::MergeMacro(define) => Self::merge_array(&mut array, define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {
@@ -77,6 +77,33 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             Err(LoadError::Inner { recovered: array, errors })
         } else {
             Ok(array)
+        }
+    }
+
+    // This is implemented here instead of on NodeArray itself,
+    // since [`Rc::get_mut`] requires that no other references to the stored array exist,
+    // and the only place that this can be ensured is within the loader.
+    fn merge_array(target: &mut NodeArray, source: &NodeArray) {
+        for node in source.iter() {
+            let RawNodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(tag) = array.get(0) else {
+                continue;
+            };
+
+            match target.find_array_opt(tag.unevaluated()) {
+                // Some(mut found) => match Rc::get_mut(&mut found) {
+                //     Some(found) => Self::merge_array(found, array),
+                //     None => continue,
+                // },
+                Some(mut found) => {
+                    let found =
+                        Rc::get_mut(&mut found).expect("no external array references should exist during loading");
+                    Self::merge_array(found, array);
+                },
+                None => target.push(NodeValue::Array(array.clone())),
+            }
         }
     }
 
