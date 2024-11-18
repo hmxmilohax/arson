@@ -89,11 +89,7 @@ impl BasicFileSystemDriver {
     }
 
     fn resolve_path(&self, path: &AbsolutePath) -> PathBuf {
-        assert!(
-            !path.as_str().contains(".."),
-            "attempted to resolve non-canonicalized virtual path"
-        );
-        self.mount_dir.join(path.as_str())
+        path.to_fs_path(&self.mount_dir)
     }
 }
 

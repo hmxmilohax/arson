@@ -512,6 +512,10 @@ impl AbsolutePath {
         self.inner.with_extension(extension)
     }
 
+    pub fn without_root(&self) -> &VirtualPath {
+        VirtualPath::new(&self.as_str()[1..])
+    }
+
     pub fn join<P: AsRef<VirtualPath>>(&self, path: P) -> VirtualPathBuf {
         self.inner.join(path)
     }
@@ -522,6 +526,11 @@ impl AbsolutePath {
 
     pub fn to_buf(&self) -> VirtualPathBuf {
         self.inner.clone()
+    }
+
+    pub fn to_fs_path<P: AsRef<std::path::Path>>(&self, base: P) -> std::path::PathBuf {
+        assert!(!self.as_str().contains(".."), "received non-canonicalized virtual path");
+        base.as_ref().join(self.without_root().as_str())
     }
 }
 
@@ -1112,6 +1121,16 @@ mod test {
 
             assert_extension("/foo/bar.rs", "", "/foo/bar");
             assert_extension("/foo/bar.tar.gz", "", "/foo/bar.tar");
+        }
+    }
+
+    mod absolute {
+        use super::*;
+
+        #[test]
+        fn to_fs_path() {
+            let path = AbsolutePath::try_new("/foo/bar.rs").unwrap();
+            assert_eq!(path.to_fs_path("/home/user"), std::path::Path::new("/home/user/foo/bar.rs"));
         }
     }
 }
