@@ -87,7 +87,7 @@ impl Context {
 
     pub fn file_system(&self) -> io::Result<&FileSystem> {
         self.file_system_opt()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "no file system registered").into())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "no file system registered"))
     }
 
     pub fn file_system_opt(&self) -> Option<&FileSystem> {
@@ -143,5 +143,11 @@ impl Context {
         }
 
         Ok(result)
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -123,15 +123,15 @@ impl FileSystemDriver for BasicFileSystemDriver {
     }
 
     fn create(&self, path: &AbsolutePath) -> io::Result<Box<dyn Write>> {
-        File::create(&self.resolve_path(path)).map::<Box<dyn Write>, _>(|f| Box::new(f))
+        File::create(self.resolve_path(path)).map::<Box<dyn Write>, _>(|f| Box::new(f))
     }
 
     fn create_new(&self, path: &AbsolutePath) -> io::Result<Box<dyn ReadWrite>> {
-        File::create_new(&self.resolve_path(path)).map::<Box<dyn ReadWrite>, _>(|f| Box::new(f))
+        File::create_new(self.resolve_path(path)).map::<Box<dyn ReadWrite>, _>(|f| Box::new(f))
     }
 
     fn open(&self, path: &AbsolutePath) -> io::Result<Box<dyn Read>> {
-        File::open(&self.resolve_path(path)).map::<Box<dyn Read>, _>(|f| Box::new(f))
+        File::open(self.resolve_path(path)).map::<Box<dyn Read>, _>(|f| Box::new(f))
     }
 
     fn open_execute(&self, path: &AbsolutePath) -> io::Result<Box<dyn Read>> {

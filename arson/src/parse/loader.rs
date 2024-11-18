@@ -196,7 +196,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
         };
 
         match file_system.exists(path) {
-            true => self.load_path(path).map(|a| Some(a)),
+            true => self.load_path(path).map(Some),
             false => Ok(None),
         }
     }
