@@ -18,13 +18,31 @@ impl<T: Read + Write> ReadWrite for T {}
 /// A file system driver used to back [`FileSystem`](super::FileSystem).
 pub trait FileSystemDriver {
     /// Determines whether the given path exists in the file system.
-    fn exists(&self, path: &AbsolutePath) -> bool;
+    fn exists(&self, path: &AbsolutePath) -> bool {
+        self.try_exists(path).unwrap_or(false)
+    }
 
     /// Determines whether the given path exists and refers to a file.
-    fn is_file(&self, path: &AbsolutePath) -> bool;
+    fn is_file(&self, path: &AbsolutePath) -> bool {
+        self.try_is_file(path).unwrap_or(false)
+    }
 
     /// Determines whether the given path exists and refers to a directory.
-    fn is_dir(&self, path: &AbsolutePath) -> bool;
+    fn is_dir(&self, path: &AbsolutePath) -> bool {
+        self.try_is_dir(path).unwrap_or(false)
+    }
+
+    /// Determines whether the given path exists in the file system,
+    /// propogating any errors that occur during the process.
+    fn try_exists(&self, path: &AbsolutePath) -> io::Result<bool>;
+
+    /// Determines whether the given path exists and refers to a file,
+    /// propogating any errors that occur during the process.
+    fn try_is_file(&self, path: &AbsolutePath) -> io::Result<bool>;
+
+    /// Determines whether the given path exists and refers to a directory,
+    /// propogating any errors that occur during the process.
+    fn try_is_dir(&self, path: &AbsolutePath) -> io::Result<bool>;
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.
     fn create(&self, path: &AbsolutePath) -> io::Result<Box<dyn Write>>;
