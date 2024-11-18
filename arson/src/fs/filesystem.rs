@@ -33,7 +33,7 @@ impl FileSystem {
     /// # Errors
     ///
     /// Returns an error if the given path does not exist as a directory.
-    pub fn set_cwd(&mut self, path: &VirtualPath) -> AbsolutePath {
+    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
         let mut path = self.canonicalize(path);
         std::mem::swap(&mut self.cwd, &mut path);
         path
@@ -43,60 +43,60 @@ impl FileSystem {
     /// [current working directory](FileSystem::cwd).
     ///
     /// See [`VirtualPath::canonicalize`] for full details.
-    pub fn canonicalize(&self, path: &VirtualPath) -> AbsolutePath {
-        path.make_absolute(&self.cwd)
+    pub fn canonicalize<P: AsRef<VirtualPath>>(&self, path: P) -> AbsolutePath {
+        path.as_ref().make_absolute(&self.cwd)
     }
 
     /// Determines whether the given path exists in the file system.
-    pub fn exists(&self, path: &VirtualPath) -> bool {
+    pub fn exists<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
         self.driver.exists(&self.canonicalize(path))
     }
 
     /// Determines whether the given path exists and refers to a file.
-    pub fn is_file(&self, path: &VirtualPath) -> bool {
+    pub fn is_file<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
         self.driver.is_file(&self.canonicalize(path))
     }
 
     /// Determines whether the given path exists and refers to a directory.
-    pub fn is_dir(&self, path: &VirtualPath) -> bool {
+    pub fn is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
         self.driver.is_dir(&self.canonicalize(path))
     }
 
     /// Determines whether the given path exists in the file system,
     /// propogating any errors that occur during the process.
-    pub fn try_exists(&self, path: &VirtualPath) -> io::Result<bool> {
+    pub fn try_exists<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
         self.driver.try_exists(&self.canonicalize(path))
     }
 
     /// Determines whether the given path exists and refers to a file,
     /// propogating any errors that occur during the process.
-    pub fn try_is_file(&self, path: &VirtualPath) -> io::Result<bool> {
+    pub fn try_is_file<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
         self.driver.try_is_file(&self.canonicalize(path))
     }
 
     /// Determines whether the given path exists and refers to a directory,
     /// propogating any errors that occur during the process.
-    pub fn try_is_dir(&self, path: &VirtualPath) -> io::Result<bool> {
+    pub fn try_is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
         self.driver.try_is_dir(&self.canonicalize(path))
     }
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.
-    pub fn create(&self, path: &VirtualPath) -> io::Result<Box<dyn Write>> {
+    pub fn create<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Box<dyn Write>> {
         self.driver.create(&self.canonicalize(path))
     }
 
     /// Creates a new file in read-write mode. Errors if the file already exists.
-    pub fn create_new(&self, path: &VirtualPath) -> io::Result<Box<dyn ReadWrite>> {
+    pub fn create_new<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Box<dyn ReadWrite>> {
         self.driver.create_new(&self.canonicalize(path))
     }
 
     /// Opens a file with read permissions.
-    pub fn open(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>> {
+    pub fn open<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Box<dyn Read>> {
         self.driver.open(&self.canonicalize(path))
     }
 
     /// Opens a file with execute permissions.
-    pub fn open_execute(&self, path: &VirtualPath) -> io::Result<Box<dyn Read>> {
+    pub fn open_execute<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Box<dyn Read>> {
         self.driver.open_execute(&self.canonicalize(path))
     }
 }

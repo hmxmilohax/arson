@@ -31,9 +31,9 @@ impl Context {
         context
     }
 
-    pub fn with_file_driver(driver: Box<dyn FileSystemDriver>) -> Self {
+    pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
         let mut context = Self::new();
-        context.file_system = Some(FileSystem::new(driver));
+        context.file_system = Some(FileSystem::new(Box::new(driver)));
         context
     }
 
@@ -98,24 +98,26 @@ impl Context {
         self.file_system.as_ref().map(|fs| fs.cwd())
     }
 
-    pub fn set_cwd(&mut self, path: &VirtualPath) -> Option<AbsolutePath> {
+    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> Option<AbsolutePath> {
         self.file_system.as_mut().map(|fs| fs.set_cwd(path))
     }
 
-    pub fn load_path(&mut self, options: LoadOptions, path: &VirtualPath) -> Result<NodeArray, LoadError> {
+    pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
         let file_system = self.file_system()?;
 
-        let mut file = file_system.open_execute(path)?;
-        let text = io::read_to_string(file.as_mut())?;
+        let file = file_system.open_execute(&path)?;
+        let text = io::read_to_string(file)?;
 
-        let canon = file_system.canonicalize(path);
+        let canon = file_system.canonicalize(&path);
         let Some(dir) = canon.parent() else {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
         };
 
-        let old_cwd = self.set_cwd(dir).expect("file system is known to be registered");
+        let old_cwd = self
+            .set_cwd(dir)
+            .expect("file system is known to be registered");
         let array = loader::load_text(self, options, &text)?;
-        self.set_cwd(old_cwd.as_ref());
+        self.set_cwd(&old_cwd);
 
         Ok(array)
     }

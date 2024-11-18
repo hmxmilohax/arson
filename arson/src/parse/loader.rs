@@ -2,7 +2,7 @@
 
 use std::{io, marker::PhantomData, rc::Rc};
 
-use crate::{fs::VirtualPath, Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, RawNodeValue, Variable};
+use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, RawNodeValue, Variable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
 
@@ -195,14 +195,14 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             return Ok(None);
         };
 
-        match file_system.exists(VirtualPath::new(path)) {
+        match file_system.exists(path) {
             true => self.load_path(path).map(|a| Some(a)),
             false => Ok(None),
         }
     }
 
     fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
-        self.context.load_path(self.options.clone(), VirtualPath::new(path))
+        self.context.load_path(self.options.clone(), path)
     }
 }
 
