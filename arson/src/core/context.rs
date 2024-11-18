@@ -103,23 +103,7 @@ impl Context {
     }
 
     pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
-        let file_system = self.file_system()?;
-
-        let file = file_system.open_execute(&path)?;
-        let text = io::read_to_string(file)?;
-
-        let canon = file_system.canonicalize(&path);
-        let Some(dir) = canon.parent() else {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
-        };
-
-        let old_cwd = self
-            .set_cwd(dir)
-            .expect("file system is known to be registered");
-        let array = loader::load_text(self, options, &text)?;
-        self.set_cwd(&old_cwd);
-
-        Ok(array)
+        loader::load_path(self, options, path)
     }
 
     pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {

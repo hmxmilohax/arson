@@ -2,6 +2,7 @@
 
 use std::{io, marker::PhantomData, rc::Rc};
 
+use crate::fs::VirtualPath;
 use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, RawNodeValue, Variable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
@@ -204,6 +205,30 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
     fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
         self.context.load_path(self.options.clone(), path)
     }
+}
+
+pub fn load_path<P: AsRef<VirtualPath>>(
+    context: &mut Context,
+    options: LoadOptions,
+    path: P,
+) -> Result<NodeArray, LoadError> {
+    let file_system = context.file_system()?;
+
+    let file = file_system.open_execute(&path)?;
+    let text = io::read_to_string(file)?;
+
+    let canon = file_system.canonicalize(&path);
+    let Some(dir) = canon.parent() else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
+    };
+
+    let old_cwd = context
+        .set_cwd(dir)
+        .expect("file system is known to be registered");
+    let array = load_text(context, options, &text)?;
+    context.set_cwd(&old_cwd);
+
+    Ok(array)
 }
 
 pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
