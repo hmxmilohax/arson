@@ -162,9 +162,7 @@ impl BasicFileSystemDriver {
 
 impl FileSystemDriver for BasicFileSystemDriver {
     fn metadata(&self, path: &AbsolutePath) -> io::Result<Metadata> {
-        self.resolve_path(path)
-            .metadata()
-            .map(|m| Metadata::from(m))
+        self.resolve_path(path).metadata().map(Metadata::from)
     }
 
     fn create(&self, path: &AbsolutePath) -> io::Result<Box<dyn Write>> {

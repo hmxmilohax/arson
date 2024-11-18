@@ -58,13 +58,13 @@ impl FileSystem {
 
     /// Determines whether the given path exists and refers to a file.
     pub fn is_file<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.metadata(&self.canonicalize(path))
+        self.metadata(self.canonicalize(path))
             .map_or(false, |m| m.is_file())
     }
 
     /// Determines whether the given path exists and refers to a directory.
     pub fn is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.metadata(&self.canonicalize(path))
+        self.metadata(self.canonicalize(path))
             .map_or(false, |m| m.is_dir())
     }
 
