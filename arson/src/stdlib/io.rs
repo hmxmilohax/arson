@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::arson_assert_len;
+use std::io;
+
 use crate::core::*;
-use crate::LoadOptions;
+use crate::fs::*;
+use crate::{arson_assert_len, LoadOptions};
 
 pub fn register_funcs(context: &mut Context) {
     fs::register_funcs(context);
@@ -24,12 +26,28 @@ pub mod fs {
         context.register_func_by_name("file_list_paths", self::file_list_paths);
     }
 
-    pub fn basename(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
-        todo!("basename")
+    pub fn basename(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert_len!(args, 1);
+
+        let path_str = args.string(context, 0)?;
+        let path = VirtualPath::new(path_str.as_ref());
+
+        match path.file_stem() {
+            Some(base_name) => Ok(base_name.into()),
+            None => Ok(path_str.clone().into()),
+        }
     }
 
-    pub fn dirname(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
-        todo!("dirname")
+    pub fn dirname(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert_len!(args, 1);
+
+        let path_str = args.string(context, 0)?;
+        let path = VirtualPath::new(path_str.as_ref());
+
+        match path.parent().and_then(|p| p.file_name()) {
+            Some(dir_name) => Ok(dir_name.into()),
+            None => Ok(path_str.clone().into()),
+        }
     }
 
     pub fn read_file(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -52,8 +70,17 @@ pub mod fs {
         Ok(exists.into())
     }
 
-    pub fn file_read_only(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
-        todo!("file_read_only")
+    pub fn file_read_only(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        arson_assert_len!(args, 1);
+
+        let path = args.string(context, 0)?;
+        match context.file_system()?.metadata(path.as_ref())? {
+            Metadata::File { is_readonly, .. } => Ok(is_readonly.into()),
+            Metadata::Directory { .. } => {
+                // FIXME: Use ErrorKind::IsADirectory when that stabilizes
+                Err(io::Error::new(io::ErrorKind::InvalidInput, "not a file").into())
+            },
+        }
     }
 
     pub fn file_list(_context: &mut Context, _args: &NodeSlice) -> HandleResult {

@@ -4,6 +4,7 @@ use std::{
     fs::File,
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use super::AbsolutePath;
@@ -16,34 +17,31 @@ use super::AbsolutePath;
 pub trait ReadWrite: Read + Write {}
 impl<T: Read + Write> ReadWrite for T {}
 
+/// Metadata information for a file system entry.
+pub enum Metadata {
+    File {
+        modified: io::Result<SystemTime>,
+        accessed: io::Result<SystemTime>,
+        created: io::Result<SystemTime>,
+
+        len: u64,
+
+        is_readonly: bool,
+        is_symlink: bool,
+    },
+    Directory {
+        modified: io::Result<SystemTime>,
+        accessed: io::Result<SystemTime>,
+        created: io::Result<SystemTime>,
+
+        is_symlink: bool,
+    },
+}
+
 /// A file system driver used to back [`FileSystem`](super::FileSystem).
 pub trait FileSystemDriver {
-    /// Determines whether the given path exists in the file system.
-    fn exists(&self, path: &AbsolutePath) -> bool {
-        self.try_exists(path).unwrap_or(false)
-    }
-
-    /// Determines whether the given path exists and refers to a file.
-    fn is_file(&self, path: &AbsolutePath) -> bool {
-        self.try_is_file(path).unwrap_or(false)
-    }
-
-    /// Determines whether the given path exists and refers to a directory.
-    fn is_dir(&self, path: &AbsolutePath) -> bool {
-        self.try_is_dir(path).unwrap_or(false)
-    }
-
-    /// Determines whether the given path exists in the file system,
-    /// propogating any errors that occur during the process.
-    fn try_exists(&self, path: &AbsolutePath) -> io::Result<bool>;
-
-    /// Determines whether the given path exists and refers to a file,
-    /// propogating any errors that occur during the process.
-    fn try_is_file(&self, path: &AbsolutePath) -> io::Result<bool>;
-
-    /// Determines whether the given path exists and refers to a directory,
-    /// propogating any errors that occur during the process.
-    fn try_is_dir(&self, path: &AbsolutePath) -> io::Result<bool>;
+    /// Retrieves metadata for the entry referred to by the given path.
+    fn metadata(&self, path: &AbsolutePath) -> io::Result<Metadata>;
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.
     fn create(&self, path: &AbsolutePath) -> io::Result<Box<dyn Write>>;
@@ -60,6 +58,75 @@ pub trait FileSystemDriver {
     /// The file otherwise has standard read permissions, and this function exists
     /// primarily to allow for additional filtering where desired.
     fn open_execute(&self, path: &AbsolutePath) -> io::Result<Box<dyn Read>>;
+}
+
+impl Metadata {
+    pub fn is_file(&self) -> bool {
+        matches!(self, Self::File { .. })
+    }
+
+    pub fn is_dir(&self) -> bool {
+        matches!(self, Self::Directory { .. })
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        match self {
+            Self::File { is_symlink, .. } => *is_symlink,
+            Self::Directory { is_symlink, .. } => *is_symlink,
+        }
+    }
+
+    pub fn modified(&self) -> &io::Result<SystemTime> {
+        match self {
+            Self::File { modified, .. } => modified,
+            Self::Directory { modified, .. } => modified,
+        }
+    }
+
+    pub fn accessed(&self) -> &io::Result<SystemTime> {
+        match self {
+            Self::File { accessed, .. } => accessed,
+            Self::Directory { accessed, .. } => accessed,
+        }
+    }
+
+    pub fn created(&self) -> &io::Result<SystemTime> {
+        match self {
+            Self::File { created, .. } => created,
+            Self::Directory { created, .. } => created,
+        }
+    }
+}
+
+impl From<std::fs::Metadata> for Metadata {
+    fn from(value: std::fs::Metadata) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&std::fs::Metadata> for Metadata {
+    fn from(value: &std::fs::Metadata) -> Self {
+        if value.is_file() {
+            Self::File {
+                len: value.len(),
+
+                is_readonly: value.permissions().readonly(),
+                is_symlink: value.is_symlink(),
+
+                modified: value.modified(),
+                accessed: value.accessed(),
+                created: value.created(),
+            }
+        } else {
+            Self::Directory {
+                is_symlink: value.is_symlink(),
+
+                modified: value.modified(),
+                accessed: value.accessed(),
+                created: value.created(),
+            }
+        }
+    }
 }
 
 /// An extremely basic file system driver which simply provides raw access to a specific directory.
@@ -94,28 +161,10 @@ impl BasicFileSystemDriver {
 }
 
 impl FileSystemDriver for BasicFileSystemDriver {
-    fn exists(&self, path: &AbsolutePath) -> bool {
-        self.resolve_path(path).exists()
-    }
-
-    fn is_file(&self, path: &AbsolutePath) -> bool {
-        self.resolve_path(path).is_file()
-    }
-
-    fn is_dir(&self, path: &AbsolutePath) -> bool {
-        self.resolve_path(path).is_dir()
-    }
-
-    fn try_exists(&self, path: &AbsolutePath) -> io::Result<bool> {
-        self.resolve_path(path).try_exists()
-    }
-
-    fn try_is_file(&self, path: &AbsolutePath) -> io::Result<bool> {
-        self.resolve_path(path).metadata().map(|m| m.is_file())
-    }
-
-    fn try_is_dir(&self, path: &AbsolutePath) -> io::Result<bool> {
-        self.resolve_path(path).metadata().map(|m| m.is_dir())
+    fn metadata(&self, path: &AbsolutePath) -> io::Result<Metadata> {
+        self.resolve_path(path)
+            .metadata()
+            .map(|m| Metadata::from(m))
     }
 
     fn create(&self, path: &AbsolutePath) -> io::Result<Box<dyn Write>> {

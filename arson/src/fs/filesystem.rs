@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use super::{AbsolutePath, FileSystemDriver, ReadWrite, VirtualPath};
+use super::{AbsolutePath, FileSystemDriver, Metadata, ReadWrite, VirtualPath};
 
 /// A file system implementation to be used from scripts.
 ///
@@ -47,37 +47,25 @@ impl FileSystem {
         path.as_ref().make_absolute(&self.cwd)
     }
 
+    pub fn metadata<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Metadata> {
+        self.driver.metadata(&self.canonicalize(path))
+    }
+
     /// Determines whether the given path exists in the file system.
     pub fn exists<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.driver.exists(&self.canonicalize(path))
+        self.driver.metadata(&self.canonicalize(path)).is_ok()
     }
 
     /// Determines whether the given path exists and refers to a file.
     pub fn is_file<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.driver.is_file(&self.canonicalize(path))
+        self.metadata(&self.canonicalize(path))
+            .map_or(false, |m| m.is_file())
     }
 
     /// Determines whether the given path exists and refers to a directory.
     pub fn is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.driver.is_dir(&self.canonicalize(path))
-    }
-
-    /// Determines whether the given path exists in the file system,
-    /// propogating any errors that occur during the process.
-    pub fn try_exists<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
-        self.driver.try_exists(&self.canonicalize(path))
-    }
-
-    /// Determines whether the given path exists and refers to a file,
-    /// propogating any errors that occur during the process.
-    pub fn try_is_file<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
-        self.driver.try_is_file(&self.canonicalize(path))
-    }
-
-    /// Determines whether the given path exists and refers to a directory,
-    /// propogating any errors that occur during the process.
-    pub fn try_is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<bool> {
-        self.driver.try_is_dir(&self.canonicalize(path))
+        self.metadata(&self.canonicalize(path))
+            .map_or(false, |m| m.is_dir())
     }
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.
