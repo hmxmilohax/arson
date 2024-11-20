@@ -184,7 +184,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     },
                 };
 
-                Node::from(array)
+                return Ok(NodeResult::Include(array));
             },
         };
 
