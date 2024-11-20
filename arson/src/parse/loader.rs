@@ -265,13 +265,12 @@ pub fn load_ast<'src>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use logos::Span;
     use parser::ArrayKind;
 
     use crate::arson_array;
-    use crate::fs::BasicFileSystemDriver;
+    use crate::fs::drivers::MockFileSystemDriver;
+    use crate::fs::AbsolutePath;
     use crate::parse::lexer::{OwnedToken, OwnedTokenValue, TokenKind};
 
     use super::*;
@@ -378,13 +377,26 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "runtime cwd issues; file!() doesn't return an absolute path"]
+    #[ignore = "#merge does not function correctly currently"]
     fn directives() {
         assert_loaded("#define kDefine (1)", arson_array![]);
         assert_loaded("#undef kDefine", arson_array![]);
 
-        let mount_dir = Path::new(file!()).with_file_name("test_files");
-        let driver = BasicFileSystemDriver::new(&mount_dir).expect("mount directory exists");
+        let mut driver = MockFileSystemDriver::new();
+        driver.add_text_file(AbsolutePath::new_rooted("empty.dta"), "");
+        driver.add_text_file(AbsolutePath::new_rooted("numbers.dta"), "1 2 3 4 5");
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge.dta"),
+            "
+            (number 1)
+            (string \"merge.dta\")
+            (list 1 2 3)
+            (number2 2)
+            (string2 \"foo\")
+            (list2 4 5 6)
+            ",
+        );
+
         let mut context = Context::with_file_driver(driver);
 
         // Load an empty file

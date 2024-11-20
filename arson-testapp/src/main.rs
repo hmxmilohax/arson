@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use arson::fs::BasicFileSystemDriver;
+use arson::fs::drivers::BasicFileSystemDriver;
 use arson::{Context, LoadOptions, NodeValue};
 
 fn main() -> arson::Result<()> {

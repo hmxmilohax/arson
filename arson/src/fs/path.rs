@@ -456,6 +456,10 @@ impl AbsolutePath {
         Some(Self { inner: path.to_buf() })
     }
 
+    pub fn new_rooted<S: AsRef<VirtualPath> + ?Sized>(s: &S) -> AbsolutePath {
+        Self::new().join_absolute(s)
+    }
+
     pub fn as_path(&self) -> &VirtualPath {
         self.inner.as_path()
     }
