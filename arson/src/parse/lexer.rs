@@ -27,6 +27,12 @@ pub struct OwnedToken {
     pub location: Span,
 }
 
+impl OwnedToken {
+    pub const fn new(kind: OwnedTokenValue, location: Span) -> OwnedToken {
+        OwnedToken { kind, location }
+    }
+}
+
 macro_rules! to_owned_type {
     (str) => {
         String
@@ -415,7 +421,7 @@ mod tests {
     fn thorough() {
         use TokenValue::*;
 
-        let text = include_str!("../../tests/test_files/thorough.dta").replace("\r\n", "\n");
+        let text = include_str!("./test_files/thorough.dta").replace("\r\n", "\n");
 
         #[rustfmt::skip]
         let tokens = vec![

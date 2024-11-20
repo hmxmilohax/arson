@@ -371,7 +371,7 @@ macro_rules! evaluate_node_opt {
         $($type:ident::$variant:ident($value:ident) => $expr:expr,)+
     ) => {
         match $node {
-            Some($some_ident) => evaluate_node!($some_expr; $($type::$variant($value) => $expr,)+),
+            Some($some_ident) => $crate::evaluate_node!($some_expr; $($type::$variant($value) => $expr,)+),
             None => $none_expr,
         }
     };

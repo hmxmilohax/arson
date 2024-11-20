@@ -2,9 +2,10 @@
 
 use std::io;
 
+use crate::builtin;
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::loader::{self, LoadOptions};
-use crate::{builtin, LoadError};
+use crate::{arson_array, LoadError};
 
 use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
@@ -49,8 +50,12 @@ impl Context {
         self.symbol_table.get(name)
     }
 
-    pub fn add_macro(&mut self, name: Symbol, array: NodeArray) {
-        self.macros.insert(name, array);
+    pub fn add_macro(&mut self, name: &Symbol, array: NodeArray) {
+        self.macros.insert(name.clone(), array);
+    }
+
+    pub fn add_macro_define(&mut self, name: &Symbol) {
+        self.add_macro(name, arson_array![1]);
     }
 
     pub fn remove_macro(&mut self, name: &Symbol) {

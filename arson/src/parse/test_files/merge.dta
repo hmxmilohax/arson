@@ -1,0 +1,6 @@
+(number 1)
+(string "merge.dta")
+(list 1 2 3)
+(number2 2)
+(string2 "foo")
+(list2 4 5 6)

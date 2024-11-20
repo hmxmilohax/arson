@@ -33,6 +33,21 @@ pub enum LoadError {
     },
 }
 
+// manual impl because io::Error has no eq impl, but io::Error.kind() does
+impl PartialEq for LoadError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::IO(left), Self::IO(right)) => left.kind() == right.kind(),
+            (Self::Parse(left), Self::Parse(right)) => left == right,
+            (
+                Self::Inner { recovered: l_recovered, errors: l_errors },
+                Self::Inner { recovered: r_recovered, errors: r_errors },
+            ) => l_recovered == r_recovered && l_errors == r_errors,
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
+        }
+    }
+}
+
 struct Loader<'ctx, 'src> {
     context: &'ctx mut Context,
     options: LoadOptions,
@@ -114,7 +129,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionKind::Float(value) => value.into(),
             ExpressionKind::String(value) => value.into(),
             ExpressionKind::Symbol(value) => self.context.add_symbol(value).into(),
-            ExpressionKind::Variable(value) => Variable::from(self.context.add_symbol(value)).into(),
+            ExpressionKind::Variable(value) => Variable::new(value, self.context).into(),
             ExpressionKind::Unhandled => Node::UNHANDLED,
 
             ExpressionKind::Array(exprs) => self.load_array(exprs.into_iter())?.into(),
@@ -124,7 +139,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionKind::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);
                 let define = self.load_array(exprs.exprs.into_iter())?;
-                self.context.add_macro(name, define);
+                self.context.add_macro(&name, define);
                 return Ok(NodeResult::Skip);
             },
             ExpressionKind::Undefine(name) => {
@@ -246,4 +261,354 @@ pub fn load_ast<'src>(
 ) -> Result<NodeArray, LoadError> {
     let mut loader = Loader::new(context, options);
     loader.load_array(ast)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use logos::Span;
+    use parser::ArrayKind;
+
+    use crate::arson_array;
+    use crate::fs::BasicFileSystemDriver;
+    use crate::parse::lexer::{OwnedToken, OwnedTokenValue, TokenKind};
+
+    use super::*;
+
+    fn assert_loaded(text: &str, expected: NodeArray) {
+        let mut context = Context::new();
+        assert_loaded_with_context(&mut context, text, expected)
+    }
+
+    fn assert_loaded_with_context(context: &mut Context, text: &str, expected: NodeArray) {
+        let options = LoadOptions { allow_include: true };
+        let array = match load_text(context, options, text) {
+            Ok(array) => array,
+            Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
+        };
+        assert_eq!(array, expected, "Unexpected result for '{text}'");
+    }
+
+    fn assert_error(text: &str, expected: LoadError) {
+        let mut context = Context::new();
+        let options = LoadOptions { allow_include: true };
+        let errors = match load_text(&mut context, options, text) {
+            Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
+            Err(errors) => errors,
+        };
+        assert_eq!(errors, expected, "Unexpected result for '{text}'");
+    }
+
+    #[test]
+    fn integer() {
+        assert_loaded("1 2 3", arson_array![1, 2, 3]);
+    }
+
+    #[test]
+    fn float() {
+        assert_loaded("1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn string() {
+        assert_loaded("\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn symbol() {
+        let mut context = Context::new();
+
+        let sym_asdf = context.add_symbol("asdf");
+        let sym_plus = context.add_symbol("+");
+        let sym_10 = context.add_symbol("10");
+
+        assert_loaded_with_context(&mut context, "asdf + '10'", arson_array![sym_asdf, sym_plus, sym_10]);
+    }
+
+    #[test]
+    fn variable() {
+        let mut context = Context::new();
+
+        let var_asdf = Variable::new("asdf", &mut context);
+        let var_this = Variable::new("this", &mut context);
+
+        assert_loaded_with_context(&mut context, "$asdf $this", arson_array![var_asdf, var_this]);
+    }
+
+    #[test]
+    fn unhandled() {
+        assert_loaded("kDataUnhandled", arson_array![Node::UNHANDLED])
+    }
+
+    #[test]
+    fn arrays() {
+        let mut context = Context::new();
+
+        {
+            let sym_asdf = context.add_symbol("asdf");
+            let array = arson_array![sym_asdf, "text", 1];
+            assert_loaded_with_context(&mut context, "(asdf \"text\" 1)", arson_array![array]);
+        }
+
+        {
+            let sym_set = context.add_symbol("set");
+            let var_var = Variable::new("var", &mut context);
+            let command = NodeCommand::from(arson_array![sym_set, var_var, "asdf"]);
+            assert_loaded_with_context(&mut context, "{set $var \"asdf\"}", arson_array![command]);
+        }
+
+        {
+            let sym_asdf = context.add_symbol("asdf");
+            let property = NodeProperty::from(arson_array![sym_asdf]);
+            assert_loaded_with_context(&mut context, "[asdf]", arson_array![property]);
+        }
+
+        {
+            let sym_handle = context.add_symbol("handle");
+            let sym_set = context.add_symbol("set");
+            let sym_var = context.add_symbol("var");
+
+            let property = NodeProperty::from(arson_array![sym_var]);
+            let command = NodeCommand::from(arson_array![sym_set, property, "asdf"]);
+            let array = arson_array![sym_handle, command];
+
+            assert_loaded_with_context(&mut context, "(handle {set [var] \"asdf\"})", arson_array![array]);
+        }
+    }
+
+    #[test]
+    #[ignore = "runtime cwd issues; file!() doesn't return an absolute path"]
+    fn directives() {
+        assert_loaded("#define kDefine (1)", arson_array![]);
+        assert_loaded("#undef kDefine", arson_array![]);
+
+        let mount_dir = Path::new(file!()).with_file_name("test_files");
+        let driver = BasicFileSystemDriver::new(&mount_dir).expect("mount directory exists");
+        let mut context = Context::with_file_driver(driver);
+
+        // Load an empty file
+        assert_loaded_with_context(&mut context, "#include empty.dta", arson_array![]);
+        assert_loaded_with_context(&mut context, "#include_opt empty.dta", arson_array![]);
+        assert_loaded_with_context(&mut context, "#merge empty.dta", arson_array![]);
+
+        // Load a file with numbers
+        assert_loaded_with_context(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
+        assert_loaded_with_context(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
+        assert_loaded_with_context(&mut context, "#merge numbers.dta", arson_array![1, 2, 3, 4, 5]);
+
+        // Ensure #include_opt is truly optional
+        assert!(!context.file_system().unwrap().exists("nonexistent.dta"));
+        assert_loaded_with_context(&mut context, "#include_opt nonexistent.dta", arson_array![]);
+
+        // Ensure #merge overrides included keys with already-present ones
+        let sym_number = context.add_symbol("number");
+        let sym_string = context.add_symbol("string");
+        let sym_list = context.add_symbol("list");
+        let sym_number2 = context.add_symbol("number2");
+        let sym_string2 = context.add_symbol("string2");
+        let sym_list2 = context.add_symbol("list2");
+        assert_loaded_with_context(
+            &mut context,
+            "
+            (number 10)
+            (string \"test.dta\")
+            (list 10 20 30)
+            #merge merge.dta
+            ",
+            arson_array![
+                arson_array![sym_number, 10],
+                arson_array![sym_string, "test.dta"],
+                arson_array![sym_list, 10, 20, 30],
+                arson_array![sym_number2, 2],
+                arson_array![sym_string2, "foo"],
+                arson_array![sym_list2, 4, 5, 6],
+            ],
+        );
+
+        // TODO: #autorun test
+        // assert_loaded_with_context(&mut context, "#autorun {print \"Auto-run action\"}", arson_array![]);
+    }
+
+    #[test]
+    fn conditionals() {
+        let mut context = Context::new();
+
+        let sym_define = context.add_symbol("kDefine");
+
+        let sym_array = context.add_symbol("array");
+        let sym_array1 = context.add_symbol("array1");
+        let sym_array2 = context.add_symbol("array2");
+
+        context.add_macro_define(&sym_define);
+        assert_loaded_with_context(
+            &mut context,
+            "#ifdef kDefine (array1 10) #else (array2 5) #endif",
+            arson_array![arson_array![sym_array1, 10]],
+        );
+
+        context.remove_macro(&sym_define);
+        assert_loaded_with_context(
+            &mut context,
+            "#ifdef kDefine (array1 10) #else (array2 5) #endif",
+            arson_array![arson_array![sym_array2, 5]],
+        );
+
+        context.add_macro_define(&sym_define);
+        assert_loaded_with_context(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
+
+        context.remove_macro(&sym_define);
+        assert_loaded_with_context(
+            &mut context,
+            "#ifndef kDefine (array 10) #endif",
+            arson_array![arson_array![sym_array, 10]],
+        );
+    }
+
+    #[test]
+    fn parse_errors() {
+        fn assert_parse_errors(text: &str, expected: Vec<ParseError>) {
+            assert_error(text, LoadError::Parse(expected))
+        }
+
+        // #region Arrays
+
+        fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
+            let mut expected = vec![ParseError::UnmatchedBrace(location, kind)];
+            if !eof_expected {
+                expected.push(ParseError::UnexpectedEof);
+            }
+
+            assert_parse_errors(text, expected);
+        }
+
+        fn assert_array_mismatches(kind: ArrayKind) {
+            let (l, r) = kind.delimiters();
+            assert_array_mismatch(&format!("{l} {l} {r}"), kind, 0..1, false);
+            assert_array_mismatch(&format!("{r} {l} {r}"), kind, 0..1, true);
+            assert_array_mismatch(&format!("{l} {r} {l}"), kind, 4..5, false);
+            assert_array_mismatch(&format!("{l} {r} {r}"), kind, 4..5, true);
+        }
+
+        fn assert_multi_array_mismatches(matched_kind: ArrayKind, unmatched_kind: ArrayKind) {
+            let (ml, mr) = matched_kind.delimiters();
+            let (ul, ur) = unmatched_kind.delimiters();
+
+            assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, 0..1, false);
+            assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, 0..1, true);
+            assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, 2..3, true);
+            assert_array_mismatch(&format!("{ml} {ur} {mr}"), unmatched_kind, 2..3, true);
+            assert_array_mismatch(&format!("{ml} {mr} {ul}"), unmatched_kind, 4..5, false);
+            assert_array_mismatch(&format!("{ml} {mr} {ur}"), unmatched_kind, 4..5, true);
+        }
+
+        assert_array_mismatches(ArrayKind::Array);
+        assert_array_mismatches(ArrayKind::Command);
+        assert_array_mismatches(ArrayKind::Property);
+
+        assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Command);
+        assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Property);
+        assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Array);
+        assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Property);
+        assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Array);
+        assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
+
+        // #endregion Arrays
+
+        // #region Directives
+
+        assert_parse_errors(
+            "#define kDefine 1",
+            vec![ParseError::IncorrectToken {
+                expected: TokenKind::ArrayOpen,
+                actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
+            }],
+        );
+        assert_parse_errors(
+            "#autorun kDefine",
+            vec![ParseError::IncorrectToken {
+                expected: TokenKind::CommandOpen,
+                actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+            }],
+        );
+
+        assert_parse_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+
+        fn assert_directive_symbol_error(name: &str) {
+            let text = name.to_owned() + " 1";
+            assert_parse_errors(
+                &text,
+                vec![ParseError::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                }],
+            );
+        }
+
+        fn assert_directive_eof_error(name: &str) {
+            assert_parse_errors(name, vec![ParseError::UnexpectedEof]);
+        }
+
+        assert_directive_symbol_error("#ifdef");
+        assert_directive_symbol_error("#ifndef");
+        assert_directive_symbol_error("#define");
+        assert_directive_symbol_error("#undef");
+        assert_directive_symbol_error("#include");
+        assert_directive_symbol_error("#include_opt");
+        assert_directive_symbol_error("#merge");
+
+        assert_directive_eof_error("#ifdef");
+        assert_directive_eof_error("#ifndef");
+        assert_directive_eof_error("#define");
+        assert_directive_eof_error("#undef");
+        assert_directive_eof_error("#include");
+        assert_directive_eof_error("#include_opt");
+        assert_directive_eof_error("#merge");
+        assert_directive_eof_error("#autorun");
+
+        // #endregion Directives
+
+        // #region Conditionals
+
+        assert_parse_errors(
+            "#ifndef kDefine (array 10)",
+            vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
+        );
+        assert_parse_errors(
+            "#ifdef kDefine (array1 10) #else",
+            vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
+        );
+        assert_parse_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
+        assert_parse_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+
+        assert_parse_errors(
+            "(#ifdef kDefine array1 10) #else array2 5) #endif)",
+            vec![
+                ParseError::UnbalancedConditional(1..32),
+                ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
+                ParseError::UnbalancedConditional(27..49),
+                ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+            ],
+        );
+
+        assert_parse_errors(
+            "\
+            #ifdef kDefine\n\
+            {do\n\
+            #endif\
+            \n    {+ 1 2}\n\
+            #ifdef kDefine\n\
+            }\n\
+            #endif\
+            ",
+            vec![
+                ParseError::UnbalancedConditional(0..25),
+                ParseError::UnmatchedBrace(15..16, ArrayKind::Command),
+                ParseError::UnbalancedConditional(38..61),
+                ParseError::UnmatchedBrace(53..54, ArrayKind::Command),
+            ],
+        );
+
+        // #endregion Conditionals
+    }
 }
