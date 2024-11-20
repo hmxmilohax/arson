@@ -591,6 +591,19 @@ impl PartialOrd for Node {
     }
 }
 
+#[macro_export]
+macro_rules! arson_array {
+    () => (
+        $crate::NodeArray::new()
+    );
+    ($elem:expr; $n:expr) => (
+        $crate::NodeArray::from(vec![$elem.into(); $n])
+    );
+    ($($x:expr),+ $(,)?) => (
+        $crate::NodeArray::from(vec![$($x.into()),+])
+    );
+}
+
 /// A contiguous collection of [`Node`]s.
 #[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeArray {
@@ -663,6 +676,12 @@ impl NodeArray {
     }
 }
 
+impl From<Vec<Node>> for NodeArray {
+    fn from(value: Vec<Node>) -> Self {
+        Self { nodes: value }
+    }
+}
+
 impl FromIterator<Node> for NodeArray {
     fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
         Self { nodes: Vec::from_iter(iter) }
@@ -676,6 +695,7 @@ impl FromIterator<NodeValue> for NodeArray {
         }
     }
 }
+
 impl FromIterator<RawNodeValue> for NodeArray {
     fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
         Self {
@@ -850,10 +870,71 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     }
 }
 
-/// An executable/evaluatable command.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
-pub struct NodeCommand {
-    nodes: NodeArray,
+macro_rules! define_array_wrapper {
+    (
+        $(
+            $(#[$attr:meta])*
+            struct $name:ident;
+        )+
+    ) => {
+        $(
+            $(#[$attr])*
+            #[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
+            pub struct $name {
+                nodes: NodeArray,
+            }
+
+            impl $name {
+                pub const fn new() -> Self {
+                    Self { nodes: NodeArray::new() }
+                }
+            }
+
+            impl<T> From<T> for $name
+                where NodeArray: From<T>
+            {
+                fn from(value: T) -> Self {
+                    Self { nodes: NodeArray::from(value) }
+                }
+            }
+
+            impl<T> FromIterator<T> for $name
+                where NodeArray: FromIterator<T>
+            {
+                fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+                    Self { nodes: NodeArray::from_iter(iter) }
+                }
+            }
+
+            impl Deref for $name {
+                type Target = NodeArray;
+
+                fn deref(&self) -> &Self::Target {
+                    &self.nodes
+                }
+            }
+
+            impl DerefMut for $name {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    &mut self.nodes
+                }
+            }
+
+            impl Borrow<NodeArray> for $name {
+                fn borrow(&self) -> &NodeArray {
+                    &self.nodes
+                }
+            }
+        )+
+    };
+}
+
+define_array_wrapper! {
+    /// An executable/evaluatable command.
+    struct NodeCommand;
+
+    /// A property on an object which can be manipulated.
+    struct NodeProperty;
 }
 
 impl NodeCommand {
@@ -861,65 +942,3 @@ impl NodeCommand {
         context.execute(self)
     }
 }
-
-/// A property on an object which can be manipulated.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
-pub struct NodeProperty {
-    nodes: NodeArray,
-}
-
-macro_rules! array_wrapper_impl {
-    ($name:ident) => {
-        impl $name {
-            pub const fn new() -> Self {
-                Self { nodes: NodeArray::new() }
-            }
-        }
-
-        impl From<NodeArray> for $name {
-            fn from(value: NodeArray) -> Self {
-                Self { nodes: value }
-            }
-        }
-
-        impl FromIterator<Node> for $name {
-            fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-
-        impl FromIterator<NodeValue> for $name {
-            fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-        impl FromIterator<RawNodeValue> for $name {
-            fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-
-        impl Deref for $name {
-            type Target = NodeArray;
-
-            fn deref(&self) -> &Self::Target {
-                &self.nodes
-            }
-        }
-
-        impl DerefMut for $name {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.nodes
-            }
-        }
-
-        impl Borrow<NodeArray> for $name {
-            fn borrow(&self) -> &NodeArray {
-                &self.nodes
-            }
-        }
-    };
-}
-
-array_wrapper_impl!(NodeCommand);
-array_wrapper_impl!(NodeProperty);
