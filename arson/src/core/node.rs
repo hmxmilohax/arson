@@ -171,8 +171,12 @@ macro_rules! define_node_types {
                 }
 
                 impl PartialOrd<$name> for $value {
-                    fn partial_cmp(&self, other: &$name) -> Option<Ordering> {
-                        other.partial_cmp(self)
+                    fn partial_cmp(&self, meta_select!($($cmp_right)?, other): &$name) -> Option<Ordering> {
+                        $(let $cmp_left = self;)?
+                        match meta_select!($($cmp_right)?, other) {
+                            $name::$type(meta_select!($($cmp_right)?, other)) => meta_select!($($cmp_expr)?, self.partial_cmp(other)),
+                            _ => None,
+                        }
                     }
                 }
             )?
@@ -192,14 +196,6 @@ fn rc_cmp<T: ?Sized>(left: &Rc<T>, right: &Rc<T>) -> Option<Ordering> {
     let left = Rc::as_ptr(left) as *const ();
     let right = Rc::as_ptr(right) as *const ();
     left.partial_cmp(&right)
-}
-
-fn array_eq(_left: &NodeSlice, _right: &NodeSlice) -> bool {
-    todo!("array equality (yes or no?)")
-}
-
-fn array_cmp(_left: &NodeSlice, _right: &NodeSlice) -> Option<Ordering> {
-    todo!("array comparison (yes or no?)")
 }
 
 define_node_types! {
@@ -226,16 +222,16 @@ define_node_types! {
         Function(HandleFn),
 
         Array(ArrayBox) {
-            eq: |left, right| array_eq(left, right),
-            cmp: |left, right| array_cmp(left, right),
+            eq: |left, right| left == right,
+            cmp: |left, right| left.partial_cmp(right),
         },
         Command(CommandBox) {
-            eq: |left, right| array_eq(left, right),
-            cmp: |left, right| array_cmp(left, right),
+            eq: |left, right| left == right,
+            cmp: |left, right| left.partial_cmp(right),
         },
         Property(PropertyBox) {
-            eq: |left, right| array_eq(left, right),
-            cmp: |left, right| array_cmp(left, right),
+            eq: |left, right| left == right,
+            cmp: |left, right| left.partial_cmp(right),
         },
     }
 }
@@ -256,8 +252,8 @@ define_node_types! {
         },
         Function(HandleFn),
         Array(ArrayBox) {
-            eq: |left, right| array_eq(left, right),
-            cmp: |left, right| array_cmp(left, right),
+            eq: |left, right| left == right,
+            cmp: |left, right| left.partial_cmp(right),
         },
     }
 }
@@ -583,8 +579,20 @@ impl Node {
     }
 }
 
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.eq(&other.value)
+    }
+}
+
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
 /// A contiguous collection of [`Node`]s.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeArray {
     nodes: Vec<Node>,
 }
@@ -704,7 +712,7 @@ impl BorrowMut<Vec<Node>> for NodeArray {
 
 /// A [[`Node`]] slice with the same additional methods as [`NodeArray`].
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct NodeSlice {
     nodes: [Node],
 }
@@ -843,7 +851,7 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
 }
 
 /// An executable/evaluatable command.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeCommand {
     nodes: NodeArray,
 }
@@ -855,7 +863,7 @@ impl NodeCommand {
 }
 
 /// A property on an object which can be manipulated.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeProperty {
     nodes: NodeArray,
 }
