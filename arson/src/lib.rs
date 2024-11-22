@@ -23,12 +23,16 @@ macro_rules! meta_select {
     };
 }
 
-mod builtin;
+mod context;
 mod core;
 pub mod fs;
 pub mod parse;
 pub mod stdlib;
 
-pub use core::*;
+mod error;
 
-pub use parse::loader::{LoadError, LoadOptions};
+pub use context::*;
+pub use core::*;
+pub use error::*;
+
+pub use parse::{LoadError, LoadOptions};

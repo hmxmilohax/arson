@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::builtin;
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
-use crate::parse::loader::{self, LoadOptions};
+use crate::parse::{self, LoadOptions};
 use crate::{arson_array, LoadError};
 
 use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
@@ -42,7 +41,8 @@ impl Context {
 
     #[inline]
     fn initialize(mut context: Self) -> Self {
-        builtin::register_funcs(&mut context);
+        super::flow::register_funcs(&mut context);
+        super::operators::register_funcs(&mut context);
 
         context
     }
@@ -90,13 +90,17 @@ impl Context {
         self.variables.insert(name.clone(), value);
     }
 
-    pub fn register_func_by_name(&mut self, name: &str, func: HandleFn) -> bool {
-        let symbol = self.symbol_table.add(name);
-        self.register_func(&symbol, func)
+    pub fn register_func(&mut self, name: &str, func: HandleFn) -> bool {
+        let name = self.symbol_table.add(name);
+        self.functions.insert(name.clone(), func).is_none()
     }
 
-    pub fn register_func(&mut self, name: &Symbol, func: HandleFn) -> bool {
-        self.functions.insert(name.clone(), func).is_none()
+    pub fn register_func_alias(&mut self, alias: &str, actual: &str) -> bool {
+        let actual = self.symbol_table.add(actual);
+        match self.functions.get(&actual) {
+            Some(func) => self.register_func(alias, *func),
+            None => false,
+        }
     }
 
     pub fn file_system(&self) -> &FileSystem {
@@ -112,11 +116,11 @@ impl Context {
     }
 
     pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
-        loader::load_path(self, options, path)
+        parse::load_path(self, options, path)
     }
 
     pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
-        loader::load_text(self, options, text)
+        parse::load_text(self, options, text)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {

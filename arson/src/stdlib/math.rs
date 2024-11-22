@@ -2,10 +2,9 @@
 
 use std::ops::{Div, Rem};
 
-use crate::core::*;
-use crate::{arson_assert_len, evaluate_node};
+use crate::*;
 
-use crate::builtin::{self, number_chain, op_assign};
+use crate::context::number_chain;
 
 pub fn register_funcs(context: &mut Context) {
     basic::register_funcs(context);
@@ -18,14 +17,14 @@ pub mod basic {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("abs", self::abs);
-        context.register_func_by_name("mod", builtin::operators::binary::modulo);
-        context.register_func_by_name("div_rem", self::divide_remainder);
+        context.register_func("abs", self::abs);
+        context.register_func_alias("mod", "%");
+        context.register_func("div_rem", self::divide_remainder);
 
-        context.register_func_by_name("mask_eq", self::mask_assign);
-        context.register_func_by_name("highest_bit", self::highest_bit);
-        context.register_func_by_name("lowest_bit", self::lowest_bit);
-        context.register_func_by_name("count_bits", self::count_bits);
+        context.register_func("mask_eq", self::mask_assign);
+        context.register_func("highest_bit", self::highest_bit);
+        context.register_func("lowest_bit", self::lowest_bit);
+        context.register_func("count_bits", self::count_bits);
     }
 
     pub fn abs(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -64,7 +63,8 @@ pub mod basic {
     pub fn mask_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? & !args.integer(context, 1)?;
-        super::op_assign(context, args, NodeValue::from(result))
+        args.set(context, 0, result)?;
+        Ok(result.into())
     }
 
     fn first_active_bit<I: Iterator<Item = u32>>(value: NodeInteger, mut bit_range: I) -> NodeInteger {
@@ -78,20 +78,23 @@ pub mod basic {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value, (0..NodeInteger::BITS).rev());
-        super::op_assign(context, args, NodeValue::from(result))
+        args.set(context, 0, result)?;
+        Ok(result.into())
     }
 
     pub fn lowest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value, 0..NodeInteger::BITS);
-        super::op_assign(context, args, NodeValue::from(result))
+        args.set(context, 0, result)?;
+        Ok(result.into())
     }
 
     pub fn count_bits(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
-        let result = args.integer(context, 0)?.count_ones();
-        super::op_assign(context, args, NodeValue::from(result as NodeInteger))
+        let result = args.integer(context, 0)?.count_ones() as NodeInteger;
+        args.set(context, 0, result)?;
+        Ok(result.into())
     }
 }
 
@@ -99,17 +102,17 @@ pub mod limit {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("min", self::min);
-        context.register_func_by_name("max", self::max);
-        context.register_func_by_name("clamp", self::clamp);
-        context.register_func_by_name("min_eq", self::min_assign);
-        context.register_func_by_name("max_eq", self::max_assign);
-        context.register_func_by_name("clamp_eq", self::clamp_assign);
+        context.register_func("min", self::min);
+        context.register_func("max", self::max);
+        context.register_func("clamp", self::clamp);
+        context.register_func("min_eq", self::min_assign);
+        context.register_func("max_eq", self::max_assign);
+        context.register_func("clamp_eq", self::clamp_assign);
 
-        context.register_func_by_name("ceil", self::ceiling);
-        context.register_func_by_name("floor", self::floor);
-        context.register_func_by_name("trunc", self::truncate);
-        context.register_func_by_name("round", self::round);
+        context.register_func("ceil", self::ceiling);
+        context.register_func("floor", self::floor);
+        context.register_func("trunc", self::truncate);
+        context.register_func("round", self::round);
     }
 
     pub fn min(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -163,17 +166,20 @@ pub mod limit {
 
     pub fn min_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::min(context, args)?;
-        op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn max_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::max(context, args)?;
-        op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn clamp_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::clamp(context, args)?;
-        op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn ceiling(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -201,17 +207,17 @@ pub mod exponential {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("pow", self::power);
-        context.register_func_by_name("sqrt", self::square_root);
-        context.register_func_by_name("cbrt", self::cube_root);
-        context.register_func_by_name("hypot", self::hypotenuse);
+        context.register_func("pow", self::power);
+        context.register_func("sqrt", self::square_root);
+        context.register_func("cbrt", self::cube_root);
+        context.register_func("hypot", self::hypotenuse);
 
-        context.register_func_by_name("exp", self::power_of_e);
-        context.register_func_by_name("exp2", self::power_of_2);
-        context.register_func_by_name("expm1", self::power_of_e_minus_one);
-        context.register_func_by_name("log", self::logarithm_natural);
-        context.register_func_by_name("log10", self::logarithm_base_10);
-        context.register_func_by_name("log2", self::logarithm_base_2);
+        context.register_func("exp", self::power_of_e);
+        context.register_func("exp2", self::power_of_2);
+        context.register_func("expm1", self::power_of_e_minus_one);
+        context.register_func("log", self::logarithm_natural);
+        context.register_func("log10", self::logarithm_base_10);
+        context.register_func("log2", self::logarithm_base_2);
     }
 
     pub fn power(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -281,20 +287,20 @@ pub mod trigonometry {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("sin", self::sine);
-        context.register_func_by_name("cos", self::cosine);
-        context.register_func_by_name("tan", self::tangent);
-        context.register_func_by_name("asin", self::arc_sine);
-        context.register_func_by_name("acos", self::arc_cosine);
-        context.register_func_by_name("atan", self::arc_tangent);
-        context.register_func_by_name("atan2", self::arc_tangent_quadrant);
+        context.register_func("sin", self::sine);
+        context.register_func("cos", self::cosine);
+        context.register_func("tan", self::tangent);
+        context.register_func("asin", self::arc_sine);
+        context.register_func("acos", self::arc_cosine);
+        context.register_func("atan", self::arc_tangent);
+        context.register_func("atan2", self::arc_tangent_quadrant);
 
-        context.register_func_by_name("sinh", self::sine_hyperbolic);
-        context.register_func_by_name("cosh", self::cosine_hyperbolic);
-        context.register_func_by_name("tanh", self::tangent_hyperbolic);
-        context.register_func_by_name("asinh", self::arc_sine_hyperbolic);
-        context.register_func_by_name("acosh", self::arc_cosine_hyperbolic);
-        context.register_func_by_name("atanh", self::arc_tangent_hyperbolic);
+        context.register_func("sinh", self::sine_hyperbolic);
+        context.register_func("cosh", self::cosine_hyperbolic);
+        context.register_func("tanh", self::tangent_hyperbolic);
+        context.register_func("asinh", self::arc_sine_hyperbolic);
+        context.register_func("acosh", self::arc_cosine_hyperbolic);
+        context.register_func("atanh", self::arc_tangent_hyperbolic);
     }
 
     pub fn sine(context: &mut Context, args: &NodeSlice) -> HandleResult {

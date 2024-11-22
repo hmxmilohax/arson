@@ -1,4 +1,6 @@
-use super::{Context, NodeValue, Symbol};
+use crate::Context;
+
+use super::{NodeValue, Symbol};
 
 #[derive(Debug, Clone)]
 pub struct Variable {

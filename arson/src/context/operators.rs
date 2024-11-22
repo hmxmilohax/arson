@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::core::*;
-use crate::{arson_assert, arson_assert_len, evaluate_node};
+use crate::*;
 
-use super::{number_chain, op_assign};
+use super::number_chain;
 
 pub fn register_funcs(context: &mut Context) {
     unary::register_funcs(context);
@@ -17,11 +16,11 @@ pub mod unary {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("++", self::increment);
-        context.register_func_by_name("--", self::decrement);
+        context.register_func("++", self::increment);
+        context.register_func("--", self::decrement);
         // context.register_func_by_name("+", self::promote); // No need for a promotion operator
-        // context.register_func_by_name("-", self::negate); // "-" registered by binary module
-        context.register_func_by_name("~", self::not);
+        // context.register_func_by_name("-", self::negate); // "-" registered by `binary`
+        context.register_func("~", self::not);
     }
 
     pub fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -30,7 +29,8 @@ pub mod unary {
         // Forward to arithmetic operator
         let add_args = [args.get(0)?.clone(), Node::from(1)];
         let result = binary::add(context, NodeSlice::new(&add_args))?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn decrement(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -39,7 +39,8 @@ pub mod unary {
         // Forward to arithmetic operator
         let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
         let result = binary::subtract(context, NodeSlice::new(&subtract_args))?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -62,16 +63,16 @@ pub mod binary {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("+", self::add);
-        context.register_func_by_name("+=", self::add_assign);
-        context.register_func_by_name("-", self::subtract);
-        context.register_func_by_name("-=", self::subtract_assign);
-        context.register_func_by_name("*", self::multiply);
-        context.register_func_by_name("*=", self::multiply_assign);
-        context.register_func_by_name("/", self::divide);
-        context.register_func_by_name("/=", self::divide_assign);
-        context.register_func_by_name("%", self::modulo);
-        context.register_func_by_name("%=", self::modulo_assign);
+        context.register_func("+", self::add);
+        context.register_func("+=", self::add_assign);
+        context.register_func("-", self::subtract);
+        context.register_func("-=", self::subtract_assign);
+        context.register_func("*", self::multiply);
+        context.register_func("*=", self::multiply_assign);
+        context.register_func("/", self::divide);
+        context.register_func("/=", self::divide_assign);
+        context.register_func("%", self::modulo);
+        context.register_func("%=", self::modulo_assign);
     }
 
     pub fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -131,27 +132,32 @@ pub mod binary {
 
     pub fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::add(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::subtract(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::multiply(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::divide(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::modulo(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 }
 
@@ -159,12 +165,12 @@ pub mod bitwise {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("&", self::and);
-        context.register_func_by_name("&=", self::and_assign);
-        context.register_func_by_name("|", self::or);
-        context.register_func_by_name("|=", self::or_assign);
-        context.register_func_by_name("^", self::xor);
-        context.register_func_by_name("^=", self::xor_assign);
+        context.register_func("&", self::and);
+        context.register_func("&=", self::and_assign);
+        context.register_func("|", self::or);
+        context.register_func("|=", self::or_assign);
+        context.register_func("^", self::xor);
+        context.register_func("^=", self::xor_assign);
     }
 
     pub fn bitwise_op(
@@ -197,17 +203,20 @@ pub mod bitwise {
 
     pub fn and_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::and(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn or_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::or(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 
     pub fn xor_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
         let result = self::xor(context, args)?;
-        super::op_assign(context, args, result)
+        args.set(context, 0, result.clone())?;
+        Ok(result)
     }
 }
 
@@ -215,10 +224,10 @@ pub mod logical {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("&&", self::and);
-        context.register_func_by_name("||", self::or);
-        context.register_func_by_name("^^", self::xor);
-        context.register_func_by_name("!", self::not);
+        context.register_func("&&", self::and);
+        context.register_func("||", self::or);
+        context.register_func("^^", self::xor);
+        context.register_func("!", self::not);
     }
 
     pub fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -258,12 +267,12 @@ pub mod comparison {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("==", self::equal);
-        context.register_func_by_name("!=", self::not_equal);
-        context.register_func_by_name(">", self::greater_than);
-        context.register_func_by_name(">=", self::greater_equal);
-        context.register_func_by_name("<", self::less_than);
-        context.register_func_by_name("<=", self::less_equal);
+        context.register_func("==", self::equal);
+        context.register_func("!=", self::not_equal);
+        context.register_func(">", self::greater_than);
+        context.register_func(">=", self::greater_equal);
+        context.register_func("<", self::less_than);
+        context.register_func("<=", self::less_equal);
     }
 
     pub fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {

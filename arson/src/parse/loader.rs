@@ -5,7 +5,7 @@ use std::{io, marker::PhantomData};
 use crate::fs::VirtualPath;
 use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
-use super::parser::{self, Expression, ExpressionKind, ParseError};
+use crate::parse::{self, Expression, ExpressionKind, ParseError};
 
 #[derive(Clone)]
 pub struct LoadOptions {
@@ -198,7 +198,7 @@ pub fn load_path<P: AsRef<VirtualPath>>(
 }
 
 pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
-    let ast = match parser::parse_text(text) {
+    let ast = match parse::parse_text(text) {
         Ok(ast) => ast,
         Err(errors) => return Err(LoadError::Parse(errors)),
     };
@@ -217,12 +217,11 @@ pub fn load_ast<'src>(
 #[cfg(test)]
 mod tests {
     use logos::Span;
-    use parser::ArrayKind;
 
     use crate::arson_array;
     use crate::fs::drivers::MockFileSystemDriver;
     use crate::fs::AbsolutePath;
-    use crate::parse::lexer::{OwnedToken, OwnedTokenValue, TokenKind};
+    use crate::parse::{ArrayKind, OwnedToken, OwnedTokenValue, TokenKind};
 
     use super::*;
 

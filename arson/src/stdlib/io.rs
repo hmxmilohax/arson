@@ -2,9 +2,8 @@
 
 use std::io;
 
-use crate::core::*;
+use crate::*;
 use crate::fs::*;
-use crate::{arson_assert_len, LoadOptions};
 
 pub fn register_funcs(context: &mut Context) {
     fs::register_funcs(context);
@@ -14,16 +13,16 @@ pub mod fs {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("basename", self::basename);
-        context.register_func_by_name("dirname", self::dirname);
+        context.register_func("basename", self::basename);
+        context.register_func("dirname", self::dirname);
 
-        context.register_func_by_name("read_file", self::read_file);
-        context.register_func_by_name("write_file", self::write_file);
+        context.register_func("read_file", self::read_file);
+        context.register_func("write_file", self::write_file);
 
-        context.register_func_by_name("file_exists", self::file_exists);
-        context.register_func_by_name("file_read_only", self::file_read_only);
-        context.register_func_by_name("file_list", self::file_list);
-        context.register_func_by_name("file_list_paths", self::file_list_paths);
+        context.register_func("file_exists", self::file_exists);
+        context.register_func("file_read_only", self::file_read_only);
+        context.register_func("file_list", self::file_list);
+        context.register_func("file_list_paths", self::file_list_paths);
     }
 
     pub fn basename(context: &mut Context, args: &NodeSlice) -> HandleResult {

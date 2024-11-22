@@ -13,7 +13,7 @@ fn main() -> arson::Result<()> {
     let mut context = Context::with_file_driver(driver);
     println!("Created context.");
 
-    context.register_func_by_name("print", |context, args| {
+    context.register_func("print", |context, args| {
         let message = args.string(context, 0)?;
         println!("> {message}");
         Ok(NodeValue::HANDLED)

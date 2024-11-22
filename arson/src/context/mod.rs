@@ -1,47 +1,30 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::core::*;
-use crate::{arson_fail, evaluate_node};
+use crate::*;
 
-pub mod flow;
-pub mod operators;
+#[allow(
+    clippy::module_inception,
+    reason = "inner module is re-exported and not publicly accessible"
+)]
+mod context;
+mod flow;
+mod operators;
 
-pub fn register_funcs(context: &mut Context) {
-    flow::register_funcs(context);
-    operators::register_funcs(context);
-}
+pub use context::*;
 
-pub fn set_variable(context: &mut Context, arg: &Node, result: NodeValue) -> HandleResult {
-    match arg.unevaluated() {
-        RawNodeValue::Variable(value) => value.set(context, result.clone()),
-        RawNodeValue::Property(_value) => todo!("op_assign property access"),
-        unhandled => arson_fail!("Cannot set non-variable {:?}", unhandled.get_type()),
-    };
-    Ok(result)
-}
-
-pub fn op_assign(context: &mut Context, args: &NodeSlice, result: NodeValue) -> HandleResult {
-    set_variable(context, args.get(0)?, result)
-}
-
-pub fn number_chain<
-    IF: Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
-    FF: Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
->(
+// TODO: need a better module to put this in
+pub(crate) fn number_chain(
     context: &mut Context,
     args: &NodeSlice,
-    f_int: IF,
-    f_float: FF,
+    f_int: impl Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
+    f_float: impl Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
 ) -> HandleResult {
-    fn integer_chain<
-        IF: Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
-        FF: Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
-    >(
+    fn integer_chain(
         context: &mut Context,
         args: &NodeSlice,
         left: NodeInteger,
-        f_int: IF,
-        f_float: FF,
+        f_int: impl Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
+        f_float: impl Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
     ) -> HandleResult {
         let Some(node) = args.get_opt(0) else {
             return Ok(left.into());

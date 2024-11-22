@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-pub mod lexer;
-pub mod loader;
-pub mod parser;
+mod lexer;
+mod loader;
+mod parser;
+
+pub use lexer::*;
+pub use loader::*;
+pub use parser::*;

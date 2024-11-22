@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::core::*;
+use crate::*;
 
 pub fn register_funcs(context: &mut Context) {
     control::register_funcs(context);
@@ -12,9 +12,9 @@ pub mod control {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("if", self::if_block);
-        context.register_func_by_name("if_else", self::if_else_block);
-        context.register_func_by_name("unless", self::unless_block);
+        context.register_func("if", self::if_block);
+        context.register_func("if_else", self::if_else_block);
+        context.register_func("unless", self::unless_block);
     }
 
     pub fn if_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -50,9 +50,9 @@ pub mod loops {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("while", self::while_block);
-        context.register_func_by_name("foreach", self::foreach_block);
-        context.register_func_by_name("foreach_int", self::foreach_int);
+        context.register_func("while", self::while_block);
+        context.register_func("foreach", self::foreach_block);
+        context.register_func("foreach_int", self::foreach_int);
     }
 
     pub fn while_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
@@ -115,8 +115,8 @@ pub mod vars {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
-        context.register_func_by_name("do", self::do_block);
-        context.register_func_by_name("with", self::with_block);
+        context.register_func("do", self::do_block);
+        context.register_func("with", self::with_block);
     }
 
     pub fn do_block(context: &mut Context, mut args: &NodeSlice) -> HandleResult {
