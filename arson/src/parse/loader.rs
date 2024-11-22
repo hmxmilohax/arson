@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{io, marker::PhantomData, rc::Rc};
+use std::{io, marker::PhantomData};
 
 use crate::fs::VirtualPath;
-use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, NodeValue, RawNodeValue, Variable};
+use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
 use super::parser::{self, Expression, ExpressionKind, ParseError};
 
@@ -54,11 +54,9 @@ struct Loader<'ctx, 'src> {
     phantom: PhantomData<&'src ()>,
 }
 
-enum NodeResult<'define> {
+enum NodeResult {
     Value(Node),
     Include(NodeArray),
-    MergeFile(NodeArray),
-    MergeMacro(&'define NodeArray),
     Skip,
 }
 
@@ -76,8 +74,6 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 Ok(result) => match result {
                     NodeResult::Value(node) => array.push(node),
                     NodeResult::Include(mut file) => array.append(&mut file),
-                    NodeResult::MergeFile(file) => Self::merge_array(&mut array, &file),
-                    NodeResult::MergeMacro(define) => Self::merge_array(&mut array, define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {
@@ -96,34 +92,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
         }
     }
 
-    // This is implemented here instead of on NodeArray itself,
-    // since [`Rc::get_mut`] requires that no other references to the stored array exist,
-    // and the only place that this can be ensured is within the loader.
-    fn merge_array(target: &mut NodeArray, source: &NodeArray) {
-        for node in source.iter() {
-            let RawNodeValue::Array(array) = node.unevaluated() else {
-                continue;
-            };
-            let Ok(tag) = array.get(0) else {
-                continue;
-            };
-
-            match target.find_array_opt(tag.unevaluated()) {
-                // Some(mut found) => match Rc::get_mut(&mut found) {
-                //     Some(found) => Self::merge_array(found, array),
-                //     None => continue,
-                // },
-                Some(mut found) => {
-                    let found =
-                        Rc::get_mut(&mut found).expect("no external array references should exist during loading");
-                    Self::merge_array(found, array);
-                },
-                None => target.push(NodeValue::Array(array.clone())),
-            }
-        }
-    }
-
-    fn load_node(&mut self, expr: Expression<'src>) -> Result<NodeResult<'_>, LoadError> {
+    fn load_node(&mut self, expr: Expression<'src>) -> Result<NodeResult, LoadError> {
         let node = match expr.kind {
             ExpressionKind::Integer(value) => value.into(),
             ExpressionKind::Float(value) => value.into(),
@@ -166,20 +135,8 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     None => return Ok(NodeResult::Skip),
                 }
             },
-            ExpressionKind::Merge(name) => {
-                if let Some(symbol) = self.context.get_symbol(name.text) {
-                    match self.context.get_macro(&symbol) {
-                        Some(define) => return Ok(NodeResult::MergeMacro(define)),
-                        None => return Err(LoadError::MacroNotFound),
-                    }
-                } else {
-                    if !self.options.allow_include {
-                        return Err(LoadError::IncludeNotAllowed);
-                    }
-
-                    let file = self.load_path(name.text)?;
-                    return Ok(NodeResult::MergeFile(file));
-                }
+            ExpressionKind::Merge(_name) => {
+                todo!("#merge loading");
             },
             ExpressionKind::Autorun(_exprs) => {
                 todo!("#autorun loading")
@@ -377,7 +334,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "#merge does not function correctly currently"]
     fn directives() {
         assert_loaded("#define kDefine (1)", arson_array![]);
         assert_loaded("#undef kDefine", arson_array![]);
@@ -402,44 +358,16 @@ mod tests {
         // Load an empty file
         assert_loaded_with_context(&mut context, "#include empty.dta", arson_array![]);
         assert_loaded_with_context(&mut context, "#include_opt empty.dta", arson_array![]);
-        assert_loaded_with_context(&mut context, "#merge empty.dta", arson_array![]);
 
         // Load a file with numbers
         assert_loaded_with_context(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
         assert_loaded_with_context(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
-        assert_loaded_with_context(&mut context, "#merge numbers.dta", arson_array![1, 2, 3, 4, 5]);
 
         // Ensure #include_opt is truly optional
         assert!(!context.file_system().unwrap().exists("nonexistent.dta"));
         assert_loaded_with_context(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
-        // Ensure #merge overrides included keys with already-present ones
-        let sym_number = context.add_symbol("number");
-        let sym_string = context.add_symbol("string");
-        let sym_list = context.add_symbol("list");
-        let sym_number2 = context.add_symbol("number2");
-        let sym_string2 = context.add_symbol("string2");
-        let sym_list2 = context.add_symbol("list2");
-        assert_loaded_with_context(
-            &mut context,
-            "
-            (number 10)
-            (string \"test.dta\")
-            (list 10 20 30)
-            #merge merge.dta
-            ",
-            arson_array![
-                arson_array![sym_number, 10],
-                arson_array![sym_string, "test.dta"],
-                arson_array![sym_list, 10, 20, 30],
-                arson_array![sym_number2, 2],
-                arson_array![sym_string2, "foo"],
-                arson_array![sym_list2, 4, 5, 6],
-            ],
-        );
-
-        // TODO: #autorun test
-        // assert_loaded_with_context(&mut context, "#autorun {print \"Auto-run action\"}", arson_array![]);
+        // TODO: #merge and #autorun
     }
 
     #[test]
