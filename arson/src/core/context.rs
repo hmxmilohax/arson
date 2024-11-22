@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::io;
-
 use crate::builtin;
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::loader::{self, LoadOptions};
@@ -14,27 +12,38 @@ pub struct Context {
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<NodeValue>,
     functions: SymbolMap<HandleFn>,
-    file_system: Option<FileSystem>,
+    file_system: FileSystem,
 }
 
 impl Context {
     pub fn new() -> Self {
-        let mut context = Self {
+        let context = Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
-            file_system: None,
+            file_system: FileSystem::new_empty(),
         };
 
-        builtin::register_funcs(&mut context);
-
-        context
+        Self::initialize(context)
     }
 
     pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
-        let mut context = Self::new();
-        context.file_system = Some(FileSystem::new(Box::new(driver)));
+        let context = Self {
+            symbol_table: SymbolTable::new(),
+            macros: SymbolMap::new(),
+            variables: SymbolMap::new(),
+            functions: SymbolMap::new(),
+            file_system: FileSystem::new(driver),
+        };
+
+        Self::initialize(context)
+    }
+
+    #[inline]
+    fn initialize(mut context: Self) -> Self {
+        builtin::register_funcs(&mut context);
+
         context
     }
 
@@ -90,21 +99,16 @@ impl Context {
         self.functions.insert(name.clone(), func).is_none()
     }
 
-    pub fn file_system(&self) -> io::Result<&FileSystem> {
-        self.file_system_opt()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "no file system registered"))
+    pub fn file_system(&self) -> &FileSystem {
+        &self.file_system
     }
 
-    pub fn file_system_opt(&self) -> Option<&FileSystem> {
-        self.file_system.as_ref()
+    pub fn cwd(&self) -> &AbsolutePath {
+        self.file_system.cwd()
     }
 
-    pub fn cwd(&self) -> Option<&AbsolutePath> {
-        self.file_system.as_ref().map(|fs| fs.cwd())
-    }
-
-    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> Option<AbsolutePath> {
-        self.file_system.as_mut().map(|fs| fs.set_cwd(path))
+    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
+        self.file_system.set_cwd(path)
     }
 
     pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {

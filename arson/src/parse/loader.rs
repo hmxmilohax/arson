@@ -164,11 +164,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
     }
 
     fn load_path_opt(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
-        let Some(file_system) = self.context.file_system_opt() else {
-            return Ok(None);
-        };
-
-        match file_system.exists(path) {
+        match self.context.file_system().exists(path) {
             true => self.load_path(path).map(Some),
             false => Ok(None),
         }
@@ -184,7 +180,7 @@ pub fn load_path<P: AsRef<VirtualPath>>(
     options: LoadOptions,
     path: P,
 ) -> Result<NodeArray, LoadError> {
-    let file_system = context.file_system()?;
+    let file_system = context.file_system();
 
     let file = file_system.open_execute(&path)?;
     let text = io::read_to_string(file)?;
@@ -194,9 +190,7 @@ pub fn load_path<P: AsRef<VirtualPath>>(
         return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
     };
 
-    let old_cwd = context
-        .set_cwd(dir)
-        .expect("file system is known to be registered");
+    let old_cwd = context.set_cwd(dir);
     let array = load_text(context, options, &text)?;
     context.set_cwd(&old_cwd);
 
@@ -364,7 +358,7 @@ mod tests {
         assert_loaded_with_context(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
 
         // Ensure #include_opt is truly optional
-        assert!(!context.file_system().unwrap().exists("nonexistent.dta"));
+        assert!(!context.file_system().exists("nonexistent.dta"));
         assert_loaded_with_context(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
         // TODO: #merge and #autorun

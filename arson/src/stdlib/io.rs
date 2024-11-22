@@ -66,7 +66,7 @@ pub mod fs {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
-        let exists = context.file_system()?.is_file(path.as_ref());
+        let exists = context.file_system().is_file(path.as_ref());
         Ok(exists.into())
     }
 
@@ -74,7 +74,7 @@ pub mod fs {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
-        match context.file_system()?.metadata(path.as_ref())? {
+        match context.file_system().metadata(path.as_ref())? {
             Metadata::File { is_readonly, .. } => Ok(is_readonly.into()),
             Metadata::Directory { .. } => {
                 // FIXME: Use ErrorKind::IsADirectory when that stabilizes
