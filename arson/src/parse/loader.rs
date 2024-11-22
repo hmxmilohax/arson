@@ -226,12 +226,7 @@ mod tests {
 
     use super::*;
 
-    fn assert_loaded(text: &str, expected: NodeArray) {
-        let mut context = Context::new();
-        assert_loaded_with_context(&mut context, text, expected)
-    }
-
-    fn assert_loaded_with_context(context: &mut Context, text: &str, expected: NodeArray) {
+    fn assert_loaded(context: &mut Context, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
@@ -252,17 +247,20 @@ mod tests {
 
     #[test]
     fn integer() {
-        assert_loaded("1 2 3", arson_array![1, 2, 3]);
+        let mut context = Context::new();
+        assert_loaded(&mut context, "1 2 3", arson_array![1, 2, 3]);
     }
 
     #[test]
     fn float() {
-        assert_loaded("1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
+        let mut context = Context::new();
+        assert_loaded(&mut context, "1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn string() {
-        assert_loaded("\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
+        let mut context = Context::new();
+        assert_loaded(&mut context, "\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
     }
 
     #[test]
@@ -273,7 +271,7 @@ mod tests {
         let sym_plus = context.add_symbol("+");
         let sym_10 = context.add_symbol("10");
 
-        assert_loaded_with_context(&mut context, "asdf + '10'", arson_array![sym_asdf, sym_plus, sym_10]);
+        assert_loaded(&mut context, "asdf + '10'", arson_array![sym_asdf, sym_plus, sym_10]);
     }
 
     #[test]
@@ -283,12 +281,13 @@ mod tests {
         let var_asdf = Variable::new("asdf", &mut context);
         let var_this = Variable::new("this", &mut context);
 
-        assert_loaded_with_context(&mut context, "$asdf $this", arson_array![var_asdf, var_this]);
+        assert_loaded(&mut context, "$asdf $this", arson_array![var_asdf, var_this]);
     }
 
     #[test]
     fn unhandled() {
-        assert_loaded("kDataUnhandled", arson_array![Node::UNHANDLED])
+        let mut context = Context::new();
+        assert_loaded(&mut context, "kDataUnhandled", arson_array![Node::UNHANDLED])
     }
 
     #[test]
@@ -298,20 +297,20 @@ mod tests {
         {
             let sym_asdf = context.add_symbol("asdf");
             let array = arson_array![sym_asdf, "text", 1];
-            assert_loaded_with_context(&mut context, "(asdf \"text\" 1)", arson_array![array]);
+            assert_loaded(&mut context, "(asdf \"text\" 1)", arson_array![array]);
         }
 
         {
             let sym_set = context.add_symbol("set");
             let var_var = Variable::new("var", &mut context);
             let command = NodeCommand::from(arson_array![sym_set, var_var, "asdf"]);
-            assert_loaded_with_context(&mut context, "{set $var \"asdf\"}", arson_array![command]);
+            assert_loaded(&mut context, "{set $var \"asdf\"}", arson_array![command]);
         }
 
         {
             let sym_asdf = context.add_symbol("asdf");
             let property = NodeProperty::from(arson_array![sym_asdf]);
-            assert_loaded_with_context(&mut context, "[asdf]", arson_array![property]);
+            assert_loaded(&mut context, "[asdf]", arson_array![property]);
         }
 
         {
@@ -323,15 +322,12 @@ mod tests {
             let command = NodeCommand::from(arson_array![sym_set, property, "asdf"]);
             let array = arson_array![sym_handle, command];
 
-            assert_loaded_with_context(&mut context, "(handle {set [var] \"asdf\"})", arson_array![array]);
+            assert_loaded(&mut context, "(handle {set [var] \"asdf\"})", arson_array![array]);
         }
     }
 
     #[test]
     fn directives() {
-        assert_loaded("#define kDefine (1)", arson_array![]);
-        assert_loaded("#undef kDefine", arson_array![]);
-
         let mut driver = MockFileSystemDriver::new();
         driver.add_text_file(AbsolutePath::new_rooted("empty.dta"), "");
         driver.add_text_file(AbsolutePath::new_rooted("numbers.dta"), "1 2 3 4 5");
@@ -350,18 +346,28 @@ mod tests {
 
         let mut context = Context::with_file_driver(driver);
 
-        // Load an empty file
-        assert_loaded_with_context(&mut context, "#include empty.dta", arson_array![]);
-        assert_loaded_with_context(&mut context, "#include_opt empty.dta", arson_array![]);
+        // Defines
+        #[allow(non_snake_case)]
+        let sym_kDefine = context.add_symbol("kDefine");
+        assert_eq!(context.get_macro(&sym_kDefine), None);
 
-        // Load a file with numbers
-        assert_loaded_with_context(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
-        assert_loaded_with_context(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
+        assert_loaded(&mut context, "#define kDefine (1)", arson_array![]);
+        assert_eq!(context.get_macro(&sym_kDefine), Some(&arson_array![1]));
+
+        assert_loaded(&mut context, "#undef kDefine", arson_array![]);
+        assert_eq!(context.get_macro(&sym_kDefine), None);
+
+        // Includes
+        assert_loaded(&mut context, "#include empty.dta", arson_array![]);
+        assert_loaded(&mut context, "#include_opt empty.dta", arson_array![]);
+
+        assert_loaded(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
+        assert_loaded(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
 
         // Ensure working directory behaves properly during includes
         let cwd = context.cwd().clone();
         let sym_included = context.add_symbol("included");
-        assert_loaded_with_context(
+        assert_loaded(
             &mut context,
             "(included #include ./config/config.dta)",
             arson_array![arson_array![sym_included, 1, 2, 3, 4, 5]],
@@ -370,9 +376,17 @@ mod tests {
 
         // Ensure #include_opt is truly optional
         assert!(!context.file_system().exists("nonexistent.dta"));
-        assert_loaded_with_context(&mut context, "#include_opt nonexistent.dta", arson_array![]);
+        assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
         // TODO: #merge and #autorun
+
+        // Ensure included paths are not added as symbols
+        // (despite being lexed as them)
+        assert_eq!(context.get_symbol("empty.dta"), None);
+        assert_eq!(context.get_symbol("numbers.dta"), None);
+        assert_eq!(context.get_symbol("nonexistent.dta"), None);
+        assert_eq!(context.get_symbol("./config/config.dta"), None);
+        assert_eq!(context.get_symbol("../numbers.dta"), None);
     }
 
     #[test]
@@ -386,24 +400,24 @@ mod tests {
         let sym_array2 = context.add_symbol("array2");
 
         context.add_macro_define(&sym_define);
-        assert_loaded_with_context(
+        assert_loaded(
             &mut context,
             "#ifdef kDefine (array1 10) #else (array2 5) #endif",
             arson_array![arson_array![sym_array1, 10]],
         );
 
         context.remove_macro(&sym_define);
-        assert_loaded_with_context(
+        assert_loaded(
             &mut context,
             "#ifdef kDefine (array1 10) #else (array2 5) #endif",
             arson_array![arson_array![sym_array2, 5]],
         );
 
         context.add_macro_define(&sym_define);
-        assert_loaded_with_context(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
+        assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
 
         context.remove_macro(&sym_define);
-        assert_loaded_with_context(
+        assert_loaded(
             &mut context,
             "#ifndef kDefine (array 10) #endif",
             arson_array![arson_array![sym_array, 10]],
