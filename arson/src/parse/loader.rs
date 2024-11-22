@@ -335,6 +335,7 @@ mod tests {
         let mut driver = MockFileSystemDriver::new();
         driver.add_text_file(AbsolutePath::new_rooted("empty.dta"), "");
         driver.add_text_file(AbsolutePath::new_rooted("numbers.dta"), "1 2 3 4 5");
+        driver.add_text_file(AbsolutePath::new_rooted("config/config.dta"), "#include ../numbers.dta");
         driver.add_text_file(
             AbsolutePath::new_rooted("merge.dta"),
             "
@@ -356,6 +357,16 @@ mod tests {
         // Load a file with numbers
         assert_loaded_with_context(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
         assert_loaded_with_context(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
+
+        // Ensure working directory behaves properly during includes
+        let cwd = context.cwd().clone();
+        let sym_included = context.add_symbol("included");
+        assert_loaded_with_context(
+            &mut context,
+            "(included #include ./config/config.dta)",
+            arson_array![arson_array![sym_included, 1, 2, 3, 4, 5]],
+        );
+        assert_eq!(*context.cwd(), cwd);
 
         // Ensure #include_opt is truly optional
         assert!(!context.file_system().exists("nonexistent.dta"));
