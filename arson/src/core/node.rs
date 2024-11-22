@@ -221,18 +221,9 @@ define_node_types! {
         },
         Function(HandleFn),
 
-        Array(ArrayBox) {
-            eq: |left, right| left == right,
-            cmp: |left, right| left.partial_cmp(right),
-        },
-        Command(CommandBox) {
-            eq: |left, right| left == right,
-            cmp: |left, right| left.partial_cmp(right),
-        },
-        Property(PropertyBox) {
-            eq: |left, right| left == right,
-            cmp: |left, right| left.partial_cmp(right),
-        },
+        Array(ArrayBox),
+        Command(CommandBox),
+        Property(PropertyBox),
     }
 }
 
@@ -251,10 +242,7 @@ define_node_types! {
             cmp: |left, right| rc_cmp(left, right),
         },
         Function(HandleFn),
-        Array(ArrayBox) {
-            eq: |left, right| left == right,
-            cmp: |left, right| left.partial_cmp(right),
-        },
+        Array(ArrayBox),
     }
 }
 
@@ -830,11 +818,11 @@ impl NodeSlice {
         self.get(index)?.property()
     }
 
-    pub fn find_array<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> crate::Result<Rc<NodeArray>> {
+    pub fn find_array<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> crate::Result<ArrayBox> {
         self.find_array_opt(tag).ok_or(Error::EntryNotFound)
     }
 
-    pub fn find_array_opt<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> Option<Rc<NodeArray>> {
+    pub fn find_array_opt<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> Option<ArrayBox> {
         for node in self.iter() {
             let RawNodeValue::Array(array) = node.unevaluated() else {
                 continue;
