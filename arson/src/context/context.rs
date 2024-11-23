@@ -126,12 +126,10 @@ impl Context {
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
+                // TODO: cache function/object lookups
                 Some(func) => func(self, command.slice(1..)?)?,
                 None => return Err(Error::EntryNotFound),
             },
-            NodeValue::Object(_obj) => todo!("obj.handle(self, command)?"),
-            NodeValue::Function(func) => func(self, command.slice(1..)?)?,
-
             _ => NodeValue::Unhandled,
         };
 

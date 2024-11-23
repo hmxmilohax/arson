@@ -45,10 +45,9 @@ pub mod unary {
 
     pub fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => Ok(value.overflowing_neg().0.into()),
-            NodeValue::Float(value) => Ok((-value).into()),
+        match args.number(context, 0)? {
+            NodeNumber::Integer(value) => Ok(value.overflowing_neg().0.into()),
+            NodeNumber::Float(value) => Ok((-value).into()),
         }
     }
 

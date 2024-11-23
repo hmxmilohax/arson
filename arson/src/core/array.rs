@@ -3,6 +3,7 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     ops::{Deref, DerefMut},
+    rc::Rc,
     slice::SliceIndex,
 };
 
@@ -58,7 +59,7 @@ impl NodeSlice {
     }
 
     pub fn set<T: Into<NodeValue>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
-        self.get(index)?.set(context, value)
+        self.get(index)?.set_variable(context, value)
     }
 
     pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
@@ -77,14 +78,6 @@ impl NodeSlice {
         self.get(index)?.integer_strict(context)
     }
 
-    pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-        self.get(index)?.boolean(context)
-    }
-
-    pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-        self.get(index)?.boolean_strict(context)
-    }
-
     pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
         self.get(index)?.float(context)
     }
@@ -93,7 +86,19 @@ impl NodeSlice {
         self.get(index)?.float_strict(context)
     }
 
-    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
+    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<NodeNumber> {
+        self.get(index)?.number(context)
+    }
+
+    pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean(context)
+    }
+
+    pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean_strict(context)
+    }
+
+    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<Rc<String>> {
         self.get(index)?.string(context)
     }
 
@@ -105,31 +110,29 @@ impl NodeSlice {
         self.get(index)?.variable()
     }
 
-    pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
-        self.get(index)?.object(context)
-    }
-
-    pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
-        self.get(index)?.function(context)
-    }
-
-    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
+    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<Rc<NodeArray>> {
         self.get(index)?.array(context)
     }
 
-    pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
+    pub fn command(&self, index: usize) -> crate::Result<Rc<NodeCommand>> {
         self.get(index)?.command()
     }
 
-    pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
+    pub fn property(&self, index: usize) -> crate::Result<Rc<NodeProperty>> {
         self.get(index)?.property()
     }
 
-    pub fn find_array<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> crate::Result<ArrayBox> {
+    pub fn find_array<T>(&self, tag: &T) -> crate::Result<Rc<NodeArray>>
+    where
+        RawNodeValue: PartialEq<T>,
+    {
         self.find_array_opt(tag).ok_or(Error::EntryNotFound)
     }
 
-    pub fn find_array_opt<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> Option<ArrayBox> {
+    pub fn find_array_opt<T>(&self, tag: &T) -> Option<Rc<NodeArray>>
+    where
+        RawNodeValue: PartialEq<T>,
+    {
         for node in self.iter() {
             let RawNodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -138,12 +141,30 @@ impl NodeSlice {
                 continue;
             };
 
-            if *tag == *node {
+            if *node == *tag {
                 return Some(array.clone());
             }
         }
 
         None
+    }
+}
+
+impl Deref for NodeSlice {
+    type Target = [Node];
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
+}
+
+impl<'slice> IntoIterator for &'slice NodeSlice {
+    type Item = <&'slice [Node] as IntoIterator>::Item;
+    type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        #[allow(clippy::into_iter_on_ref)]
+        self.nodes.into_iter()
     }
 }
 
@@ -273,17 +294,9 @@ impl BorrowMut<Vec<Node>> for NodeArray {
     }
 }
 
-impl Deref for NodeSlice {
-    type Target = [Node];
-
-    fn deref(&self) -> &Self::Target {
-        &self.nodes
-    }
-}
-
-impl<'slice> IntoIterator for &'slice NodeSlice {
-    type Item = <&'slice [Node] as IntoIterator>::Item;
-    type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
+impl IntoIterator for NodeArray {
+    type Item = <Vec<Node> as IntoIterator>::Item;
+    type IntoIter = <Vec<Node> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         #[allow(clippy::into_iter_on_ref)]
@@ -344,6 +357,16 @@ macro_rules! define_array_wrapper {
             impl Borrow<NodeArray> for $name {
                 fn borrow(&self) -> &NodeArray {
                     &self.nodes
+                }
+            }
+
+            impl IntoIterator for $name {
+                type Item = <NodeArray as IntoIterator>::Item;
+                type IntoIter = <NodeArray as IntoIterator>::IntoIter;
+
+                fn into_iter(self) -> Self::IntoIter {
+                    #[allow(clippy::into_iter_on_ref)]
+                    self.nodes.into_iter()
                 }
             }
         )+

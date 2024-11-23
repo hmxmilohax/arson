@@ -97,6 +97,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionKind::Integer(value) => value.into(),
             ExpressionKind::Float(value) => value.into(),
             ExpressionKind::String(value) => value.into(),
+
             ExpressionKind::Symbol(value) => self.context.add_symbol(value).into(),
             ExpressionKind::Variable(value) => Variable::new(value, self.context).into(),
             ExpressionKind::Unhandled => Node::UNHANDLED,

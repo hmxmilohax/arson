@@ -4,19 +4,13 @@ use std::ops::Range;
 
 use crate::LoadError;
 
-use super::{NodeType, Symbol};
+use super::{NodeKind, Symbol};
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Type mismatch: expected {expected:?}, got {actual:?}")]
-    TypeMismatch { expected: NodeType, actual: NodeType },
-
-    #[error("Type mismatch: expected one of {expected:?}, got {actual:?}")]
-    UnhandledType { expected: Vec<NodeType>, actual: NodeType },
-
-    #[error("Left operand {left:?} is not compatible with right operand {right:?}")]
-    BadOperand { left: NodeType, right: NodeType },
+    TypeMismatch { expected: NodeKind, actual: NodeKind },
 
     #[error("Bad array length {actual}, expected {expected}")]
     LengthMismatch { expected: usize, actual: usize },
@@ -38,12 +32,6 @@ pub enum Error {
 
     #[error("{0}")]
     Failure(String),
-}
-
-impl Error {
-    pub fn bad_operand(left: NodeType, right: NodeType) -> Self {
-        Error::BadOperand { left, right }
-    }
 }
 
 pub type Result<T> = std::result::Result<T, self::Error>;

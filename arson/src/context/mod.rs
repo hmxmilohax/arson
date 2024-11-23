@@ -30,12 +30,11 @@ pub(crate) fn number_chain(
             return Ok(left.into());
         };
 
-        match node.evaluate(context)? {
-            NodeValue::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
-            NodeValue::Float(right) => {
+        match node.number(context)? {
+            NodeNumber::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
+            NodeNumber::Float(right) => {
                 float_chain(context, args.slice(1..)?, f_float(left as NodeFloat, right)?, f_float)
             },
-            unhandled => Err(Error::bad_operand(NodeType::Integer, unhandled.get_type())),
         }
     }
 
@@ -49,18 +48,16 @@ pub(crate) fn number_chain(
             return Ok(left.into());
         };
 
-        match node.evaluate(context)? {
-            NodeValue::Integer(right) => {
+        match node.number(context)? {
+            NodeNumber::Integer(right) => {
                 float_chain(context, args.slice(1..)?, f_float(left, right as NodeFloat)?, f_float)
             },
-            NodeValue::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
-            unhandled => Err(Error::bad_operand(NodeType::Float, unhandled.get_type())),
+            NodeNumber::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
         }
     }
 
-    evaluate_node! {
-        args.evaluate(context, 0)?;
-        NodeValue::Integer(value) => integer_chain(context, args.slice(1..)?, value, f_int, f_float),
-        NodeValue::Float(value) => float_chain(context, args.slice(1..)?, value, f_float),
+    match args.number(context, 0)? {
+        NodeNumber::Integer(value) => integer_chain(context, args.slice(1..)?, value, f_int, f_float),
+        NodeNumber::Float(value) => float_chain(context, args.slice(1..)?, value, f_float),
     }
 }

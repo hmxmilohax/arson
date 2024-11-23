@@ -29,10 +29,9 @@ pub mod basic {
 
     pub fn abs(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(value) => Ok(value.saturating_abs().into()),
-            NodeValue::Float(value) => Ok(value.abs().into()),
+        match args.number(context, 0)? {
+            NodeNumber::Integer(value) => Ok(value.saturating_abs().into()),
+            NodeNumber::Float(value) => Ok(value.abs().into()),
         }
     }
 
@@ -48,15 +47,14 @@ pub mod basic {
             Ok(NodeArray::from_iter([NodeValue::from(quotient), NodeValue::from(remainder)]).into())
         }
 
-        let left = args.evaluate(context, 0)?;
-        let right = args.evaluate(context, 1)?;
+        let left = args.number(context, 0)?;
+        let right = args.number(context, 1)?;
 
         match (left, right) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => div_rem(left, right),
-            (NodeValue::Float(left), NodeValue::Float(right)) => div_rem(left, right),
-            (NodeValue::Integer(left), NodeValue::Float(right)) => div_rem(left as NodeFloat, right),
-            (NodeValue::Float(left), NodeValue::Integer(right)) => div_rem(left, right as NodeFloat),
-            (left, right) => Err(Error::bad_operand(left.get_type(), right.get_type())),
+            (NodeNumber::Integer(left), NodeNumber::Integer(right)) => div_rem(left, right),
+            (NodeNumber::Float(left), NodeNumber::Float(right)) => div_rem(left, right),
+            (NodeNumber::Integer(left), NodeNumber::Float(right)) => div_rem(left as NodeFloat, right),
+            (NodeNumber::Float(left), NodeNumber::Integer(right)) => div_rem(left, right as NodeFloat),
         }
     }
 
@@ -136,27 +134,24 @@ pub mod limit {
     pub fn clamp(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 3);
 
-        let min = evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(min) => min,
-            NodeValue::Float(min) => {
+        let min = match args.number(context, 0)? {
+            NodeNumber::Integer(min) => min,
+            NodeNumber::Float(min) => {
                 let max = args.float(context, 1)?;
                 let value = args.float(context, 2)?;
                 return Ok(value.clamp(min, max).into());
             },
         };
-        let max = evaluate_node! {
-            args.evaluate(context, 1)?;
-            NodeValue::Integer(max) => max,
-            NodeValue::Float(max) => {
+        let max = match args.number(context, 1)? {
+            NodeNumber::Integer(max) => max,
+            NodeNumber::Float(max) => {
                 let value = args.float(context, 2)?;
                 return Ok(value.clamp(min as NodeFloat, max).into());
             },
         };
-        let value = evaluate_node! {
-            args.evaluate(context, 1)?;
-            NodeValue::Integer(value) => value,
-            NodeValue::Float(value) => {
+        let value = match args.number(context, 2)? {
+            NodeNumber::Integer(value) => value,
+            NodeNumber::Float(value) => {
                 return Ok(value.clamp(min as NodeFloat, max as NodeFloat).into());
             },
         };
@@ -222,14 +217,12 @@ pub mod exponential {
 
     pub fn power(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
-        evaluate_node! {
-            args.evaluate(context, 0)?;
-            NodeValue::Integer(left) => Ok(left.pow(args.integer(context, 1)? as u32).into()),
-            NodeValue::Float(left) => match args.evaluate(context, 1)? {
-                NodeValue::Integer(right) => Ok(left.powi(right as i32).into()),
-                NodeValue::Float(right) => Ok(left.powf(right).into()),
-                unhandled => Err(Error::bad_operand(NodeType::Float, unhandled.get_type())),
-            }
+        match args.number(context, 0)? {
+            NodeNumber::Integer(left) => Ok(left.pow(args.integer(context, 1)? as u32).into()),
+            NodeNumber::Float(left) => match args.number(context, 1)? {
+                NodeNumber::Integer(right) => Ok(left.powi(right as i32).into()),
+                NodeNumber::Float(right) => Ok(left.powf(right).into()),
+            },
         }
     }
 
