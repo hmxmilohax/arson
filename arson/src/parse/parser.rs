@@ -172,6 +172,16 @@ pub enum ArrayKind {
     Property,
 }
 
+impl ArrayKind {
+    pub fn delimiters(&self) -> (char, char) {
+        match self {
+            ArrayKind::Array => ('(', ')'),
+            ArrayKind::Command => ('{', '}'),
+            ArrayKind::Property => ('[', ']'),
+        }
+    }
+}
+
 impl std::fmt::Display for ArrayKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -765,10 +775,6 @@ pub fn parse_tokens<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<V
 mod tests {
     use super::*;
 
-    const fn new_token(kind: OwnedTokenValue, location: Span) -> OwnedToken {
-        OwnedToken { kind, location }
-    }
-
     mod preprocessor {
         use super::*;
 
@@ -899,7 +905,7 @@ mod tests {
                 &text,
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::Symbol,
-                    actual: new_token(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -1165,53 +1171,45 @@ mod tests {
                 )],
             );
 
-            assert_errors(
-                "( ( )",
-                vec![
-                    ParseError::UnmatchedBrace(0..1, ArrayKind::Array),
-                    ParseError::UnexpectedEof,
-                ],
-            );
-            assert_errors(") ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Array)]);
-            assert_errors("( ) )", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Array)]);
+            fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
+                let mut expected = vec![ParseError::UnmatchedBrace(location, kind)];
+                if !eof_expected {
+                    expected.push(ParseError::UnexpectedEof);
+                }
 
-            assert_errors(
-                "{ ( )",
-                vec![
-                    ParseError::UnmatchedBrace(0..1, ArrayKind::Command),
-                    ParseError::UnexpectedEof,
-                ],
-            );
-            assert_errors("} ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Command)]);
-            assert_errors("( { )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Command)]);
-            assert_errors("( } )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Command)]);
-            assert_errors(
-                "( ) {",
-                vec![
-                    ParseError::UnmatchedBrace(4..5, ArrayKind::Command),
-                    ParseError::UnexpectedEof,
-                ],
-            );
-            assert_errors("( ) }", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Command)]);
+                assert_errors(text, expected);
+            }
 
-            assert_errors(
-                "[ ( )",
-                vec![
-                    ParseError::UnmatchedBrace(0..1, ArrayKind::Property),
-                    ParseError::UnexpectedEof,
-                ],
-            );
-            assert_errors("] ( )", vec![ParseError::UnmatchedBrace(0..1, ArrayKind::Property)]);
-            assert_errors("( [ )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Property)]);
-            assert_errors("( ] )", vec![ParseError::UnmatchedBrace(2..3, ArrayKind::Property)]);
-            assert_errors(
-                "( ) [",
-                vec![
-                    ParseError::UnmatchedBrace(4..5, ArrayKind::Property),
-                    ParseError::UnexpectedEof,
-                ],
-            );
-            assert_errors("( ) ]", vec![ParseError::UnmatchedBrace(4..5, ArrayKind::Property)]);
+            fn assert_array_mismatches(kind: ArrayKind) {
+                let (l, r) = kind.delimiters();
+                assert_array_mismatch(&format!("{l} {l} {r}"), kind, 0..1, false);
+                assert_array_mismatch(&format!("{r} {l} {r}"), kind, 0..1, true);
+                assert_array_mismatch(&format!("{l} {r} {l}"), kind, 4..5, false);
+                assert_array_mismatch(&format!("{l} {r} {r}"), kind, 4..5, true);
+            }
+
+            fn assert_multi_array_mismatches(matched_kind: ArrayKind, unmatched_kind: ArrayKind) {
+                let (ml, mr) = matched_kind.delimiters();
+                let (ul, ur) = unmatched_kind.delimiters();
+
+                assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, 0..1, false);
+                assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, 0..1, true);
+                assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, 2..3, true);
+                assert_array_mismatch(&format!("{ml} {ur} {mr}"), unmatched_kind, 2..3, true);
+                assert_array_mismatch(&format!("{ml} {mr} {ul}"), unmatched_kind, 4..5, false);
+                assert_array_mismatch(&format!("{ml} {mr} {ur}"), unmatched_kind, 4..5, true);
+            }
+
+            assert_array_mismatches(ArrayKind::Array);
+            assert_array_mismatches(ArrayKind::Command);
+            assert_array_mismatches(ArrayKind::Property);
+
+            assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Command);
+            assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Property);
+            assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Array);
+            assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Property);
+            assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Array);
+            assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
         }
 
         fn assert_directive_symbol_error(name: &str) {
@@ -1220,7 +1218,7 @@ mod tests {
                 &text,
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::Symbol,
-                    actual: new_token(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
                 }],
             );
         }
@@ -1300,14 +1298,14 @@ mod tests {
                 "#define kDefine 1",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::ArrayOpen,
-                    actual: new_token(OwnedTokenValue::Integer(1), 16..17),
+                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
                 }],
             );
             assert_errors(
                 "#autorun kDefine",
                 vec![ParseError::IncorrectToken {
                     expected: TokenKind::CommandOpen,
-                    actual: new_token(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+                    actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
                 }],
             );
 

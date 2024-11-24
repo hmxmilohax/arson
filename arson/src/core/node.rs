@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, BorrowMut},
+    cmp::Ordering,
     ops::{Deref, DerefMut},
     rc::Rc,
     slice::SliceIndex,
@@ -18,82 +19,303 @@ pub type NodeInteger = i64;
 pub type NodeFloat = f64;
 
 macro_rules! define_node_types {
-    ($($(#[$attr:meta])* $type:ident$(($value:ty))?$(,)?)+) => {
+    (
+        make_types!(),
+        $(#[$name_attr:meta])*
+        pub enum $name:ident {
+            $(
+                $(#[$type_attr:meta])*
+                $type:ident$(($value:ty) $({
+                    eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
+                    cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                })?)?
+                $(,)?
+            )+
+        }
+    ) => {
         /// The type of value contained within a [`Node`], [`NodeValue`], or [`RawNodeValue`].
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
         pub enum NodeType {
-            $($(#[$attr])* $type,)+
+            $($(#[$type_attr])* $type,)+
         }
 
-        /// A raw, unevaluated value stored within a [`Node`].
-        #[derive(Debug, Clone)]
-        pub enum RawNodeValue {
-            $($(#[$attr])* $type$(($value))?,)+
+        $(
+            $(
+                impl From<$value> for Node {
+                    fn from(value: $value) -> Self {
+                        Self { value: RawNodeValue::from(value) }
+                    }
+                }
+
+                impl From<&$value> for Node {
+                    fn from(value: &$value) -> Self {
+                        Self::from(value.clone())
+                    }
+                }
+            )?
+        )+
+
+        define_node_types! {
+            $(#[$name_attr])*
+            pub enum $name {
+                $(
+                    $(#[$type_attr])*
+                    $type$(($value) $({
+                        eq: |$eq_left, $eq_right| $eq_expr,
+                        cmp: |$cmp_left, $cmp_right| $cmp_expr,
+                    })?)?
+                )+
+            }
+        }
+    };
+    (
+        $(#[$name_attr:meta])*
+        pub enum $name:ident {
+            $(
+                $(#[$type_attr:meta])*
+                $type:ident$(($value:ty) $({
+                    eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
+                    cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                })?)?
+                $(,)?
+            )+
+        }
+    ) => {
+        $(#[$name_attr])*
+        pub enum $name {
+            $($(#[$type_attr])* $type$(($value))?,)+
         }
 
-        impl RawNodeValue {
+        impl $name {
             pub fn get_type(&self) -> NodeType {
                 match self {
-                    $(Self::$type$((param_sink!($value, _)))? => NodeType::$type,)+
+                    $(Self::$type$((meta_morph!($value => _)))? => NodeType::$type,)+
                 }
             }
         }
+
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                match (self, other) {
+                    $(
+                        (
+                            Self::$type$((meta_morph!($value => meta_select!($($eq_left)?, left))))?,
+                            Self::$type$((meta_morph!($value => meta_select!($($eq_right)?, right))))?
+                        )
+                        => meta_select!(
+                            $(meta_morph!($value => meta_select!($($eq_expr)?, left == right)))?,
+                            true
+                        ),
+                    )+
+
+                    _ => false,
+                }
+            }
+        }
+
+        impl PartialOrd for $name {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                match (self, other) {
+                    $(
+                        (
+                            Self::$type$((meta_morph!($value => meta_select!($($cmp_left)?, left))))?,
+                            Self::$type$((meta_morph!($value => meta_select!($($cmp_right)?, right))))?
+                        )
+                        => meta_select!(
+                            $(meta_morph!($value => meta_select!($($cmp_expr)?, left.partial_cmp(right))))?,
+                            Some(Ordering::Equal)
+                        ),
+                    )+
+
+                    _ => None,
+                }
+            }
+        }
+
+        $(
+            $(
+                impl From<$value> for $name {
+                    fn from(value: $value) -> Self {
+                        Self::$type(value)
+                    }
+                }
+
+                impl From<&$value> for $name {
+                    fn from(value: &$value) -> Self {
+                        Self::from(value.clone())
+                    }
+                }
+
+                impl PartialEq<$value> for $name {
+                    fn eq(&self, meta_select!($($eq_right)?, other): &$value) -> bool {
+                        match self {
+                            Self::$type(meta_select!($($eq_left)?, value)) => meta_select!($($eq_expr)?, value == other),
+                            _ => false,
+                        }
+                    }
+                }
+
+                impl PartialEq<$name> for $value {
+                    fn eq(&self, other: &$name) -> bool {
+                        other.eq(self)
+                    }
+                }
+
+                impl PartialOrd<$value> for $name {
+                    fn partial_cmp(&self, meta_select!($($cmp_right)?, other): &$value) -> Option<Ordering> {
+                        match self {
+                            Self::$type(meta_select!($($cmp_left)?, value)) => meta_select!($($cmp_expr)?, value.partial_cmp(other)),
+                            _ => None,
+                        }
+                    }
+                }
+
+                impl PartialOrd<$name> for $value {
+                    fn partial_cmp(&self, meta_select!($($cmp_right)?, other): &$name) -> Option<Ordering> {
+                        $(let $cmp_left = self;)?
+                        match meta_select!($($cmp_right)?, other) {
+                            $name::$type(meta_select!($($cmp_right)?, other)) => meta_select!($($cmp_expr)?, self.partial_cmp(other)),
+                            _ => None,
+                        }
+                    }
+                }
+            )?
+        )+
     }
 }
 
-// type aliases to avoid syntax errors in the macro below
+// Type aliases to avoid syntax errors in the macro invocations below.
+// Strings and arrays are boxed and reference-counted to make cloning cheap.
 type StringBox = Rc<String>;
 type ObjectBox = Rc<dyn Object>;
 type ArrayBox = Rc<NodeArray>;
 type CommandBox = Rc<NodeCommand>;
 type PropertyBox = Rc<NodeProperty>;
 
+fn rc_cmp<T: ?Sized>(left: &Rc<T>, right: &Rc<T>) -> Option<Ordering> {
+    let left = Rc::as_ptr(left) as *const ();
+    let right = Rc::as_ptr(right) as *const ();
+    left.partial_cmp(&right)
+}
+
 define_node_types! {
-    Integer(NodeInteger),
-    Float(NodeFloat),
-    String(StringBox),
+    make_types!(),
 
-    Symbol(Symbol),
-    Variable(Variable),
-    Unhandled,
+    /// A raw, unevaluated value stored within a [`Node`].
+    #[derive(Debug, Clone)]
+    pub enum RawNodeValue {
+        Integer(NodeInteger),
+        Float(NodeFloat),
+        String(StringBox),
 
-    Object(ObjectBox),
-    Function(HandleFn),
+        Symbol(Symbol),
+        Variable(Variable) {
+            eq: |left, right| left.symbol() == right.symbol(),
+            cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
+        },
+        Unhandled,
 
-    Array(ArrayBox),
-    Command(CommandBox),
-    Property(PropertyBox),
+        Object(ObjectBox) {
+            eq: |left, right| Rc::ptr_eq(left, right),
+            cmp: |left, right| rc_cmp(left, right),
+        },
+        Function(HandleFn),
+
+        Array(ArrayBox),
+        Command(CommandBox),
+        Property(PropertyBox),
+    }
 }
 
-/// A node value which has been evaluated.
-#[derive(Debug, Clone)]
-pub enum NodeValue {
-    Integer(NodeInteger),
-    Float(NodeFloat),
-    String(StringBox),
-    Symbol(Symbol),
-    Unhandled,
+define_node_types! {
+    /// A node value which has been evaluated.
+    #[derive(Debug, Clone)]
+    pub enum NodeValue {
+        Integer(NodeInteger),
+        Float(NodeFloat),
+        String(StringBox),
+        Symbol(Symbol),
+        Unhandled,
 
-    Object(ObjectBox),
-    Function(HandleFn),
-    Array(ArrayBox),
+        Object(ObjectBox) {
+            eq: |left, right| Rc::ptr_eq(left, right),
+            cmp: |left, right| rc_cmp(left, right),
+        },
+        Function(HandleFn),
+        Array(ArrayBox),
+    }
 }
 
-impl NodeValue {
-    pub fn get_type(&self) -> NodeType {
-        match self {
-            NodeValue::Integer(_) => NodeType::Integer,
-            NodeValue::Float(_) => NodeType::Float,
-            NodeValue::String(_) => NodeType::String,
-            NodeValue::Symbol(_) => NodeType::Symbol,
-            NodeValue::Unhandled => NodeType::Unhandled,
+impl From<NodeValue> for Node {
+    fn from(value: NodeValue) -> Self {
+        Self { value: RawNodeValue::from(value) }
+    }
+}
 
-            NodeValue::Object(_) => NodeType::Object,
-            NodeValue::Function(_) => NodeType::Function,
-            NodeValue::Array(_) => NodeType::Array,
+impl From<RawNodeValue> for Node {
+    fn from(value: RawNodeValue) -> Self {
+        Self { value }
+    }
+}
+
+impl From<NodeValue> for RawNodeValue {
+    fn from(value: NodeValue) -> Self {
+        match value {
+            NodeValue::Integer(value) => RawNodeValue::Integer(value),
+            NodeValue::Float(value) => RawNodeValue::Float(value),
+            NodeValue::String(value) => RawNodeValue::String(value),
+            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
+            NodeValue::Unhandled => RawNodeValue::Unhandled,
+
+            NodeValue::Object(value) => RawNodeValue::Object(value),
+            NodeValue::Function(value) => RawNodeValue::Function(value),
+            NodeValue::Array(value) => RawNodeValue::Array(value),
         }
     }
 }
+
+macro_rules! impl_from_raw {
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
+        impl From<$from_type> for RawNodeValue {
+            fn from($value: $from_type) -> Self {
+                Self::$variant($expr)
+            }
+        }
+
+        impl From<$from_type> for Node {
+            fn from($value: $from_type) -> Self {
+                Self { value: RawNodeValue::from($value) }
+            }
+        }
+    };
+}
+
+macro_rules! impl_from {
+    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
+        impl From<$from_type> for NodeValue {
+            fn from($value: $from_type) -> Self {
+                Self::$variant($expr)
+            }
+        }
+
+        impl_from_raw!($variant, $from_type, $value => $expr);
+    };
+}
+
+impl_from!(Integer, i32, value => value as NodeInteger);
+impl_from!(Integer, &i32, value => *value as NodeInteger);
+impl_from!(Integer, bool, value => value as NodeInteger);
+impl_from!(Integer, &bool, value => *value as NodeInteger);
+impl_from!(Float, f32, value => value as NodeFloat);
+impl_from!(Float, &f32, value => *value as NodeFloat);
+impl_from!(String, String, value => Rc::new(value));
+impl_from!(String, &String, value => Rc::new(value.clone()));
+impl_from!(String, &str, value => Rc::new(value.to_owned()));
+
+impl_from!(Array, NodeArray, value => Rc::new(value));
+
+impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
+impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
 
 /// Helper macro for evaluating a node against a set of types,
 /// returning an error if none of them match.
@@ -137,7 +359,7 @@ macro_rules! evaluate_node_opt {
         $($type:ident::$variant:ident($value:ident) => $expr:expr,)+
     ) => {
         match $node {
-            Some($some_ident) => evaluate_node!($some_expr; $($type::$variant($value) => $expr,)+),
+            Some($some_ident) => $crate::evaluate_node!($some_expr; $($type::$variant($value) => $expr,)+),
             None => $none_expr,
         }
     };
@@ -217,46 +439,6 @@ impl NodeValue {
     common_getters!();
 }
 
-impl PartialEq for NodeValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => left == right,
-            (NodeValue::Float(left), NodeValue::Float(right)) => left == right,
-            (NodeValue::String(left), NodeValue::String(right)) => left == right,
-            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left == right,
-            (NodeValue::Unhandled, NodeValue::Unhandled) => true,
-
-            (NodeValue::Object(left), NodeValue::Object(right)) => Rc::ptr_eq(left, right),
-            (NodeValue::Function(left), NodeValue::Function(right)) => left == right,
-            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for NodeValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (NodeValue::Integer(left), NodeValue::Integer(right)) => left.partial_cmp(right),
-            (NodeValue::Float(left), NodeValue::Float(right)) => left.partial_cmp(right),
-            (NodeValue::String(left), NodeValue::String(right)) => left.partial_cmp(right),
-            (NodeValue::Symbol(left), NodeValue::Symbol(right)) => left.partial_cmp(right),
-            (NodeValue::Unhandled, NodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
-
-            (NodeValue::Object(left), NodeValue::Object(right)) => {
-                let left = Rc::as_ptr(left) as *const ();
-                let right = Rc::as_ptr(right) as *const ();
-                left.partial_cmp(&right)
-            },
-            (NodeValue::Function(left), NodeValue::Function(right)) => left.partial_cmp(right),
-            (NodeValue::Array(_left), NodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => None,
-        }
-    }
-}
-
 impl RawNodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
@@ -299,72 +481,6 @@ impl RawNodeValue {
             Self::Property(_property) => todo!("property node evaluation"),
         };
         Ok(evaluated)
-    }
-}
-
-impl From<NodeValue> for RawNodeValue {
-    fn from(value: NodeValue) -> Self {
-        match value {
-            NodeValue::Integer(value) => RawNodeValue::Integer(value),
-            NodeValue::Float(value) => RawNodeValue::Float(value),
-            NodeValue::String(value) => RawNodeValue::String(value),
-            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
-            NodeValue::Unhandled => RawNodeValue::Unhandled,
-
-            NodeValue::Object(value) => RawNodeValue::Object(value),
-            NodeValue::Function(value) => RawNodeValue::Function(value),
-            NodeValue::Array(value) => RawNodeValue::Array(value),
-        }
-    }
-}
-
-impl PartialEq for RawNodeValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left == right,
-            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left == right,
-            (RawNodeValue::String(left), RawNodeValue::String(right)) => left == right,
-
-            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left == right,
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol() == right.symbol(),
-            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => true,
-
-            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => Rc::ptr_eq(left, right),
-            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left == right,
-
-            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for RawNodeValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (RawNodeValue::Integer(left), RawNodeValue::Integer(right)) => left.partial_cmp(right),
-            (RawNodeValue::Float(left), RawNodeValue::Float(right)) => left.partial_cmp(right),
-            (RawNodeValue::String(left), RawNodeValue::String(right)) => left.partial_cmp(right),
-
-            (RawNodeValue::Symbol(left), RawNodeValue::Symbol(right)) => left.partial_cmp(right),
-            (RawNodeValue::Variable(left), RawNodeValue::Variable(right)) => left.symbol().partial_cmp(right.symbol()),
-            (RawNodeValue::Unhandled, RawNodeValue::Unhandled) => Some(std::cmp::Ordering::Equal),
-
-            (RawNodeValue::Object(left), RawNodeValue::Object(right)) => {
-                let left = Rc::as_ptr(left) as *const ();
-                let right = Rc::as_ptr(right) as *const ();
-                left.partial_cmp(&right)
-            },
-            (RawNodeValue::Function(left), RawNodeValue::Function(right)) => left.partial_cmp(right),
-
-            (RawNodeValue::Array(_left), RawNodeValue::Array(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Command(_left), RawNodeValue::Command(_right)) => todo!("array comparison (yes or no?)"),
-            (RawNodeValue::Property(_left), RawNodeValue::Property(_right)) => todo!("array comparison (yes or no?)"),
-
-            _ => None,
-        }
     }
 }
 
@@ -451,91 +567,33 @@ impl Node {
     }
 }
 
-macro_rules! impl_from_raw {
-    ($variant:ident, $from_type:ty) => {
-        impl_from_raw!($variant, $from_type, value => value);
-    };
-    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
-        impl From<$from_type> for RawNodeValue {
-            fn from($value: $from_type) -> Self {
-                Self::$variant($expr)
-            }
-        }
-
-        impl From<$from_type> for Node {
-            fn from($value: $from_type) -> Self {
-                Self { value: RawNodeValue::from($value) }
-            }
-        }
-    };
-}
-
-macro_rules! impl_from {
-    ($variant:ident, $from_type:ty) => {
-        impl_from!($variant, $from_type, value => value);
-    };
-    ($variant:ident, $from_type:ty, $value:ident => $expr:expr) => {
-        impl From<$from_type> for NodeValue {
-            fn from($value: $from_type) -> Self {
-                Self::$variant($expr)
-            }
-        }
-
-        impl_from_raw!($variant, $from_type, $value => $expr);
-    };
-}
-
-impl From<NodeValue> for Node {
-    fn from(value: NodeValue) -> Self {
-        Self { value: RawNodeValue::from(value) }
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.eq(&other.value)
     }
 }
 
-impl From<RawNodeValue> for Node {
-    fn from(value: RawNodeValue) -> Self {
-        Self { value }
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
     }
 }
 
-impl_from!(Integer, NodeInteger);
-impl_from!(Integer, &NodeInteger, value => *value);
-impl_from!(Integer, i32, value => value as NodeInteger);
-impl_from!(Integer, &i32, value => *value as NodeInteger);
-impl_from!(Integer, bool, value => value as NodeInteger);
-impl_from!(Integer, &bool, value => *value as NodeInteger);
-impl_from!(Float, NodeFloat);
-impl_from!(Float, &NodeFloat, value => *value);
-impl_from!(Float, f32, value => value as NodeFloat);
-impl_from!(Float, &f32, value => *value as NodeFloat);
-impl_from!(String, StringBox);
-impl_from!(String, &StringBox, value => value.clone());
-impl_from!(String, String, value => Rc::new(value));
-impl_from!(String, &String, value => Rc::new(value.clone()));
-impl_from!(String, &str, value => Rc::new(value.to_owned()));
-
-impl_from!(Symbol, Symbol);
-impl_from!(Symbol, &Symbol, value => value.clone());
-
-impl_from!(Object, ObjectBox);
-impl_from!(Object, &ObjectBox, value => value.clone());
-impl_from!(Function, HandleFn);
-impl_from!(Function, &HandleFn, value => *value);
-
-impl_from!(Array, ArrayBox);
-impl_from!(Array, &ArrayBox, value => value.clone());
-impl_from!(Array, NodeArray, value => Rc::new(value));
-
-impl_from_raw!(Variable, Variable);
-impl_from_raw!(Variable, &Variable, value => value.clone());
-impl_from_raw!(Command, CommandBox);
-impl_from_raw!(Command, NodeCommand, value => Rc::new(value));
-impl_from_raw!(Command, &CommandBox, value => value.clone());
-impl_from_raw!(Property, PropertyBox);
-impl_from_raw!(Property, NodeProperty, value => Rc::new(value));
-impl_from_raw!(Property, &PropertyBox, value => value.clone());
+#[macro_export]
+macro_rules! arson_array {
+    () => (
+        $crate::NodeArray::new()
+    );
+    ($elem:expr; $n:expr) => (
+        $crate::NodeArray::from(vec![$elem.into(); $n])
+    );
+    ($($x:expr),+ $(,)?) => (
+        $crate::NodeArray::from(vec![$($x.into()),+])
+    );
+}
 
 /// A contiguous collection of [`Node`]s.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeArray {
     nodes: Vec<Node>,
 }
@@ -549,8 +607,66 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
-        NodeSlice::new(&self.nodes).slice(index)
+    pub fn capacity(&self) -> usize {
+        self.nodes.capacity()
+    }
+
+    pub fn push<N: Into<Node>>(&mut self, value: N) {
+        self.nodes.push(value.into())
+    }
+
+    pub fn pop(&mut self) -> Option<Node> {
+        self.nodes.pop()
+    }
+
+    pub fn insert<N: Into<Node>>(&mut self, index: usize, value: N) {
+        self.nodes.insert(index, value.into())
+    }
+
+    pub fn remove(&mut self, index: usize) -> Node {
+        self.nodes.remove(index)
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        self.nodes.append(&mut other.nodes)
+    }
+
+    pub fn extend_from_slice(&mut self, other: &[Node]) {
+        self.nodes.extend_from_slice(other)
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear()
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        self.nodes.reserve(additional)
+    }
+
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.nodes.reserve_exact(additional)
+    }
+
+    pub fn resize(&mut self, index: usize, value: Node) {
+        self.nodes.resize(index, value)
+    }
+
+    pub fn truncate(&mut self, len: usize) {
+        self.nodes.truncate(len)
+    }
+
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.nodes.shrink_to(min_capacity)
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.nodes.shrink_to_fit()
+    }
+}
+
+impl From<Vec<Node>> for NodeArray {
+    fn from(value: Vec<Node>) -> Self {
+        Self { nodes: value }
     }
 }
 
@@ -567,6 +683,7 @@ impl FromIterator<NodeValue> for NodeArray {
         }
     }
 }
+
 impl FromIterator<RawNodeValue> for NodeArray {
     fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
         Self {
@@ -576,28 +693,34 @@ impl FromIterator<RawNodeValue> for NodeArray {
 }
 
 impl Deref for NodeArray {
-    type Target = Vec<Node>;
+    type Target = NodeSlice;
 
     fn deref(&self) -> &Self::Target {
-        &self.nodes
+        NodeSlice::new(&self.nodes)
     }
 }
 
 impl DerefMut for NodeArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.nodes
+        NodeSlice::from_mut(&mut self.nodes)
     }
 }
 
-impl Borrow<NodeSlice> for NodeArray {
-    fn borrow(&self) -> &NodeSlice {
-        NodeSlice::new(&self.nodes)
+impl Borrow<Vec<Node>> for NodeArray {
+    fn borrow(&self) -> &Vec<Node> {
+        &self.nodes
+    }
+}
+
+impl BorrowMut<Vec<Node>> for NodeArray {
+    fn borrow_mut(&mut self) -> &mut Vec<Node> {
+        &mut self.nodes
     }
 }
 
 /// A [[`Node`]] slice with the same additional methods as [`NodeArray`].
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct NodeSlice {
     nodes: [Node],
 }
@@ -608,11 +731,112 @@ impl NodeSlice {
         unsafe { &*(nodes as *const [Node] as *const NodeSlice) }
     }
 
+    pub fn from_mut(nodes: &mut [Node]) -> &mut NodeSlice {
+        // SAFETY: NodeSlice transparently contains a [Node], so its layout is identical
+        unsafe { &mut *(nodes as *mut [Node] as *mut NodeSlice) }
+    }
+
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         match self.nodes.get(index) {
             Some(value) => Ok(Self::new(value)),
             None => Err(Error::OutOfRange(0..self.nodes.len())),
         }
+    }
+
+    pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
+        match self.nodes.get(index) {
+            Some(value) => Ok(value),
+            None => Err(Error::OutOfRange(0..self.nodes.len())),
+        }
+    }
+
+    pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
+        self.nodes.get(index)
+    }
+
+    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
+        self.get(index)?.evaluate(context)
+    }
+
+    pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
+        Ok(self.get(index)?.unevaluated())
+    }
+
+    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+        self.get(index)?.integer(context)
+    }
+
+    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+        self.get(index)?.integer_strict(context)
+    }
+
+    pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean(context)
+    }
+
+    pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+        self.get(index)?.boolean_strict(context)
+    }
+
+    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+        self.get(index)?.float(context)
+    }
+
+    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+        self.get(index)?.float_strict(context)
+    }
+
+    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
+        self.get(index)?.string(context)
+    }
+
+    pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
+        self.get(index)?.symbol(context)
+    }
+
+    pub fn variable(&self, index: usize) -> crate::Result<Variable> {
+        self.get(index)?.variable()
+    }
+
+    pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
+        self.get(index)?.object(context)
+    }
+
+    pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
+        self.get(index)?.function(context)
+    }
+
+    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
+        self.get(index)?.array(context)
+    }
+
+    pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
+        self.get(index)?.command()
+    }
+
+    pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
+        self.get(index)?.property()
+    }
+
+    pub fn find_array<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> crate::Result<ArrayBox> {
+        self.find_array_opt(tag).ok_or(Error::EntryNotFound)
+    }
+
+    pub fn find_array_opt<T: PartialEq<RawNodeValue>>(&self, tag: &T) -> Option<ArrayBox> {
+        for node in self.iter() {
+            let RawNodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(node) = array.unevaluated(0) else {
+                continue;
+            };
+
+            if *tag == *node {
+                return Some(array.clone());
+            }
+        }
+
+        None
     }
 }
 
@@ -634,117 +858,71 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     }
 }
 
-macro_rules! array_impl {
-    () => {
-        pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
-            match self.nodes.get(index) {
-                Some(value) => Ok(value),
-                None => Err(Error::OutOfRange(0..self.nodes.len())),
+macro_rules! define_array_wrapper {
+    (
+        $(
+            $(#[$attr:meta])*
+            struct $name:ident;
+        )+
+    ) => {
+        $(
+            $(#[$attr])*
+            #[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
+            pub struct $name {
+                nodes: NodeArray,
             }
-        }
 
-        pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
-            self.nodes.get(index)
-        }
-
-        pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
-            self.get(index)?.evaluate(context)
-        }
-
-        pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
-            Ok(self.get(index)?.unevaluated())
-        }
-
-        pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-            self.get(index)?.integer(context)
-        }
-
-        pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
-            self.get(index)?.integer_strict(context)
-        }
-
-        pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-            self.get(index)?.boolean(context)
-        }
-
-        pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-            self.get(index)?.boolean_strict(context)
-        }
-
-        pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-            self.get(index)?.float(context)
-        }
-
-        pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
-            self.get(index)?.float_strict(context)
-        }
-
-        pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<StringBox> {
-            self.get(index)?.string(context)
-        }
-
-        pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
-            self.get(index)?.symbol(context)
-        }
-
-        pub fn variable(&self, index: usize) -> crate::Result<Variable> {
-            self.get(index)?.variable()
-        }
-
-        pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectBox> {
-            self.get(index)?.object(context)
-        }
-
-        pub fn function(&self, context: &mut Context, index: usize) -> crate::Result<HandleFn> {
-            self.get(index)?.function(context)
-        }
-
-        pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayBox> {
-            self.get(index)?.array(context)
-        }
-
-        pub fn command(&self, index: usize) -> crate::Result<CommandBox> {
-            self.get(index)?.command()
-        }
-
-        pub fn property(&self, index: usize) -> crate::Result<PropertyBox> {
-            self.get(index)?.property()
-        }
-
-        pub fn find_array(&self, tag: &Symbol) -> crate::Result<&NodeArray> {
-            for node in self.iter() {
-                let RawNodeValue::Array(array) = node.unevaluated() else {
-                    continue;
-                };
-                let Ok(node) = array.unevaluated(0) else {
-                    continue;
-                };
-                let Ok(symbol) = node.symbol() else {
-                    continue;
-                };
-
-                if symbol == tag {
-                    return Ok(array);
+            impl $name {
+                pub const fn new() -> Self {
+                    Self { nodes: NodeArray::new() }
                 }
             }
 
-            Err(Error::EntryNotFound(tag.clone()))
-        }
+            impl<T> From<T> for $name
+                where NodeArray: From<T>
+            {
+                fn from(value: T) -> Self {
+                    Self { nodes: NodeArray::from(value) }
+                }
+            }
+
+            impl<T> FromIterator<T> for $name
+                where NodeArray: FromIterator<T>
+            {
+                fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+                    Self { nodes: NodeArray::from_iter(iter) }
+                }
+            }
+
+            impl Deref for $name {
+                type Target = NodeArray;
+
+                fn deref(&self) -> &Self::Target {
+                    &self.nodes
+                }
+            }
+
+            impl DerefMut for $name {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    &mut self.nodes
+                }
+            }
+
+            impl Borrow<NodeArray> for $name {
+                fn borrow(&self) -> &NodeArray {
+                    &self.nodes
+                }
+            }
+        )+
     };
 }
 
-impl NodeArray {
-    array_impl!();
-}
+define_array_wrapper! {
+    /// An executable/evaluatable command.
+    struct NodeCommand;
 
-impl NodeSlice {
-    array_impl!();
-}
-
-/// An executable/evaluatable command.
-#[derive(Debug, Clone, Default)]
-pub struct NodeCommand {
-    nodes: NodeArray,
+    /// A property on an object which can be manipulated.
+    struct NodeProperty;
 }
 
 impl NodeCommand {
@@ -752,71 +930,3 @@ impl NodeCommand {
         context.execute(self)
     }
 }
-
-/// A property on an object which can be manipulated.
-#[derive(Debug, Clone, Default)]
-pub struct NodeProperty {
-    nodes: NodeArray,
-}
-
-macro_rules! array_wrapper_impl {
-    ($name:ident) => {
-        impl $name {
-            pub const fn new() -> Self {
-                Self { nodes: NodeArray::new() }
-            }
-        }
-
-        impl From<NodeArray> for $name {
-            fn from(value: NodeArray) -> Self {
-                Self { nodes: value }
-            }
-        }
-
-        impl FromIterator<Node> for $name {
-            fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-
-        impl FromIterator<NodeValue> for $name {
-            fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-        impl FromIterator<RawNodeValue> for $name {
-            fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
-                Self { nodes: NodeArray::from_iter(iter) }
-            }
-        }
-
-        impl Deref for $name {
-            type Target = NodeArray;
-
-            fn deref(&self) -> &Self::Target {
-                &self.nodes
-            }
-        }
-
-        impl DerefMut for $name {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.nodes
-            }
-        }
-
-        impl Borrow<NodeArray> for $name {
-            fn borrow(&self) -> &NodeArray {
-                &self.nodes
-            }
-        }
-
-        impl Borrow<NodeSlice> for $name {
-            fn borrow(&self) -> &NodeSlice {
-                self.nodes.borrow()
-            }
-        }
-    };
-}
-
-array_wrapper_impl!(NodeCommand);
-array_wrapper_impl!(NodeProperty);

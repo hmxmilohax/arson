@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::parse::loader;
-use crate::{builtin, LoadError};
+use crate::builtin;
+use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
+use crate::parse::loader::{self, LoadOptions};
+use crate::{arson_array, LoadError};
 
 use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
 
@@ -10,17 +12,36 @@ pub struct Context {
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<NodeValue>,
     functions: SymbolMap<HandleFn>,
+    file_system: FileSystem,
 }
 
 impl Context {
     pub fn new() -> Self {
-        let mut context = Self {
+        let context = Self {
             symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
+            file_system: FileSystem::new_empty(),
         };
 
+        Self::initialize(context)
+    }
+
+    pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
+        let context = Self {
+            symbol_table: SymbolTable::new(),
+            macros: SymbolMap::new(),
+            variables: SymbolMap::new(),
+            functions: SymbolMap::new(),
+            file_system: FileSystem::new(driver),
+        };
+
+        Self::initialize(context)
+    }
+
+    #[inline]
+    fn initialize(mut context: Self) -> Self {
         builtin::register_funcs(&mut context);
 
         context
@@ -38,8 +59,12 @@ impl Context {
         self.symbol_table.get(name)
     }
 
-    pub fn add_macro(&mut self, name: Symbol, array: NodeArray) {
-        self.macros.insert(name, array);
+    pub fn add_macro(&mut self, name: &Symbol, array: NodeArray) {
+        self.macros.insert(name.clone(), array);
+    }
+
+    pub fn add_macro_define(&mut self, name: &Symbol) {
+        self.add_macro(name, arson_array![1]);
     }
 
     pub fn remove_macro(&mut self, name: &Symbol) {
@@ -74,15 +99,31 @@ impl Context {
         self.functions.insert(name.clone(), func).is_none()
     }
 
-    pub fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
-        loader::load_text(self, text)
+    pub fn file_system(&self) -> &FileSystem {
+        &self.file_system
+    }
+
+    pub fn cwd(&self) -> &AbsolutePath {
+        self.file_system.cwd()
+    }
+
+    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
+        self.file_system.set_cwd(path)
+    }
+
+    pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
+        loader::load_path(self, options, path)
+    }
+
+    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
+        loader::load_text(self, options, text)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 Some(func) => func(self, command.slice(1..)?)?,
-                None => return Err(Error::EntryNotFound(symbol.clone())),
+                None => return Err(Error::EntryNotFound),
             },
             NodeValue::Object(_obj) => todo!("obj.handle(self, command)?"),
             NodeValue::Function(func) => func(self, command.slice(1..)?)?,

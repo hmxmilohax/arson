@@ -27,6 +27,12 @@ pub struct OwnedToken {
     pub location: Span,
 }
 
+impl OwnedToken {
+    pub const fn new(kind: OwnedTokenValue, location: Span) -> OwnedToken {
+        OwnedToken { kind, location }
+    }
+}
+
 macro_rules! to_owned_type {
     (str) => {
         String
@@ -58,15 +64,15 @@ macro_rules! make_tokens {
         impl<'src> TokenValue<'src> {
             pub fn get_type(&self) -> TokenKind {
                 match self {
-                    $(TokenValue::$type$((param_sink!($value, _)))? => TokenKind::$type,)+
+                    $(TokenValue::$type$((meta_morph!($value => _)))? => TokenKind::$type,)+
                 }
             }
 
             pub fn to_owned(&self) -> OwnedTokenValue {
                 match self {
-                    $(TokenValue::$type$((param_sink!($value, ref value)))?
+                    $(TokenValue::$type$((meta_morph!($value => ref value)))?
                         => OwnedTokenValue::$type$(
-                            (param_sink!($value, ((*value).to_owned())))
+                            (meta_morph!($value => ((*value).to_owned())))
                         )?,
                     )+
                 }
@@ -76,8 +82,8 @@ macro_rules! make_tokens {
         impl<'src> std::fmt::Display for TokenValue<'src> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(TokenValue::$type$((param_sink!($value, _value)))?
-                        => write!(f, concat!($display, $($format)?) $(,param_sink!($format, _value))?),
+                    $(TokenValue::$type$((meta_morph!($value => _value)))?
+                        => write!(f, concat!($display, $($format)?) $(,meta_morph!($format => _value))?),
                     )+
                 }
             }
@@ -91,7 +97,7 @@ macro_rules! make_tokens {
         impl OwnedTokenValue {
             pub fn get_type(&self) -> TokenKind {
                 match self {
-                    $(OwnedTokenValue::$type$((param_sink!($value, _)))? => TokenKind::$type,)+
+                    $(OwnedTokenValue::$type$((meta_morph!($value => _)))? => TokenKind::$type,)+
                 }
             }
         }
@@ -99,8 +105,8 @@ macro_rules! make_tokens {
         impl std::fmt::Display for OwnedTokenValue {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(OwnedTokenValue::$type$((param_sink!($value, _value)))?
-                        => write!(f, concat!($display, $($format)?) $(,param_sink!($format, _value))?),
+                    $(OwnedTokenValue::$type$((meta_morph!($value => _value)))?
+                        => write!(f, concat!($display, $($format)?) $(,meta_morph!($format => _value))?),
                     )+
                 }
             }
@@ -415,7 +421,7 @@ mod tests {
     fn thorough() {
         use TokenValue::*;
 
-        let text = include_str!("../../tests/test_files/thorough.dta").replace("\r\n", "\n");
+        let text = include_str!("./test_files/thorough.dta").replace("\r\n", "\n");
 
         #[rustfmt::skip]
         let tokens = vec![

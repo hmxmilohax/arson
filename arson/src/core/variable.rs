@@ -6,6 +6,11 @@ pub struct Variable {
 }
 
 impl Variable {
+    pub fn new(name: &str, context: &mut Context) -> Self {
+        let symbol = context.add_symbol(name);
+        Self { symbol }
+    }
+
     pub fn symbol(&self) -> &Symbol {
         &self.symbol
     }
@@ -16,12 +21,6 @@ impl Variable {
 
     pub fn set(&self, context: &mut Context, value: NodeValue) {
         context.set_variable(&self.symbol, value)
-    }
-}
-
-impl From<Symbol> for Variable {
-    fn from(value: Symbol) -> Self {
-        Self { symbol: value }
     }
 }
 
