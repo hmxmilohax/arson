@@ -1,5 +1,11 @@
 # IDE cache/config directories
 .vscode/
 
+# General-purpose ignore
+[Ii]gnore/
+[Ii]gnored/
+*.[Ii]gnore.*
+*.[Ii]gnored.*
+
 # Cargo build output
 target/
