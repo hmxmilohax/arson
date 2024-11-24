@@ -1134,7 +1134,10 @@ mod test {
         #[test]
         fn to_fs_path() {
             let path = AbsolutePath::try_new("/foo/bar.rs").unwrap();
-            assert_eq!(path.to_fs_path("/home/user"), std::path::Path::new("/home/user/foo/bar.rs"));
+            assert_eq!(
+                path.to_fs_path("/home/user"),
+                std::path::Path::new("/home/user/foo/bar.rs")
+            );
         }
     }
 }

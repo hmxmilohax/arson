@@ -2,8 +2,8 @@
 
 use std::io;
 
-use crate::*;
 use crate::fs::*;
+use crate::*;
 
 pub fn register_funcs(context: &mut Context) {
     fs::register_funcs(context);

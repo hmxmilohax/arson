@@ -38,7 +38,7 @@ impl Read for MockFile {
 }
 
 /// A mock file system driver which stores files in-memory, meant primarily for unit tests.
-/// 
+///
 /// This driver is not intended for any real production use and is only available under `#[cfg(test)]`.
 pub struct MockFileSystemDriver {
     files: HashMap<AbsolutePath, Rc<Vec<u8>>>,
