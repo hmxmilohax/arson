@@ -303,6 +303,16 @@ impl IntoIterator for NodeArray {
         self.nodes.into_iter()
     }
 }
+impl<'nodes> IntoIterator for &'nodes NodeArray {
+    type Item = <&'nodes Vec<Node> as IntoIterator>::Item;
+    type IntoIter = <&'nodes Vec<Node> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        #[allow(clippy::into_iter_on_ref)]
+        self.nodes.iter()
+    }
+}
+
 
 macro_rules! define_array_wrapper {
     (
@@ -367,6 +377,16 @@ macro_rules! define_array_wrapper {
                 fn into_iter(self) -> Self::IntoIter {
                     #[allow(clippy::into_iter_on_ref)]
                     self.nodes.into_iter()
+                }
+            }
+
+            impl<'nodes> IntoIterator for &'nodes $name {
+                type Item = <&'nodes NodeArray as IntoIterator>::Item;
+                type IntoIter = <&'nodes NodeArray as IntoIterator>::IntoIter;
+
+                fn into_iter(self) -> Self::IntoIter {
+                    #[allow(clippy::into_iter_on_ref)]
+                    (&self.nodes).into_iter()
                 }
             }
         )+
