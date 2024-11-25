@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
-use crate::parse::{self, LoadOptions};
-use crate::{arson_array, arson_assert_len, LoadError};
-
+use crate::parse::{self, Expression, LoadOptions};
 use crate::{
-    Error, HandleFn, NodeArray, NodeCommand, NodeSlice, NodeValue, RawNodeValue, Symbol, SymbolMap, SymbolTable,
-    VariableStack,
+    arson_array, arson_assert_len, Error, HandleFn, LoadError, NodeArray, NodeCommand, NodeSlice, NodeValue,
+    RawNodeValue, Symbol, SymbolMap, SymbolTable, VariableStack,
 };
 
 pub struct Context {
@@ -124,6 +122,14 @@ impl Context {
 
     pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
         parse::load_text(self, options, text)
+    }
+
+    pub fn load_ast<'src>(
+        &mut self,
+        options: LoadOptions,
+        ast: impl Iterator<Item = Expression<'src>>,
+    ) -> Result<NodeArray, LoadError> {
+        parse::load_ast(self, options, ast)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
