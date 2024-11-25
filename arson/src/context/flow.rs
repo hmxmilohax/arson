@@ -121,14 +121,14 @@ pub mod vars {
 
     pub fn do_block(context: &mut Context, mut args: &NodeSlice) -> HandleResult {
         let mut saved_variables = VariableStack::new();
-        while let NodeValue::Array(initializer) = args.evaluate(context, 0)? {
+        while let RawNodeValue::Array(initializer) = args.unevaluated(0)? {
             args = args.slice(1..)?;
 
             let variable = initializer.variable(0)?;
             saved_variables.save(context, &variable);
 
             if let Some(value) = initializer.get_opt(1) {
-                arson_assert_len!(initializer, 2, "multiple values present in `do` variable initializer");
+                arson_assert_len!(initializer, 2, "too many values present in `do` variable initializer");
                 let value = value.evaluate(context)?;
                 variable.set(context, value);
             }
