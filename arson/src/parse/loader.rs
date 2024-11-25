@@ -5,7 +5,7 @@ use std::{io, marker::PhantomData};
 use crate::fs::VirtualPath;
 use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
-use crate::parse::{self, Expression, ExpressionKind, ParseError};
+use crate::parse::{self, Expression, ExpressionValue, ParseError};
 
 #[derive(Clone)]
 pub struct LoadOptions {
@@ -93,32 +93,32 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
     }
 
     fn load_node(&mut self, expr: Expression<'src>) -> Result<NodeResult, LoadError> {
-        let node = match expr.kind {
-            ExpressionKind::Integer(value) => value.into(),
-            ExpressionKind::Float(value) => value.into(),
-            ExpressionKind::String(value) => value.into(),
+        let node = match expr.value {
+            ExpressionValue::Integer(value) => value.into(),
+            ExpressionValue::Float(value) => value.into(),
+            ExpressionValue::String(value) => value.into(),
 
-            ExpressionKind::Symbol(value) => self.context.add_symbol(value).into(),
-            ExpressionKind::Variable(value) => Variable::new(value, self.context).into(),
-            ExpressionKind::Unhandled => Node::UNHANDLED,
+            ExpressionValue::Symbol(value) => self.context.add_symbol(value).into(),
+            ExpressionValue::Variable(value) => Variable::new(value, self.context).into(),
+            ExpressionValue::Unhandled => Node::UNHANDLED,
 
-            ExpressionKind::Array(exprs) => self.load_array(exprs.into_iter())?.into(),
-            ExpressionKind::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())?).into(),
-            ExpressionKind::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())?).into(),
+            ExpressionValue::Array(exprs) => self.load_array(exprs.into_iter())?.into(),
+            ExpressionValue::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())?).into(),
+            ExpressionValue::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())?).into(),
 
-            ExpressionKind::Define(name, exprs) => {
+            ExpressionValue::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);
                 let define = self.load_array(exprs.exprs.into_iter())?;
                 self.context.add_macro(&name, define);
                 return Ok(NodeResult::Skip);
             },
-            ExpressionKind::Undefine(name) => {
+            ExpressionValue::Undefine(name) => {
                 if let Some(name) = self.context.get_symbol(name.text) {
                     self.context.remove_macro(&name);
                 }
                 return Ok(NodeResult::Skip);
             },
-            ExpressionKind::Include(path) => {
+            ExpressionValue::Include(path) => {
                 if !self.options.allow_include {
                     return Err(LoadError::IncludeNotAllowed);
                 }
@@ -126,7 +126,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 let file = self.load_path(path.text)?;
                 return Ok(NodeResult::Include(file));
             },
-            ExpressionKind::IncludeOptional(path) => {
+            ExpressionValue::IncludeOptional(path) => {
                 if !self.options.allow_include {
                     return Ok(NodeResult::Skip);
                 }
@@ -136,14 +136,14 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     None => return Ok(NodeResult::Skip),
                 }
             },
-            ExpressionKind::Merge(_name) => {
+            ExpressionValue::Merge(_name) => {
                 todo!("#merge loading");
             },
-            ExpressionKind::Autorun(_exprs) => {
+            ExpressionValue::Autorun(_exprs) => {
                 todo!("#autorun loading")
             },
 
-            ExpressionKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
+            ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
                 let defined = match self.context.get_symbol(symbol.text) {
                     Some(name) => self.context.get_macro(&name).is_some(),
                     None => false,

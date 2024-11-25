@@ -71,7 +71,7 @@ struct PreprocessedToken<'src> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExpressionKind<'src> {
+pub enum ExpressionValue<'src> {
     Integer(i64),
     Float(f64),
     String(&'src str),
@@ -99,10 +99,66 @@ pub enum ExpressionKind<'src> {
     },
 }
 
+pub enum ExpressionKind {
+    Integer,
+    Float,
+    String,
+
+    Symbol,
+    Variable,
+    Unhandled,
+
+    Array,
+    Command,
+    Property,
+
+    Define,
+    Undefine,
+    Include,
+    IncludeOptional,
+    Merge,
+    Autorun,
+
+    Conditional,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression<'src> {
-    pub kind: ExpressionKind<'src>,
+    pub value: ExpressionValue<'src>,
     pub location: Span,
+}
+
+impl<'src> ExpressionValue<'src> {
+    pub fn get_kind(&self) -> ExpressionKind {
+        match self {
+            ExpressionValue::Integer(_) => ExpressionKind::Integer,
+            ExpressionValue::Float(_) => ExpressionKind::Float,
+            ExpressionValue::String(_) => ExpressionKind::String,
+
+            ExpressionValue::Symbol(_) => ExpressionKind::Symbol,
+            ExpressionValue::Variable(_) => ExpressionKind::Variable,
+            ExpressionValue::Unhandled => ExpressionKind::Unhandled,
+
+            ExpressionValue::Array(_) => ExpressionKind::Array,
+            ExpressionValue::Command(_) => ExpressionKind::Command,
+            ExpressionValue::Property(_) => ExpressionKind::Property,
+
+            ExpressionValue::Define(_, _) => ExpressionKind::Define,
+            ExpressionValue::Undefine(_) => ExpressionKind::Undefine,
+            ExpressionValue::Include(_) => ExpressionKind::Include,
+            ExpressionValue::IncludeOptional(_) => ExpressionKind::IncludeOptional,
+            ExpressionValue::Merge(_) => ExpressionKind::Merge,
+            ExpressionValue::Autorun(_) => ExpressionKind::Autorun,
+
+            ExpressionValue::Conditional { .. } => ExpressionKind::Conditional,
+        }
+    }
+}
+
+impl<'src> Expression<'src> {
+    pub fn get_kind(&self) -> ExpressionKind {
+        self.value.get_kind()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -594,24 +650,24 @@ impl<'src> Parser<'src> {
         };
 
         let (kind, location) = match token.kind {
-            PreprocessedTokenKind::Integer(value) => (ExpressionKind::Integer(value), token.location),
-            PreprocessedTokenKind::Float(value) => (ExpressionKind::Float(value), token.location),
-            PreprocessedTokenKind::String(value) => (ExpressionKind::String(value), token.location),
-            PreprocessedTokenKind::Symbol(value) => (ExpressionKind::Symbol(value), token.location),
-            PreprocessedTokenKind::Variable(value) => (ExpressionKind::Variable(value), token.location),
-            PreprocessedTokenKind::Unhandled => (ExpressionKind::Unhandled, token.location),
+            PreprocessedTokenKind::Integer(value) => (ExpressionValue::Integer(value), token.location),
+            PreprocessedTokenKind::Float(value) => (ExpressionValue::Float(value), token.location),
+            PreprocessedTokenKind::String(value) => (ExpressionValue::String(value), token.location),
+            PreprocessedTokenKind::Symbol(value) => (ExpressionValue::Symbol(value), token.location),
+            PreprocessedTokenKind::Variable(value) => (ExpressionValue::Variable(value), token.location),
+            PreprocessedTokenKind::Unhandled => (ExpressionValue::Unhandled, token.location),
 
             PreprocessedTokenKind::ArrayOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Array);
-                (ExpressionKind::Array(array), location)
+                (ExpressionValue::Array(array), location)
             },
             PreprocessedTokenKind::CommandOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Command);
-                (ExpressionKind::Command(array), location)
+                (ExpressionValue::Command(array), location)
             },
             PreprocessedTokenKind::PropertyOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Property);
-                (ExpressionKind::Property(array), location)
+                (ExpressionValue::Property(array), location)
             },
             PreprocessedTokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
             PreprocessedTokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
@@ -620,7 +676,7 @@ impl<'src> Parser<'src> {
             PreprocessedTokenKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
                 let true_branch = self.parse_conditional_block(true_branch);
                 let false_branch = false_branch.map(|block| self.parse_conditional_block(block));
-                let expr = ExpressionKind::Conditional { is_positive, symbol, true_branch, false_branch };
+                let expr = ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch };
                 (expr, token.location)
             },
 
@@ -641,12 +697,12 @@ impl<'src> Parser<'src> {
                 let body = ArrayExpression::new(body, body_location.clone());
                 let location = token.location.start..body_location.end;
 
-                (ExpressionKind::Define(name, body), location)
+                (ExpressionValue::Define(name, body), location)
             },
-            PreprocessedTokenKind::Undefine(name) => (ExpressionKind::Undefine(name), token.location),
-            PreprocessedTokenKind::Include(path) => (ExpressionKind::Include(path), token.location),
-            PreprocessedTokenKind::IncludeOptional(path) => (ExpressionKind::IncludeOptional(path), token.location),
-            PreprocessedTokenKind::Merge(name) => (ExpressionKind::Merge(name), token.location),
+            PreprocessedTokenKind::Undefine(name) => (ExpressionValue::Undefine(name), token.location),
+            PreprocessedTokenKind::Include(path) => (ExpressionValue::Include(path), token.location),
+            PreprocessedTokenKind::IncludeOptional(path) => (ExpressionValue::IncludeOptional(path), token.location),
+            PreprocessedTokenKind::Merge(name) => (ExpressionValue::Merge(name), token.location),
             PreprocessedTokenKind::Autorun => {
                 let start_location = {
                     let Some(next) = tokens.peek() else {
@@ -661,7 +717,7 @@ impl<'src> Parser<'src> {
                 };
                 let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Command);
                 let body = ArrayExpression::new(body, body_location.clone());
-                (ExpressionKind::Autorun(body), token.location.start..body_location.end)
+                (ExpressionValue::Autorun(body), token.location.start..body_location.end)
             },
 
             PreprocessedTokenKind::Error(error) => {
@@ -671,7 +727,7 @@ impl<'src> Parser<'src> {
             },
         };
 
-        ProcessResult::Result(Expression { kind, location })
+        ProcessResult::Result(Expression { value: kind, location })
     }
 
     fn parse_conditional_block(
@@ -1055,8 +1111,8 @@ mod tests {
     mod parser {
         use super::*;
 
-        const fn new_expression(kind: ExpressionKind<'_>, location: Span) -> Expression<'_> {
-            Expression { kind, location }
+        const fn new_expression(kind: ExpressionValue<'_>, location: Span) -> Expression<'_> {
+            Expression { value: kind, location }
         }
 
         fn assert_parsed(text: &str, expected: Vec<Expression>) {
@@ -1080,9 +1136,9 @@ mod tests {
             assert_parsed(
                 "1 2 3",
                 vec![
-                    new_expression(ExpressionKind::Integer(1), 0..1),
-                    new_expression(ExpressionKind::Integer(2), 2..3),
-                    new_expression(ExpressionKind::Integer(3), 4..5),
+                    new_expression(ExpressionValue::Integer(1), 0..1),
+                    new_expression(ExpressionValue::Integer(2), 2..3),
+                    new_expression(ExpressionValue::Integer(3), 4..5),
                 ],
             );
         }
@@ -1092,9 +1148,9 @@ mod tests {
             assert_parsed(
                 "1.0 2.0 3.0",
                 vec![
-                    new_expression(ExpressionKind::Float(1.0), 0..3),
-                    new_expression(ExpressionKind::Float(2.0), 4..7),
-                    new_expression(ExpressionKind::Float(3.0), 8..11),
+                    new_expression(ExpressionValue::Float(1.0), 0..3),
+                    new_expression(ExpressionValue::Float(2.0), 4..7),
+                    new_expression(ExpressionValue::Float(3.0), 8..11),
                 ],
             );
         }
@@ -1104,9 +1160,9 @@ mod tests {
             assert_parsed(
                 "\"a\" \"b\" \"c\"",
                 vec![
-                    new_expression(ExpressionKind::String("a"), 0..3),
-                    new_expression(ExpressionKind::String("b"), 4..7),
-                    new_expression(ExpressionKind::String("c"), 8..11),
+                    new_expression(ExpressionValue::String("a"), 0..3),
+                    new_expression(ExpressionValue::String("b"), 4..7),
+                    new_expression(ExpressionValue::String("c"), 8..11),
                 ],
             );
         }
@@ -1116,9 +1172,9 @@ mod tests {
             assert_parsed(
                 "asdf + '10'",
                 vec![
-                    new_expression(ExpressionKind::Symbol("asdf"), 0..4),
-                    new_expression(ExpressionKind::Symbol("+"), 5..6),
-                    new_expression(ExpressionKind::Symbol("10"), 7..11),
+                    new_expression(ExpressionValue::Symbol("asdf"), 0..4),
+                    new_expression(ExpressionValue::Symbol("+"), 5..6),
+                    new_expression(ExpressionValue::Symbol("10"), 7..11),
                 ],
             );
         }
@@ -1128,15 +1184,18 @@ mod tests {
             assert_parsed(
                 "$asdf $this",
                 vec![
-                    new_expression(ExpressionKind::Variable("asdf"), 0..5),
-                    new_expression(ExpressionKind::Variable("this"), 6..11),
+                    new_expression(ExpressionValue::Variable("asdf"), 0..5),
+                    new_expression(ExpressionValue::Variable("this"), 6..11),
                 ],
             );
         }
 
         #[test]
         fn unhandled() {
-            assert_parsed("kDataUnhandled", vec![new_expression(ExpressionKind::Unhandled, 0..14)])
+            assert_parsed(
+                "kDataUnhandled",
+                vec![new_expression(ExpressionValue::Unhandled, 0..14)],
+            )
         }
 
         #[test]
@@ -1144,10 +1203,10 @@ mod tests {
             assert_parsed(
                 "(asdf \"text\" 1)",
                 vec![new_expression(
-                    ExpressionKind::Array(vec![
-                        new_expression(ExpressionKind::Symbol("asdf"), 1..5),
-                        new_expression(ExpressionKind::String("text"), 6..12),
-                        new_expression(ExpressionKind::Integer(1), 13..14),
+                    ExpressionValue::Array(vec![
+                        new_expression(ExpressionValue::Symbol("asdf"), 1..5),
+                        new_expression(ExpressionValue::String("text"), 6..12),
+                        new_expression(ExpressionValue::Integer(1), 13..14),
                     ]),
                     0..15,
                 )],
@@ -1155,10 +1214,10 @@ mod tests {
             assert_parsed(
                 "{set $var \"asdf\"}",
                 vec![new_expression(
-                    ExpressionKind::Command(vec![
-                        new_expression(ExpressionKind::Symbol("set"), 1..4),
-                        new_expression(ExpressionKind::Variable("var"), 5..9),
-                        new_expression(ExpressionKind::String("asdf"), 10..16),
+                    ExpressionValue::Command(vec![
+                        new_expression(ExpressionValue::Symbol("set"), 1..4),
+                        new_expression(ExpressionValue::Variable("var"), 5..9),
+                        new_expression(ExpressionValue::String("asdf"), 10..16),
                     ]),
                     0..17,
                 )],
@@ -1166,7 +1225,7 @@ mod tests {
             assert_parsed(
                 "[property]",
                 vec![new_expression(
-                    ExpressionKind::Property(vec![new_expression(ExpressionKind::Symbol("property"), 1..9)]),
+                    ExpressionValue::Property(vec![new_expression(ExpressionValue::Symbol("property"), 1..9)]),
                     0..10,
                 )],
             );
@@ -1232,9 +1291,9 @@ mod tests {
             assert_parsed(
                 "#define kDefine (1)",
                 vec![new_expression(
-                    ExpressionKind::Define(
+                    ExpressionValue::Define(
                         StrExpression::new("kDefine", 8..15),
-                        ArrayExpression::new(vec![new_expression(ExpressionKind::Integer(1), 17..18)], 16..19),
+                        ArrayExpression::new(vec![new_expression(ExpressionValue::Integer(1), 17..18)], 16..19),
                     ),
                     0..19,
                 )],
@@ -1242,38 +1301,38 @@ mod tests {
             assert_parsed(
                 "#undef kDefine",
                 vec![new_expression(
-                    ExpressionKind::Undefine(StrExpression::new("kDefine", 7..14)),
+                    ExpressionValue::Undefine(StrExpression::new("kDefine", 7..14)),
                     0..14,
                 )],
             );
             assert_parsed(
                 "#include ../file.dta",
                 vec![new_expression(
-                    ExpressionKind::Include(StrExpression::new("../file.dta", 9..20)),
+                    ExpressionValue::Include(StrExpression::new("../file.dta", 9..20)),
                     0..20,
                 )],
             );
             assert_parsed(
                 "#include_opt ../file.dta",
                 vec![new_expression(
-                    ExpressionKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                    ExpressionValue::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
                     0..24,
                 )],
             );
             assert_parsed(
                 "#merge ../file.dta",
                 vec![new_expression(
-                    ExpressionKind::Merge(StrExpression::new("../file.dta", 7..18)),
+                    ExpressionValue::Merge(StrExpression::new("../file.dta", 7..18)),
                     0..18,
                 )],
             );
             assert_parsed(
                 "#autorun {print \"Auto-run action\"}",
                 vec![new_expression(
-                    ExpressionKind::Autorun(ArrayExpression::new(
+                    ExpressionValue::Autorun(ArrayExpression::new(
                         vec![
-                            new_expression(ExpressionKind::Symbol("print"), 10..15),
-                            new_expression(ExpressionKind::String("Auto-run action"), 16..33),
+                            new_expression(ExpressionValue::Symbol("print"), 10..15),
+                            new_expression(ExpressionValue::String("Auto-run action"), 16..33),
                         ],
                         9..34,
                     )),
@@ -1317,14 +1376,14 @@ mod tests {
             assert_parsed(
                 "#ifdef kDefine (array1 10) #else (array2 5) #endif",
                 vec![new_expression(
-                    ExpressionKind::Conditional {
+                    ExpressionValue::Conditional {
                         is_positive: true,
                         symbol: StrExpression::new("kDefine", 7..14),
                         true_branch: ArrayExpression::new(
                             vec![new_expression(
-                                ExpressionKind::Array(vec![
-                                    new_expression(ExpressionKind::Symbol("array1"), 16..22),
-                                    new_expression(ExpressionKind::Integer(10), 23..25),
+                                ExpressionValue::Array(vec![
+                                    new_expression(ExpressionValue::Symbol("array1"), 16..22),
+                                    new_expression(ExpressionValue::Integer(10), 23..25),
                                 ]),
                                 15..26,
                             )],
@@ -1332,9 +1391,9 @@ mod tests {
                         ),
                         false_branch: Some(ArrayExpression::new(
                             vec![new_expression(
-                                ExpressionKind::Array(vec![
-                                    new_expression(ExpressionKind::Symbol("array2"), 34..40),
-                                    new_expression(ExpressionKind::Integer(5), 41..42),
+                                ExpressionValue::Array(vec![
+                                    new_expression(ExpressionValue::Symbol("array2"), 34..40),
+                                    new_expression(ExpressionValue::Integer(5), 41..42),
                                 ]),
                                 33..43,
                             )],
@@ -1347,14 +1406,14 @@ mod tests {
             assert_parsed(
                 "#ifndef kDefine (array 10) #endif",
                 vec![new_expression(
-                    ExpressionKind::Conditional {
+                    ExpressionValue::Conditional {
                         is_positive: false,
                         symbol: StrExpression::new("kDefine", 8..15),
                         true_branch: ArrayExpression::new(
                             vec![new_expression(
-                                ExpressionKind::Array(vec![
-                                    new_expression(ExpressionKind::Symbol("array"), 17..22),
-                                    new_expression(ExpressionKind::Integer(10), 23..25),
+                                ExpressionValue::Array(vec![
+                                    new_expression(ExpressionValue::Symbol("array"), 17..22),
+                                    new_expression(ExpressionValue::Integer(10), 23..25),
                                 ]),
                                 16..26,
                             )],
