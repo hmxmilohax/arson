@@ -54,9 +54,10 @@ struct Loader<'ctx, 'src> {
     phantom: PhantomData<&'src ()>,
 }
 
-enum NodeResult {
+enum NodeResult<'define> {
     Value(Node),
-    Include(NodeArray),
+    IncludeFile(NodeArray),
+    IncludeMacro(&'define NodeArray),
     Skip,
 }
 
@@ -73,7 +74,8 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             match self.load_node(expr) {
                 Ok(result) => match result {
                     NodeResult::Value(node) => array.push(node),
-                    NodeResult::Include(mut file) => array.append(&mut file),
+                    NodeResult::IncludeFile(mut file) => array.append(&mut file),
+                    NodeResult::IncludeMacro(define) => array.extend_from_slice(define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {
@@ -98,7 +100,13 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
             ExpressionValue::Float(value) => value.into(),
             ExpressionValue::String(value) => value.into(),
 
-            ExpressionValue::Symbol(value) => self.context.add_symbol(value).into(),
+            ExpressionValue::Symbol(value) => {
+                let symbol = self.context.add_symbol(value);
+                match self.context.get_macro(&symbol) {
+                    Some(replacement) => return Ok(NodeResult::IncludeMacro(replacement)),
+                    None => symbol.into(),
+                }
+            },
             ExpressionValue::Variable(value) => Variable::new(value, self.context).into(),
             ExpressionValue::Unhandled => Node::UNHANDLED,
 
@@ -124,7 +132,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 }
 
                 let file = self.load_path(path.text)?;
-                return Ok(NodeResult::Include(file));
+                return Ok(NodeResult::IncludeFile(file));
             },
             ExpressionValue::IncludeOptional(path) => {
                 if !self.options.allow_include {
@@ -132,7 +140,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 }
 
                 match self.load_path_opt(path.text)? {
-                    Some(file) => return Ok(NodeResult::Include(file)),
+                    Some(file) => return Ok(NodeResult::IncludeFile(file)),
                     None => return Ok(NodeResult::Skip),
                 }
             },
@@ -157,7 +165,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     },
                 };
 
-                return Ok(NodeResult::Include(array));
+                return Ok(NodeResult::IncludeFile(array));
             },
         };
 
