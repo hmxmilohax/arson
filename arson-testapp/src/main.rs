@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use arson::fs::drivers::BasicFileSystemDriver;
-use arson::{Context, HandleResult, LoadOptions, NodeSlice, NodeValue};
+use arson::{stdlib, Context, HandleResult, LoadOptions, NodeSlice, NodeValue};
 
 fn main() -> arson::Result<()> {
     println!("> Hello from native!");
@@ -14,6 +14,7 @@ fn main() -> arson::Result<()> {
 
     // Make context
     let mut context = Context::with_file_driver(driver);
+    stdlib::register_funcs(&mut context);
     funcs::register_funcs(&mut context);
     println!("Created context.");
 
@@ -23,8 +24,8 @@ fn main() -> arson::Result<()> {
     println!("Loaded main.dta");
 
     // Execute (main {...}) script
-    let command = file.find_array(&context.add_symbol("main"))?.command(1)?;
-    context.execute(&command)?;
+    let script = file.find_array(&context.add_symbol("main"))?;
+    context.execute_block(script.slice(1..)?)?;
     println!("Ran main.dta!");
 
     Ok(())

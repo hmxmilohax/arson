@@ -59,14 +59,14 @@ macro_rules! arson_fail {
 
 #[macro_export]
 macro_rules! arson_assert_len {
-    ($array:ident, $len:literal) => {
+    ($array:ident, $len:expr) => {
         if $array.len() != $len {
             return Err($crate::Error::LengthMismatch { expected: $len, actual: $array.len() });
         }
     };
-    ($array:ident, $len:literal, $($arg:tt)+) => {
+    ($array:ident, $len:expr, $msg:literal) => {
         if $array.len() != $len {
-            $crate::arson_fail!($($arg)+);
+            $crate::arson_fail!(concat!($msg, ": expected {}, got {}"), $len, $array.len());
         }
     };
 }

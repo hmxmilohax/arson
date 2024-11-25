@@ -2,9 +2,12 @@
 
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::{self, LoadOptions};
-use crate::{arson_array, LoadError};
+use crate::{arson_array, arson_assert_len, LoadError};
 
-use super::{Error, HandleFn, NodeArray, NodeCommand, NodeValue, Symbol, SymbolMap, SymbolTable};
+use crate::{
+    Error, HandleFn, NodeArray, NodeCommand, NodeSlice, NodeValue, RawNodeValue, Symbol, SymbolMap, SymbolTable,
+    VariableStack,
+};
 
 pub struct Context {
     symbol_table: SymbolTable,
@@ -137,6 +140,35 @@ impl Context {
             todo!("default handler")
         }
 
+        Ok(result)
+    }
+
+    pub fn execute_block(&mut self, script: &NodeSlice) -> crate::Result<NodeValue> {
+        for node in script.slice(..script.len() - 1)? {
+            node.command()?.execute(self)?;
+        }
+
+        script.evaluate(self, script.len() - 1)
+    }
+
+    pub fn execute_args(&mut self, mut script: &NodeSlice, args: &NodeSlice) -> crate::Result<NodeValue> {
+        let mut saved_variables = VariableStack::new();
+        if let RawNodeValue::Array(parameters) = script.unevaluated(0)? {
+            script = script.slice(1..)?;
+
+            arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");
+
+            for i in 0..parameters.len() {
+                let variable = parameters.variable(i)?;
+                saved_variables.save(self, &variable);
+
+                let value = args.evaluate(self, i)?;
+                variable.set(self, value);
+            }
+        }
+
+        let result = self.execute_block(script)?;
+        saved_variables.restore(self);
         Ok(result)
     }
 }

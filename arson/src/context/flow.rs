@@ -134,11 +134,7 @@ pub mod vars {
             }
         }
 
-        for node in args.slice(..args.len() - 1)? {
-            node.command()?.execute(context)?;
-        }
-
-        let result = args.evaluate(context, args.len() - 1)?;
+        let result = context.execute_block(args)?;
         saved_variables.restore(context);
         Ok(result)
     }

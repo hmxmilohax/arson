@@ -1,1 +1,6 @@
-(main {print "Hello from script!"})
+(main
+    {print "Hello from script!"}
+    {print "1 + 2 is " {+ 1 2}}
+    {print "sqrt(50) is " {sqrt 50}}
+    {print "nonexistent(50) is " {nonexistent 50}}
+)
