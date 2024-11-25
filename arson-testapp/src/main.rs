@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use arson::fs::drivers::BasicFileSystemDriver;
-use arson::{stdlib, Context, HandleResult, LoadOptions, NodeSlice, NodeValue};
+use arson::{stdlib, Context, LoadOptions};
 
 fn main() -> arson::Result<()> {
     println!("> Hello from native!");
@@ -15,7 +15,6 @@ fn main() -> arson::Result<()> {
     // Make context
     let mut context = Context::with_file_driver(driver);
     stdlib::register_funcs(&mut context);
-    funcs::register_funcs(&mut context);
     println!("Created context.");
 
     // Load main.dta file
@@ -29,26 +28,4 @@ fn main() -> arson::Result<()> {
     println!("Ran main.dta!");
 
     Ok(())
-}
-
-mod funcs {
-    use super::*;
-
-    pub fn register_funcs(context: &mut Context) {
-        context.register_func("print", self::print);
-    }
-
-    pub fn print(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        if !args.is_empty() {
-            // Manual enumeration of nodes to avoid adding a separator,
-            // to match the original `print`
-            print!("> ");
-            for arg in args {
-                print!("{}", arg.display_evaluated(context))
-            }
-            println!();
-        }
-
-        Ok(NodeValue::HANDLED)
-    }
 }

@@ -6,7 +6,30 @@ use crate::fs::*;
 use crate::*;
 
 pub fn register_funcs(context: &mut Context) {
+    stdio::register_funcs(context);
     fs::register_funcs(context);
+}
+
+pub mod stdio {
+    use super::*;
+
+    pub fn register_funcs(context: &mut Context) {
+        context.register_func("print", self::print);
+    }
+
+    pub fn print(context: &mut Context, args: &NodeSlice) -> HandleResult {
+        if !args.is_empty() {
+            // Manual enumeration of nodes to avoid adding a separator,
+            // to match the original `print`
+            print!("> ");
+            for arg in args {
+                print!("{}", arg.display_evaluated(context))
+            }
+            println!();
+        }
+
+        Ok(NodeValue::HANDLED)
+    }
 }
 
 pub mod fs {
