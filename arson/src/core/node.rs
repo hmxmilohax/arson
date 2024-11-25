@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{cmp::Ordering, rc::Rc};
+use std::{
+    cell::Cell,
+    cmp::Ordering,
+    fmt::{self, Display},
+    rc::Rc,
+};
 
 use crate::*;
 
@@ -362,6 +367,24 @@ impl From<NodeValue> for RawNodeValue {
     }
 }
 
+impl Display for RawNodeValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RawNodeValue::Integer(value) => Display::fmt(value, f),
+            RawNodeValue::Float(value) => Display::fmt(value, f),
+            RawNodeValue::String(value) => Display::fmt(value, f),
+            RawNodeValue::Symbol(value) => Display::fmt(value, f),
+            RawNodeValue::Variable(value) => write!(f, "${}", value.symbol()),
+
+            RawNodeValue::Array(value) => Display::fmt(value, f),
+            RawNodeValue::Command(value) => Display::fmt(value, f),
+            RawNodeValue::Property(value) => Display::fmt(value, f),
+
+            RawNodeValue::Unhandled => write!(f, "kDataUnhandled"),
+        }
+    }
+}
+
 impl NodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
@@ -461,6 +484,21 @@ impl NodeValue {
 
     pub fn is_unhandled(&self) -> bool {
         matches!(self, Self::Unhandled)
+    }
+}
+
+impl Display for NodeValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeValue::Integer(value) => Display::fmt(value, f),
+            NodeValue::Float(value) => Display::fmt(value, f),
+            NodeValue::String(value) => Display::fmt(value, f),
+            NodeValue::Symbol(value) => Display::fmt(value, f),
+
+            NodeValue::Array(value) => Display::fmt(value, f),
+
+            NodeValue::Unhandled => write!(f, "kDataUnhandled"),
+        }
     }
 }
 
@@ -585,6 +623,10 @@ impl Node {
         };
         Ok(())
     }
+
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> NodeDisplay<'_> {
+        NodeDisplay { context: Cell::new(Some(context)), node: self }
+    }
 }
 
 impl PartialEq for Node {
@@ -605,5 +647,28 @@ where
 {
     fn from(value: T) -> Self {
         Self { value: RawNodeValue::from(value) }
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.unevaluated().fmt(f)
+    }
+}
+
+pub struct NodeDisplay<'a> {
+    context: Cell<Option<&'a mut Context>>,
+    node: &'a Node,
+}
+
+impl<'a> fmt::Display for NodeDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.context.replace(None) {
+            Some(context) => match self.node.evaluate(context) {
+                Ok(evaluated) => evaluated.fmt(f),
+                Err(err) => write!(f, "<error: {err}>"),
+            },
+            None => self.node.unevaluated().fmt(f),
+        }
     }
 }

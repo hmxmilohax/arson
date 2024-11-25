@@ -2,11 +2,14 @@
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    cell::Cell,
+    fmt::{self, Write},
     ops::{Deref, DerefMut},
     rc::Rc,
     slice::SliceIndex,
 };
 
+use crate::parse::ArrayKind;
 use crate::*;
 
 #[macro_export]
@@ -148,6 +151,10 @@ impl NodeSlice {
 
         None
     }
+
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
+        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
+    }
 }
 
 impl Deref for NodeSlice {
@@ -165,6 +172,12 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     fn into_iter(self) -> Self::IntoIter {
         #[allow(clippy::into_iter_on_ref)]
         self.nodes.into_iter()
+    }
+}
+
+impl fmt::Display for NodeSlice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Array).fmt(f)
     }
 }
 
@@ -237,6 +250,10 @@ impl NodeArray {
 
     pub fn shrink_to_fit(&mut self) {
         self.nodes.shrink_to_fit()
+    }
+
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
+        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
     }
 }
 
@@ -313,6 +330,11 @@ impl<'nodes> IntoIterator for &'nodes NodeArray {
     }
 }
 
+impl fmt::Display for NodeArray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Array).fmt(f)
+    }
+}
 
 macro_rules! define_array_wrapper {
     (
@@ -404,5 +426,69 @@ define_array_wrapper! {
 impl NodeCommand {
     pub fn execute(&self, context: &mut Context) -> crate::Result<NodeValue> {
         context.execute(self)
+    }
+
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
+        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Command, context)
+    }
+}
+
+impl fmt::Display for NodeCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Command).fmt(f)
+    }
+}
+
+impl NodeProperty {
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
+        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Property, context)
+    }
+}
+
+impl fmt::Display for NodeProperty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Property).fmt(f)
+    }
+}
+
+pub struct ArrayDisplay<'a> {
+    context: Cell<Option<&'a mut Context>>,
+    nodes: &'a [Node],
+    kind: ArrayKind,
+}
+
+impl<'a> ArrayDisplay<'a> {
+    fn new_unevaluated(nodes: &'a [Node], kind: ArrayKind) -> Self {
+        Self { context: Cell::new(None), nodes, kind }
+    }
+
+    fn new_evaluated(nodes: &'a [Node], kind: ArrayKind, context: &'a mut Context) -> Self {
+        Self { context: Cell::new(Some(context)), nodes, kind }
+    }
+
+    fn write_nodes(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        mut display: impl FnMut(&Node, &mut fmt::Formatter<'_>) -> fmt::Result,
+    ) -> fmt::Result {
+        let (l, r) = self.kind.delimiters();
+        f.write_char(l)?;
+        if !self.nodes.is_empty() {
+            display(&self.nodes[0], f)?;
+            for node in &self.nodes[1..] {
+                f.write_char(' ')?;
+                display(node, f)?;
+            }
+        }
+        f.write_char(r)
+    }
+}
+
+impl<'a> fmt::Display for ArrayDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.context.replace(None) {
+            Some(context) => self.write_nodes(f, |node, f| write!(f, "{}", node.display_evaluated(context))),
+            None => self.write_nodes(f, |node, f| write!(f, "{}", node.unevaluated())),
+        }
     }
 }

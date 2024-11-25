@@ -38,8 +38,16 @@ mod funcs {
     }
 
     pub fn print(context: &mut Context, args: &NodeSlice) -> HandleResult {
-        let message = args.string(context, 0)?;
-        println!("> {message}");
+        if !args.is_empty() {
+            // Manual enumeration of nodes to avoid adding a separator,
+            // to match the original `print`
+            print!("> ");
+            for arg in args {
+                print!("{}", arg.display_evaluated(context))
+            }
+            println!();
+        }
+
         Ok(NodeValue::HANDLED)
     }
 }
