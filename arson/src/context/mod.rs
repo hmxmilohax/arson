@@ -16,32 +16,30 @@ pub use context::*;
 pub(crate) fn number_chain(
     context: &mut Context,
     args: &NodeSlice,
-    f_int: impl Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
-    f_float: impl Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
+    f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
+    f_float: impl Fn(Float, Float) -> crate::Result<Float>,
 ) -> HandleResult {
     fn integer_chain(
         context: &mut Context,
         args: &NodeSlice,
-        left: NodeInteger,
-        f_int: impl Fn(NodeInteger, NodeInteger) -> crate::Result<NodeInteger>,
-        f_float: impl Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>,
+        left: Integer,
+        f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
+        f_float: impl Fn(Float, Float) -> crate::Result<Float>,
     ) -> HandleResult {
         let Some(node) = args.get_opt(0) else {
             return Ok(left.into());
         };
 
         match node.number(context)? {
-            NodeNumber::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
-            NodeNumber::Float(right) => {
-                float_chain(context, args.slice(1..)?, f_float(left as NodeFloat, right)?, f_float)
-            },
+            Number::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
+            Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left as Float, right)?, f_float),
         }
     }
 
-    fn float_chain<FF: Fn(NodeFloat, NodeFloat) -> crate::Result<NodeFloat>>(
+    fn float_chain<FF: Fn(Float, Float) -> crate::Result<Float>>(
         context: &mut Context,
         args: &NodeSlice,
-        left: NodeFloat,
+        left: Float,
         f_float: FF,
     ) -> HandleResult {
         let Some(node) = args.get_opt(0) else {
@@ -49,15 +47,13 @@ pub(crate) fn number_chain(
         };
 
         match node.number(context)? {
-            NodeNumber::Integer(right) => {
-                float_chain(context, args.slice(1..)?, f_float(left, right as NodeFloat)?, f_float)
-            },
-            NodeNumber::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
+            Number::Integer(right) => float_chain(context, args.slice(1..)?, f_float(left, right as Float)?, f_float),
+            Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
         }
     }
 
     match args.number(context, 0)? {
-        NodeNumber::Integer(value) => integer_chain(context, args.slice(1..)?, value, f_int, f_float),
-        NodeNumber::Float(value) => float_chain(context, args.slice(1..)?, value, f_float),
+        Number::Integer(value) => integer_chain(context, args.slice(1..)?, value, f_int, f_float),
+        Number::Float(value) => float_chain(context, args.slice(1..)?, value, f_float),
     }
 }

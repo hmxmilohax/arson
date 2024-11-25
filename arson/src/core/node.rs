@@ -9,13 +9,34 @@ pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> HandleResult;
 /// The result of a [`HandleFn`].
 pub type HandleResult = crate::Result<NodeValue>;
 
-pub type NodeInteger = i64;
-pub type NodeFloat = f64;
+/// The integer value type used within nodes.
+pub type Integer = i64;
+/// The floating-point value type used within nodes.
+pub type Float = f64;
 
+/// A numerical value, either integer or floating-point.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
-pub enum NodeNumber {
-    Integer(NodeInteger),
-    Float(NodeFloat),
+pub enum Number {
+    /// An integer value; see [`Integer`].
+    Integer(Integer),
+    /// A floating-point value; see [`Float`].
+    Float(Float),
+}
+
+/// The kind of value contained within a node.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub enum NodeKind {
+    Integer,
+    Float,
+    String,
+    Symbol,
+    Variable,
+
+    Unhandled,
+
+    Array,
+    Command,
+    Property,
 }
 
 macro_rules! define_node_types {
@@ -136,15 +157,15 @@ define_node_types! {
     /// A raw, unevaluated value stored within a [`Node`].
     #[derive(Debug, Clone)]
     pub enum RawNodeValue {
-        Integer(NodeInteger) {
+        Integer(Integer) {
             from: {
-                i32 => |value| value as NodeInteger,
-                bool => |value| value as NodeInteger,
+                i32 => |value| value as Integer,
+                bool => |value| value as Integer,
             },
         },
-        Float(NodeFloat) {
+        Float(Float) {
             from: {
-                f32 => |value| value as NodeFloat,
+                f32 => |value| value as Float,
             },
         },
         String(Rc<String>) {
@@ -183,15 +204,15 @@ define_node_types! {
     /// A node value which has been evaluated.
     #[derive(Debug, Clone)]
     pub enum NodeValue {
-        Integer(NodeInteger) {
+        Integer(Integer) {
             from: {
-                i32 => |value| value as NodeInteger,
-                bool => |value| value as NodeInteger,
+                i32 => |value| value as Integer,
+                bool => |value| value as Integer,
             },
         },
-        Float(NodeFloat) {
+        Float(Float) {
             from: {
-                f32 => |value| value as NodeFloat,
+                f32 => |value| value as Float,
             },
         },
         String(Rc<String>) {
@@ -212,33 +233,9 @@ define_node_types! {
     }
 }
 
-impl From<NodeValue> for RawNodeValue {
-    fn from(value: NodeValue) -> Self {
-        match value {
-            NodeValue::Integer(value) => RawNodeValue::Integer(value),
-            NodeValue::Float(value) => RawNodeValue::Float(value),
-            NodeValue::String(value) => RawNodeValue::String(value),
-            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
-            NodeValue::Unhandled => RawNodeValue::Unhandled,
-            NodeValue::Array(value) => RawNodeValue::Array(value),
-        }
-    }
-}
-
-/// The kind of value contained within a node.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub enum NodeKind {
-    Integer,
-    Float,
-    String,
-    Symbol,
-    Variable,
-
-    Unhandled,
-
-    Array,
-    Command,
-    Property,
+#[derive(Debug, Clone)]
+pub struct Node {
+    value: RawNodeValue,
 }
 
 impl RawNodeValue {
@@ -267,40 +264,40 @@ impl RawNodeValue {
         }
     }
 
-    pub fn integer(&self) -> Option<NodeInteger> {
+    pub fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(*value as NodeInteger),
+            Self::Float(value) => Some(*value as Integer),
             _ => None,
         }
     }
 
-    pub fn integer_strict(&self) -> Option<NodeInteger> {
+    pub fn integer_strict(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn float(&self) -> Option<NodeFloat> {
+    pub fn float(&self) -> Option<Float> {
         match self {
-            Self::Integer(value) => Some(*value as NodeFloat),
+            Self::Integer(value) => Some(*value as Float),
             Self::Float(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn float_strict(&self) -> Option<NodeFloat> {
+    pub fn float_strict(&self) -> Option<Float> {
         match self {
             Self::Float(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn number(&self) -> Option<NodeNumber> {
+    pub fn number(&self) -> Option<Number> {
         match self {
-            Self::Integer(value) => Some(NodeNumber::Integer(*value)),
-            Self::Float(value) => Some(NodeNumber::Float(*value)),
+            Self::Integer(value) => Some(Number::Integer(*value)),
+            Self::Float(value) => Some(Number::Float(*value)),
             _ => None,
         }
     }
@@ -352,6 +349,19 @@ impl RawNodeValue {
     }
 }
 
+impl From<NodeValue> for RawNodeValue {
+    fn from(value: NodeValue) -> Self {
+        match value {
+            NodeValue::Integer(value) => RawNodeValue::Integer(value),
+            NodeValue::Float(value) => RawNodeValue::Float(value),
+            NodeValue::String(value) => RawNodeValue::String(value),
+            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
+            NodeValue::Unhandled => RawNodeValue::Unhandled,
+            NodeValue::Array(value) => RawNodeValue::Array(value),
+        }
+    }
+}
+
 impl NodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
@@ -375,40 +385,40 @@ impl NodeValue {
         }
     }
 
-    pub fn integer(&self) -> Option<NodeInteger> {
+    pub fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(*value as NodeInteger),
+            Self::Float(value) => Some(*value as Integer),
             _ => None,
         }
     }
 
-    pub fn integer_strict(&self) -> Option<NodeInteger> {
+    pub fn integer_strict(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn float(&self) -> Option<NodeFloat> {
+    pub fn float(&self) -> Option<Float> {
         match self {
-            Self::Integer(value) => Some(*value as NodeFloat),
+            Self::Integer(value) => Some(*value as Float),
             Self::Float(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn float_strict(&self) -> Option<NodeFloat> {
+    pub fn float_strict(&self) -> Option<Float> {
         match self {
             Self::Float(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub fn number(&self) -> Option<NodeNumber> {
+    pub fn number(&self) -> Option<Number> {
         match self {
-            Self::Integer(value) => Some(NodeNumber::Integer(*value)),
-            Self::Float(value) => Some(NodeNumber::Float(*value)),
+            Self::Integer(value) => Some(Number::Integer(*value)),
+            Self::Float(value) => Some(Number::Float(*value)),
             _ => None,
         }
     }
@@ -454,11 +464,6 @@ impl NodeValue {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Node {
-    value: RawNodeValue,
-}
-
 impl Node {
     /// Value returned when a script call has not been handled by a receiver.
     pub const UNHANDLED: Node = Self { value: RawNodeValue::Unhandled };
@@ -494,23 +499,23 @@ impl Node {
         }
     }
 
-    pub fn integer(&self, context: &mut Context) -> crate::Result<NodeInteger> {
+    pub fn integer(&self, context: &mut Context) -> crate::Result<Integer> {
         self.evaluate_kind(context, NodeKind::Integer, NodeValue::integer)
     }
 
-    pub fn integer_strict(&self, context: &mut Context) -> crate::Result<NodeInteger> {
+    pub fn integer_strict(&self, context: &mut Context) -> crate::Result<Integer> {
         self.evaluate_kind(context, NodeKind::Integer, NodeValue::integer_strict)
     }
 
-    pub fn float(&self, context: &mut Context) -> crate::Result<NodeFloat> {
+    pub fn float(&self, context: &mut Context) -> crate::Result<Float> {
         self.evaluate_kind(context, NodeKind::Float, NodeValue::float)
     }
 
-    pub fn float_strict(&self, context: &mut Context) -> crate::Result<NodeFloat> {
+    pub fn float_strict(&self, context: &mut Context) -> crate::Result<Float> {
         self.evaluate_kind(context, NodeKind::Float, NodeValue::float_strict)
     }
 
-    pub fn number(&self, context: &mut Context) -> crate::Result<NodeNumber> {
+    pub fn number(&self, context: &mut Context) -> crate::Result<Number> {
         self.evaluate_kind(context, NodeKind::Float, NodeValue::number)
     }
 

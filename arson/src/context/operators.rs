@@ -46,8 +46,8 @@ pub mod unary {
     pub fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
-            NodeNumber::Integer(value) => Ok(value.overflowing_neg().0.into()),
-            NodeNumber::Float(value) => Ok((-value).into()),
+            Number::Integer(value) => Ok(value.overflowing_neg().0.into()),
+            Number::Float(value) => Ok((-value).into()),
         }
     }
 
@@ -172,11 +172,7 @@ pub mod bitwise {
         context.register_func("^=", self::xor_assign);
     }
 
-    pub fn bitwise_op(
-        context: &mut Context,
-        args: &NodeSlice,
-        f: fn(NodeInteger, NodeInteger) -> NodeInteger,
-    ) -> HandleResult {
+    pub fn bitwise_op(context: &mut Context, args: &NodeSlice, f: fn(Integer, Integer) -> Integer) -> HandleResult {
         let result = args.integer(context, 0)?;
         let result = args
             .slice(1..)?

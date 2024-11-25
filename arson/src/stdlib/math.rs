@@ -30,8 +30,8 @@ pub mod basic {
     pub fn abs(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
-            NodeNumber::Integer(value) => Ok(value.saturating_abs().into()),
-            NodeNumber::Float(value) => Ok(value.abs().into()),
+            Number::Integer(value) => Ok(value.saturating_abs().into()),
+            Number::Float(value) => Ok(value.abs().into()),
         }
     }
 
@@ -51,10 +51,10 @@ pub mod basic {
         let right = args.number(context, 1)?;
 
         match (left, right) {
-            (NodeNumber::Integer(left), NodeNumber::Integer(right)) => div_rem(left, right),
-            (NodeNumber::Float(left), NodeNumber::Float(right)) => div_rem(left, right),
-            (NodeNumber::Integer(left), NodeNumber::Float(right)) => div_rem(left as NodeFloat, right),
-            (NodeNumber::Float(left), NodeNumber::Integer(right)) => div_rem(left, right as NodeFloat),
+            (Number::Integer(left), Number::Integer(right)) => div_rem(left, right),
+            (Number::Float(left), Number::Float(right)) => div_rem(left, right),
+            (Number::Integer(left), Number::Float(right)) => div_rem(left as Float, right),
+            (Number::Float(left), Number::Integer(right)) => div_rem(left, right as Float),
         }
     }
 
@@ -65,7 +65,7 @@ pub mod basic {
         Ok(result.into())
     }
 
-    fn first_active_bit<I: Iterator<Item = u32>>(value: NodeInteger, mut bit_range: I) -> NodeInteger {
+    fn first_active_bit<I: Iterator<Item = u32>>(value: Integer, mut bit_range: I) -> Integer {
         match bit_range.find(|i| value & (1 << i) != 0) {
             Some(i) => 1 << i,
             None => 0,
@@ -75,7 +75,7 @@ pub mod basic {
     pub fn highest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value, (0..NodeInteger::BITS).rev());
+        let result = first_active_bit(value, (0..Integer::BITS).rev());
         args.set(context, 0, result)?;
         Ok(result.into())
     }
@@ -83,14 +83,14 @@ pub mod basic {
     pub fn lowest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value, 0..NodeInteger::BITS);
+        let result = first_active_bit(value, 0..Integer::BITS);
         args.set(context, 0, result)?;
         Ok(result.into())
     }
 
     pub fn count_bits(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
-        let result = args.integer(context, 0)?.count_ones() as NodeInteger;
+        let result = args.integer(context, 0)?.count_ones() as Integer;
         args.set(context, 0, result)?;
         Ok(result.into())
     }
@@ -135,24 +135,24 @@ pub mod limit {
         arson_assert_len!(args, 3);
 
         let min = match args.number(context, 0)? {
-            NodeNumber::Integer(min) => min,
-            NodeNumber::Float(min) => {
+            Number::Integer(min) => min,
+            Number::Float(min) => {
                 let max = args.float(context, 1)?;
                 let value = args.float(context, 2)?;
                 return Ok(value.clamp(min, max).into());
             },
         };
         let max = match args.number(context, 1)? {
-            NodeNumber::Integer(max) => max,
-            NodeNumber::Float(max) => {
+            Number::Integer(max) => max,
+            Number::Float(max) => {
                 let value = args.float(context, 2)?;
-                return Ok(value.clamp(min as NodeFloat, max).into());
+                return Ok(value.clamp(min as Float, max).into());
             },
         };
         let value = match args.number(context, 2)? {
-            NodeNumber::Integer(value) => value,
-            NodeNumber::Float(value) => {
-                return Ok(value.clamp(min as NodeFloat, max as NodeFloat).into());
+            Number::Integer(value) => value,
+            Number::Float(value) => {
+                return Ok(value.clamp(min as Float, max as Float).into());
             },
         };
 
@@ -218,10 +218,10 @@ pub mod exponential {
     pub fn power(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 2);
         match args.number(context, 0)? {
-            NodeNumber::Integer(left) => Ok(left.pow(args.integer(context, 1)? as u32).into()),
-            NodeNumber::Float(left) => match args.number(context, 1)? {
-                NodeNumber::Integer(right) => Ok(left.powi(right as i32).into()),
-                NodeNumber::Float(right) => Ok(left.powf(right).into()),
+            Number::Integer(left) => Ok(left.pow(args.integer(context, 1)? as u32).into()),
+            Number::Float(left) => match args.number(context, 1)? {
+                Number::Integer(right) => Ok(left.powi(right as i32).into()),
+                Number::Float(right) => Ok(left.powf(right).into()),
             },
         }
     }

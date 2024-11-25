@@ -70,23 +70,23 @@ impl NodeSlice {
         Ok(self.get(index)?.unevaluated())
     }
 
-    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
         self.get(index)?.integer(context)
     }
 
-    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
+    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
         self.get(index)?.integer_strict(context)
     }
 
-    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<Float> {
         self.get(index)?.float(context)
     }
 
-    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
+    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<Float> {
         self.get(index)?.float_strict(context)
     }
 
-    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<NodeNumber> {
+    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<Number> {
         self.get(index)?.number(context)
     }
 
