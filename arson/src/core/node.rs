@@ -4,6 +4,7 @@ use std::{
     cell::Cell,
     cmp::Ordering,
     fmt::{self, Display},
+    num::Wrapping,
     rc::Rc,
 };
 
@@ -15,7 +16,8 @@ pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> HandleResult;
 pub type HandleResult = crate::Result<NodeValue>;
 
 /// The integer value type used within nodes.
-pub type Integer = i64;
+pub type IntegerValue = i64;
+pub type Integer = Wrapping<IntegerValue>;
 /// The floating-point value type used within nodes.
 pub type Float = f64;
 
@@ -164,8 +166,9 @@ define_node_types! {
     pub enum RawNodeValue {
         Integer(Integer) {
             from: {
-                i32 => |value| value as Integer,
-                bool => |value| value as Integer,
+                IntegerValue => |value| Wrapping(value),
+                i32 => |value| Wrapping(value as IntegerValue),
+                bool => |value| Wrapping(value as IntegerValue),
             },
         },
         Float(Float) {
@@ -211,8 +214,9 @@ define_node_types! {
     pub enum NodeValue {
         Integer(Integer) {
             from: {
-                i32 => |value| value as Integer,
-                bool => |value| value as Integer,
+                IntegerValue => |value| Wrapping(value),
+                i32 => |value| Wrapping(value as IntegerValue),
+                bool => |value| Wrapping(value as IntegerValue),
             },
         },
         Float(Float) {
@@ -246,12 +250,12 @@ pub struct Node {
 impl RawNodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
-    pub const HANDLED: RawNodeValue = Self::Integer(0);
+    pub const HANDLED: RawNodeValue = Self::Integer(Wrapping(0));
 
     /// Boolean TRUE value.
-    pub const TRUE: RawNodeValue = Self::Integer(1);
+    pub const TRUE: RawNodeValue = Self::Integer(Wrapping(1));
     /// Boolean FALSE value.
-    pub const FALSE: RawNodeValue = Self::Integer(0);
+    pub const FALSE: RawNodeValue = Self::Integer(Wrapping(0));
 
     pub const fn get_kind(&self) -> NodeKind {
         match self {
@@ -272,7 +276,7 @@ impl RawNodeValue {
     pub fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(*value as Integer),
+            Self::Float(value) => Some(Wrapping(*value as IntegerValue)),
             _ => None,
         }
     }
@@ -286,7 +290,7 @@ impl RawNodeValue {
 
     pub fn float(&self) -> Option<Float> {
         match self {
-            Self::Integer(value) => Some(*value as Float),
+            Self::Integer(value) => Some(value.0 as Float),
             Self::Float(value) => Some(*value),
             _ => None,
         }
@@ -388,12 +392,12 @@ impl Display for RawNodeValue {
 impl NodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
-    pub const HANDLED: NodeValue = Self::Integer(0);
+    pub const HANDLED: NodeValue = Self::Integer(Wrapping(0));
 
     /// Boolean TRUE value.
-    pub const TRUE: NodeValue = Self::Integer(1);
+    pub const TRUE: NodeValue = Self::Integer(Wrapping(1));
     /// Boolean FALSE value.
-    pub const FALSE: NodeValue = Self::Integer(0);
+    pub const FALSE: NodeValue = Self::Integer(Wrapping(0));
 
     pub const fn get_kind(&self) -> NodeKind {
         match self {
@@ -411,7 +415,7 @@ impl NodeValue {
     pub fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(*value as Integer),
+            Self::Float(value) => Some(Wrapping(*value as IntegerValue)),
             _ => None,
         }
     }
@@ -425,7 +429,7 @@ impl NodeValue {
 
     pub fn float(&self) -> Option<Float> {
         match self {
-            Self::Integer(value) => Some(*value as Float),
+            Self::Integer(value) => Some(value.0 as Float),
             Self::Float(value) => Some(*value),
             _ => None,
         }
@@ -448,7 +452,7 @@ impl NodeValue {
 
     pub fn boolean(&self) -> bool {
         match self {
-            Self::Integer(value) => *value != 0,
+            Self::Integer(value) => value.0 != 0,
             Self::Float(value) => *value != 0.0,
             Self::String(value) => !value.is_empty(),
             Self::Symbol(value) => !value.name().is_empty(),
@@ -458,7 +462,7 @@ impl NodeValue {
     }
 
     pub fn boolean_strict(&self) -> Option<bool> {
-        Some(self.integer_strict()? != 0)
+        Some(self.integer_strict()?.0 != 0)
     }
 
     pub fn string(&self) -> Option<&Rc<String>> {

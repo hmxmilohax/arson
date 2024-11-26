@@ -46,7 +46,7 @@ pub mod unary {
     pub fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
-            Number::Integer(value) => Ok(value.overflowing_neg().0.into()),
+            Number::Integer(value) => Ok((-value).into()),
             Number::Float(value) => Ok((-value).into()),
         }
     }
@@ -78,7 +78,7 @@ pub mod binary {
         number_chain(
             context,
             args,
-            |left, right| Ok(left.overflowing_add(right).0),
+            |left, right| Ok(left + right),
             |left, right| Ok(left + right),
         )
     }
@@ -91,7 +91,7 @@ pub mod binary {
         number_chain(
             context,
             args,
-            |left, right| Ok(left.overflowing_sub(right).0),
+            |left, right| Ok(left - right),
             |left, right| Ok(left - right),
         )
     }
@@ -100,7 +100,7 @@ pub mod binary {
         number_chain(
             context,
             args,
-            |left, right| Ok(left.overflowing_mul(right).0),
+            |left, right| Ok(left * right),
             |left, right| Ok(left * right),
         )
     }
@@ -110,8 +110,8 @@ pub mod binary {
             context,
             args,
             |left, right| {
-                arson_assert!(right != 0, "attempted to divide by zero");
-                Ok(left.overflowing_div(right).0)
+                arson_assert!(right.0 != 0, "attempted to divide by zero");
+                Ok(left / right)
             },
             |left, right| Ok(left / right),
         )
@@ -122,8 +122,8 @@ pub mod binary {
             context,
             args,
             |left, right| {
-                arson_assert!(right != 0, "attempted to modulo by zero");
-                Ok(left.overflowing_rem(right).0)
+                arson_assert!(right.0 != 0, "attempted to modulo by zero");
+                Ok(left % right)
             },
             |left, right| Ok(left % right),
         )

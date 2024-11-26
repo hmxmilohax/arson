@@ -32,7 +32,7 @@ pub(crate) fn number_chain(
 
         match node.number(context)? {
             Number::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
-            Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left as Float, right)?, f_float),
+            Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left.0 as Float, right)?, f_float),
         }
     }
 
@@ -47,7 +47,7 @@ pub(crate) fn number_chain(
         };
 
         match node.number(context)? {
-            Number::Integer(right) => float_chain(context, args.slice(1..)?, f_float(left, right as Float)?, f_float),
+            Number::Integer(right) => float_chain(context, args.slice(1..)?, f_float(left, right.0 as Float)?, f_float),
             Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
         }
     }

@@ -97,8 +97,8 @@ pub mod loops {
         }
 
         let variable = args.variable(0)?;
-        let start = args.integer(context, 1)?;
-        let end = args.integer(context, 2)?;
+        let start = args.integer(context, 1)?.0;
+        let end = args.integer(context, 2)?.0;
         let args = args.slice(3..)?;
 
         if start > end {
