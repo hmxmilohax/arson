@@ -667,10 +667,15 @@ pub struct NodeDisplay<'a> {
 
 impl<'a> fmt::Display for NodeDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.context.replace(None) {
-            Some(context) => match self.node.evaluate(context) {
-                Ok(evaluated) => evaluated.fmt(f),
-                Err(err) => write!(f, "<error: {err}>"),
+        match self.context.take() {
+            Some(context) => {
+                let result = match self.node.evaluate(context) {
+                    Ok(evaluated) => evaluated.fmt(f),
+                    Err(err) => write!(f, "<error: {err}>"),
+                };
+                // Re-store context to ensure repeated uses have the same result
+                self.context.set(Some(context));
+                result
             },
             None => self.node.unevaluated().fmt(f),
         }
