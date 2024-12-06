@@ -68,7 +68,7 @@ pub mod loops {
     pub fn foreach_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let variable = args.variable(0)?;
 
-        for node in args.array(context, 1)?.iter() {
+        for node in args.array(context, 1)?.borrow().iter() {
             let value = node.evaluate(context)?;
             variable.set(context, value);
             for node in args.get(2..)? {
@@ -124,6 +124,7 @@ pub mod vars {
         while let NodeValue::Array(initializer) = args.unevaluated(0)? {
             args = args.slice(1..)?;
 
+            let initializer = initializer.borrow();
             let variable = initializer.variable(0)?;
             saved_variables.save(context, variable);
 

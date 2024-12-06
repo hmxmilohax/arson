@@ -2,7 +2,7 @@
 
 use std::{
     borrow::Borrow,
-    cell::Cell,
+    cell::{Cell, RefCell},
     cmp::Ordering,
     fmt::{self, Display},
     num::Wrapping,
@@ -31,6 +31,8 @@ pub enum Number {
     /// A floating-point value (see [`Float`]).
     Float(Float),
 }
+
+pub type ArrayRef = Rc<RefCell<NodeArray>>;
 
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -227,12 +229,12 @@ define_node_types! {
         cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
     },
 
-    Array(Rc<NodeArray>) {
+    Array(ArrayRef) {
         from: {
-            NodeArray => |value| Rc::new(value),
+            NodeArray => |value| Rc::new(RefCell::new(value)),
         },
         extra_eq: {
-            NodeArray => |left, right| Borrow::<NodeArray>::borrow(left) == right,
+            NodeArray => |left, right| RefCell::borrow(left).eq(right),
         },
     },
     Command(Rc<NodeCommand>) {
@@ -313,7 +315,7 @@ impl NodeValue {
             NodeValue::Symbol(value) => Some(!value.name().is_empty()),
             NodeValue::Variable(_) => None,
 
-            NodeValue::Array(value) => Some(!value.is_empty()),
+            NodeValue::Array(value) => Some(!RefCell::borrow(value).is_empty()),
             NodeValue::Command(_) => None,
             NodeValue::Property(_) => None,
 
@@ -331,7 +333,7 @@ impl Display for NodeValue {
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => write!(f, "${}", value.symbol()),
 
-            Self::Array(value) => Display::fmt(value, f),
+            Self::Array(value) => RefCell::borrow(value).fmt(f),
             Self::Command(value) => Display::fmt(value, f),
             Self::Property(value) => Display::fmt(value, f),
 
@@ -433,7 +435,7 @@ impl Node {
         match_value!(self.unevaluated(), Variable(value) => value)
     }
 
-    pub fn array(&self, context: &mut Context) -> crate::Result<Rc<NodeArray>> {
+    pub fn array(&self, context: &mut Context) -> crate::Result<ArrayRef> {
         match_value!(self.evaluate(context)?, Array(value) => value)
     }
 

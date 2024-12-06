@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::{
-    borrow::{Borrow, BorrowMut},
     cell::Cell,
     fmt::{self, Write},
-    ops::{Deref, DerefMut, Range},
+    ops::Range,
     rc::Rc,
     slice::SliceIndex,
 };
@@ -155,7 +154,7 @@ impl NodeSlice {
         self.get(index)?.variable()
     }
 
-    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<Rc<NodeArray>> {
+    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayRef> {
         self.get(index)?.array(context)
     }
 
@@ -182,23 +181,21 @@ impl NodeSlice {
 
 // Data retrieval by predicate
 impl NodeSlice {
-    pub fn find_array(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeArray>> {
+    pub fn find_array(&self, predicate: impl FindDataPredicate) -> crate::Result<ArrayRef> {
         self.find_array_opt(predicate)
             .ok_or_else(|| ArrayError::NotFound.into())
     }
 
-    pub fn find_array_opt(&self, predicate: impl FindDataPredicate) -> Option<Rc<NodeArray>> {
+    pub fn find_array_opt(&self, predicate: impl FindDataPredicate) -> Option<ArrayRef> {
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
             };
-            let Ok(node) = array.unevaluated(0) else {
-                continue;
+            if let Ok(node) = array.borrow().unevaluated(0) {
+                if FindDataPredicate::matches(&predicate, node) {
+                    return Some(array.clone());
+                }
             };
-
-            if FindDataPredicate::matches(&predicate, node) {
-                return Some(array.clone());
-            }
         }
 
         None
@@ -206,12 +203,14 @@ impl NodeSlice {
 
     pub fn find_data(&self, predicate: impl FindDataPredicate) -> crate::Result<Node> {
         let array = self.find_array(predicate)?;
+        let array = array.borrow();
         arson_assert_len!(array, 2, "Expected only one value in array");
         array.get(1).cloned()
     }
 
     pub fn find_data_opt(&self, predicate: impl FindDataPredicate) -> Option<Node> {
         let array = self.find_array_opt(predicate)?;
+        let array = array.borrow();
         if array.len() != 2 {
             return None;
         }
@@ -259,7 +258,7 @@ impl NodeSlice {
     }
 }
 
-impl Deref for NodeSlice {
+impl std::ops::Deref for NodeSlice {
     type Target = [Node];
 
     fn deref(&self) -> &Self::Target {
@@ -379,7 +378,7 @@ impl FromIterator<NodeValue> for NodeArray {
     }
 }
 
-impl Deref for NodeArray {
+impl std::ops::Deref for NodeArray {
     type Target = NodeSlice;
 
     fn deref(&self) -> &Self::Target {
@@ -387,19 +386,19 @@ impl Deref for NodeArray {
     }
 }
 
-impl DerefMut for NodeArray {
+impl std::ops::DerefMut for NodeArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
         NodeSlice::from_mut(&mut self.nodes)
     }
 }
 
-impl Borrow<Vec<Node>> for NodeArray {
+impl std::borrow::Borrow<Vec<Node>> for NodeArray {
     fn borrow(&self) -> &Vec<Node> {
         &self.nodes
     }
 }
 
-impl BorrowMut<Vec<Node>> for NodeArray {
+impl std::borrow::BorrowMut<Vec<Node>> for NodeArray {
     fn borrow_mut(&mut self) -> &mut Vec<Node> {
         &mut self.nodes
     }
@@ -466,7 +465,7 @@ macro_rules! define_array_wrapper {
                 }
             }
 
-            impl Deref for $name {
+            impl std::ops::Deref for $name {
                 type Target = NodeArray;
 
                 fn deref(&self) -> &Self::Target {
@@ -474,13 +473,13 @@ macro_rules! define_array_wrapper {
                 }
             }
 
-            impl DerefMut for $name {
+            impl std::ops::DerefMut for $name {
                 fn deref_mut(&mut self) -> &mut Self::Target {
                     &mut self.nodes
                 }
             }
 
-            impl Borrow<NodeArray> for $name {
+            impl std::borrow::Borrow<NodeArray> for $name {
                 fn borrow(&self) -> &NodeArray {
                     &self.nodes
                 }
