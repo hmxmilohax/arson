@@ -161,7 +161,7 @@ impl Context {
         if let NodeValue::Array(parameters) = script.unevaluated(0)? {
             script = script.slice(1..)?;
 
-            let parameters = parameters.borrow();
+            let parameters = parameters.borrow()?;
             arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");
 
             for i in 0..parameters.len() {

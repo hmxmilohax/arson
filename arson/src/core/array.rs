@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     fmt::{self, Write},
     ops::Range,
     rc::Rc,
@@ -34,6 +34,35 @@ pub enum ArrayError {
 
     #[error("Requested data was not found")]
     NotFound,
+
+    #[error("Array already mutably borrowed: {0:?}")]
+    BadBorrow(#[from] std::cell::BorrowError),
+
+    #[error("Array already immutably borrowed: {0:?}")]
+    BadMutBorrow(#[from] std::cell::BorrowMutError),
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub struct ArrayRef {
+    inner: Rc<RefCell<NodeArray>>,
+}
+
+impl ArrayRef {
+    pub fn new(array: NodeArray) -> Self {
+        Self { inner: Rc::new(RefCell::new(array)) }
+    }
+
+    pub fn borrow(&self) -> crate::Result<std::cell::Ref<'_, NodeArray>> {
+        self.inner
+            .try_borrow()
+            .map_err(|e| ArrayError::BadBorrow(e).into())
+    }
+
+    pub fn borrow_mut(&self) -> crate::Result<std::cell::RefMut<'_, NodeArray>> {
+        self.inner
+            .try_borrow_mut()
+            .map_err(|e| ArrayError::BadMutBorrow(e).into())
+    }
 }
 
 /// A contiguous slice of [`Node`]s.
@@ -182,8 +211,18 @@ impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
 // Data retrieval by predicate
 impl NodeSlice {
     pub fn find_array(&self, predicate: impl FindDataPredicate) -> crate::Result<ArrayRef> {
-        self.find_array_opt(predicate)
-            .ok_or_else(|| ArrayError::NotFound.into())
+        for node in self.iter() {
+            let NodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            if let Ok(node) = array.borrow()?.unevaluated(0) {
+                if FindDataPredicate::matches(&predicate, node) {
+                    return Ok(array.clone());
+                }
+            };
+        }
+
+        Err(ArrayError::NotFound.into())
     }
 
     pub fn find_array_opt(&self, predicate: impl FindDataPredicate) -> Option<ArrayRef> {
@@ -191,11 +230,16 @@ impl NodeSlice {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
             };
-            if let Ok(node) = array.borrow().unevaluated(0) {
-                if FindDataPredicate::matches(&predicate, node) {
-                    return Some(array.clone());
-                }
+            let Ok(borrow) = array.borrow() else {
+                continue;
             };
+            let Ok(node) = borrow.unevaluated(0) else {
+                continue;
+            };
+
+            if FindDataPredicate::matches(&predicate, node) {
+                return Some(array.clone());
+            }
         }
 
         None
@@ -203,14 +247,14 @@ impl NodeSlice {
 
     pub fn find_data(&self, predicate: impl FindDataPredicate) -> crate::Result<Node> {
         let array = self.find_array(predicate)?;
-        let array = array.borrow();
+        let array = array.borrow()?;
         arson_assert_len!(array, 2, "Expected only one value in array");
         array.get(1).cloned()
     }
 
     pub fn find_data_opt(&self, predicate: impl FindDataPredicate) -> Option<Node> {
         let array = self.find_array_opt(predicate)?;
-        let array = array.borrow();
+        let array = array.borrow().ok()?;
         if array.len() != 2 {
             return None;
         }

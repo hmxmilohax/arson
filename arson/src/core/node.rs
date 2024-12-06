@@ -2,7 +2,7 @@
 
 use std::{
     borrow::Borrow,
-    cell::{Cell, RefCell},
+    cell::Cell,
     cmp::Ordering,
     fmt::{self, Display},
     num::Wrapping,
@@ -31,8 +31,6 @@ pub enum Number {
     /// A floating-point value (see [`Float`]).
     Float(Float),
 }
-
-pub type ArrayRef = Rc<RefCell<NodeArray>>;
 
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -231,10 +229,10 @@ define_node_types! {
 
     Array(ArrayRef) {
         from: {
-            NodeArray => |value| Rc::new(RefCell::new(value)),
+            NodeArray => |value| ArrayRef::new(value),
         },
         extra_eq: {
-            NodeArray => |left, right| RefCell::borrow(left).eq(right),
+            NodeArray => |left, right| ArrayRef::borrow(left).map_or(false, |a| a.eq(right)),
         },
     },
     Command(Rc<NodeCommand>) {
@@ -315,7 +313,7 @@ impl NodeValue {
             NodeValue::Symbol(value) => Some(!value.name().is_empty()),
             NodeValue::Variable(_) => None,
 
-            NodeValue::Array(value) => Some(!RefCell::borrow(value).is_empty()),
+            NodeValue::Array(value) => Some(ArrayRef::borrow(value).map_or(false, |a| !a.is_empty())),
             NodeValue::Command(_) => None,
             NodeValue::Property(_) => None,
 
@@ -333,7 +331,10 @@ impl Display for NodeValue {
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => write!(f, "${}", value.symbol()),
 
-            Self::Array(value) => RefCell::borrow(value).fmt(f),
+            Self::Array(value) => match ArrayRef::borrow(value) {
+                Ok(borrow) => borrow.fmt(f),
+                Err(err) => write!(f, "<failed to borrow array: {err}>")
+            },
             Self::Command(value) => Display::fmt(value, f),
             Self::Property(value) => Display::fmt(value, f),
 
