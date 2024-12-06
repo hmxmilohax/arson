@@ -291,6 +291,21 @@ impl Display for NodeValue {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum EvaluationError {
+    #[error("Expected value of type {expected:?}, got {actual:?} instead")]
+    TypeMismatch { expected: NodeKind, actual: NodeKind },
+
+    #[error("Value of type {src:?} is not convertible to {dest:?}")]
+    NotConvertible { src: NodeKind, dest: NodeKind },
+
+    #[error("Value of type {0:?} is not a number")]
+    NotNumber(NodeKind),
+
+    #[error("Value of type {0:?} is not convertible to a boolean")]
+    NotBoolean(NodeKind),
+}
+
 #[derive(Debug, Clone)]
 pub struct Node {
     value: NodeValue,
@@ -301,10 +316,10 @@ macro_rules! match_value {
         let value = $value;
         match value {
             NodeValue::$kind($inner) => Ok($expr),
-            _ => Err(Error::TypeMismatch {
+            _ => Err(Error::EvaluationError(EvaluationError::TypeMismatch {
                 expected: NodeKind::$kind,
                 actual: value.get_kind(),
-            }),
+            })),
         }
     }};
 }
@@ -329,7 +344,7 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.integer() {
             Some(value) => Ok(value),
-            None => Err(Error::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }),
+            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }.into()),
         }
     }
 
@@ -337,7 +352,7 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.float() {
             Some(value) => Ok(value),
-            None => Err(Error::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }),
+            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }.into()),
         }
     }
 
@@ -345,7 +360,7 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.number() {
             Some(value) => Ok(value),
-            None => arson_fail!("Value of type {:?} is not a number", value.get_kind()),
+            None => Err(EvaluationError::NotNumber(value.get_kind()).into()),
         }
     }
 
@@ -353,7 +368,7 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.boolean() {
             Some(b) => Ok(b),
-            None => arson_fail!("Value of type {:?} is not convertible to a boolean", value.get_kind()),
+            None => Err(EvaluationError::NotBoolean(value.get_kind()).into()),
         }
     }
 

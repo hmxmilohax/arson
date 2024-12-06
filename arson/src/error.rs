@@ -1,40 +1,24 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::ops::Range;
-
-use crate::LoadError;
-
-use super::{NodeKind, Symbol};
+use crate::{ArrayError, EvaluationError, ExecutionError, LoadError};
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Type mismatch: expected {expected:?}, got {actual:?}")]
-    TypeMismatch { expected: NodeKind, actual: NodeKind },
+    #[error("Evaluation error: {0}")]
+    EvaluationError(#[from] EvaluationError),
 
-    #[error("Value of type {src:?} is not convertible to {dest:?}")]
-    NotConvertible { src: NodeKind, dest: NodeKind },
+    #[error("Execution error: {0}")]
+    ExecutionError(#[from] ExecutionError),
 
-    #[error("Bad array length {actual}, expected {expected}")]
-    LengthMismatch { expected: usize, actual: usize },
+    #[error("Array error: {0}")]
+    ArrayError(#[from] ArrayError),
 
-    #[error("Index outside of range {0:?}")]
-    OutOfRange(Range<usize>),
+    #[error("Error loading script file: {0}")]
+    LoadError(#[from] LoadError),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-
-    #[error("Error loading file: {0}")]
-    LoadError(#[from] LoadError),
-
-    #[error("Requested entry was not found")]
-    EntryNotFound,
-
-    #[error("Duplicate entry for symbol {0}")]
-    DuplicateEntry(Symbol),
-
-    #[error("{0}")]
-    Failure(String),
 }
 
 pub type Result<T> = std::result::Result<T, self::Error>;
@@ -56,7 +40,11 @@ macro_rules! arson_assert {
 #[macro_export]
 macro_rules! arson_fail {
     ($($arg:tt)+) => {
-        return Err($crate::Error::Failure(format!($($arg)+)))
+        return Err(
+            $crate::Error::ExecutionError(
+                $crate::ExecutionError::Failure(format!($($arg)+))
+            )
+        )
     };
 }
 
@@ -64,7 +52,10 @@ macro_rules! arson_fail {
 macro_rules! arson_assert_len {
     ($array:ident, $len:expr) => {
         if $array.len() != $len {
-            return Err($crate::Error::LengthMismatch { expected: $len, actual: $array.len() });
+            return Err($crate::Error::ArrayError($crate::ArrayError::LengthMismatch {
+                expected: $len,
+                actual: $array.len(),
+            }));
         }
     };
     ($array:ident, $len:expr, $msg:literal) => {

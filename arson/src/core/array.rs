@@ -4,7 +4,7 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::Cell,
     fmt::{self, Write},
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
     rc::Rc,
     slice::SliceIndex,
 };
@@ -23,6 +23,18 @@ macro_rules! arson_array {
     ($($x:expr),+ $(,)?) => (
         $crate::NodeArray::from(vec![$($x.into()),+])
     );
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ArrayError {
+    #[error("Bad array length {actual}, expected {expected}")]
+    LengthMismatch { expected: usize, actual: usize },
+
+    #[error("Array index outside of range {0:?}")]
+    OutOfRange(Range<usize>),
+
+    #[error("Requested data was not found")]
+    NotFound,
 }
 
 /// A contiguous slice of [`Node`]s.
@@ -46,14 +58,14 @@ impl NodeSlice {
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         match self.nodes.get(index) {
             Some(value) => Ok(Self::new(value)),
-            None => Err(Error::OutOfRange(0..self.nodes.len())),
+            None => Err(ArrayError::OutOfRange(0..self.nodes.len()).into()),
         }
     }
 
     pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
         match self.nodes.get(index) {
             Some(value) => Ok(value),
-            None => Err(Error::OutOfRange(0..self.nodes.len())),
+            None => Err(ArrayError::OutOfRange(0..self.nodes.len()).into()),
         }
     }
 
@@ -117,7 +129,7 @@ impl NodeSlice {
     where
         NodeValue: PartialEq<T>,
     {
-        self.find_array_opt(tag).ok_or(Error::EntryNotFound)
+        self.find_array_opt(tag).ok_or_else(|| ArrayError::NotFound.into())
     }
 
     pub fn find_array_opt<T>(&self, tag: &T) -> Option<Rc<NodeArray>>

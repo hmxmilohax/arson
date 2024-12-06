@@ -3,7 +3,16 @@
 use crate::core::*;
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::{self, Expression, LoadOptions};
-use crate::{arson_array, arson_assert_len, Error, LoadError};
+use crate::{arson_array, arson_assert_len, LoadError};
+
+#[derive(thiserror::Error, Debug)]
+pub enum ExecutionError {
+    #[error("No function registered for name '{0}'")]
+    FunctionNotFound(Symbol),
+
+    #[error("{0}")]
+    Failure(String),
+}
 
 pub struct Context {
     symbol_table: SymbolTable,
@@ -135,7 +144,7 @@ impl Context {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 // TODO: cache function/object lookups
                 Some(func) => func(self, command.slice(1..)?)?,
-                None => return Err(Error::EntryNotFound),
+                None => return Err(ExecutionError::FunctionNotFound(symbol).into()),
             },
             _ => Node::UNHANDLED,
         };
