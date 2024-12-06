@@ -36,57 +36,6 @@ pub enum ArrayError {
     NotFound,
 }
 
-/// A predicate used for searching in the [`NodeSlice::find_array`] and
-/// [`NodeSlice::find_data`] family of functions.
-///
-/// This trait is primarily just a helper and is not meant to be implemented directly,
-/// though nothing will go wrong if you do (barring any logic errors in said implementation).
-pub trait FindDataPredicate {
-    fn matches(this: &Self, value: &NodeValue) -> bool;
-}
-
-// No blanket implementation is provided to allow all values which are comparable to NodeValue,
-// because very few of the variants make sense to be used as data keys as-is.
-// Instead, an implementation is provided for Fn(&NodeValue) -> bool which allows for custom searches,
-// so if a more special need arises, it can be handled using that custom logic.
-
-macro_rules! find_pred_impl {
-    ($type:ident => |$predicate:ident, $value:ident| $block:expr) => {
-        impl FindDataPredicate for $type {
-            fn matches($predicate: &Self, $value: &NodeValue) -> bool {
-                $block
-            }
-        }
-
-        // Using a blanket implementation for this isn't possible due to the
-        // impl for Fn(&NodeValue) -> bool, which inherently handles references
-        impl FindDataPredicate for &$type {
-            fn matches(this: &Self, value: &NodeValue) -> bool {
-                FindDataPredicate::matches(*this, value)
-            }
-        }
-    };
-}
-
-find_pred_impl!(Symbol => |predicate, value| value == predicate);
-// We could allow this, but really, you should use a Symbol instead...
-// find_pred_impl!(String => |predicate, value| value == predicate);
-find_pred_impl!(Integer => |predicate, value| value == predicate);
-find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
-
-impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
-    fn matches(this: &Self, value: &NodeValue) -> bool {
-        this(value)
-    }
-}
-
-// Clashes with the Fn(&NodeValue) -> bool implementation
-// impl<T: FindDataPredicate> FindDataPredicate for &T {
-//     fn matches(&self, value: &NodeValue) -> bool {
-//         FindDataPredicate::matches(*self, value)
-//     }
-// }
-
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -178,6 +127,57 @@ impl NodeSlice {
         self.get(index)?.set(context, value)
     }
 }
+
+/// A predicate used for searching in the [`NodeSlice::find_array`] and
+/// [`NodeSlice::find_data`] family of functions.
+///
+/// This trait is primarily just a helper and is not meant to be implemented directly,
+/// though nothing will go wrong if you do (barring any logic errors in said implementation).
+pub trait FindDataPredicate {
+    fn matches(this: &Self, value: &NodeValue) -> bool;
+}
+
+// No blanket implementation is provided to allow all values which are comparable to NodeValue,
+// because very few of the variants make sense to be used as data keys as-is.
+// Instead, an implementation is provided for Fn(&NodeValue) -> bool which allows for custom searches,
+// so if a more special need arises, it can be handled using that custom logic.
+
+macro_rules! find_pred_impl {
+    ($type:ident => |$predicate:ident, $value:ident| $block:expr) => {
+        impl FindDataPredicate for $type {
+            fn matches($predicate: &Self, $value: &NodeValue) -> bool {
+                $block
+            }
+        }
+
+        // Using a blanket implementation for this isn't possible due to the
+        // impl for Fn(&NodeValue) -> bool, which inherently handles references
+        impl FindDataPredicate for &$type {
+            fn matches(this: &Self, value: &NodeValue) -> bool {
+                FindDataPredicate::matches(*this, value)
+            }
+        }
+    };
+}
+
+find_pred_impl!(Symbol => |predicate, value| value == predicate);
+// We could allow this, but really, you should use a Symbol instead...
+// find_pred_impl!(String => |predicate, value| value == predicate);
+find_pred_impl!(Integer => |predicate, value| value == predicate);
+find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
+
+impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
+    fn matches(this: &Self, value: &NodeValue) -> bool {
+        this(value)
+    }
+}
+
+// Clashes with the Fn(&NodeValue) -> bool implementation
+// impl<T: FindDataPredicate> FindDataPredicate for &T {
+//     fn matches(&self, value: &NodeValue) -> bool {
+//         FindDataPredicate::matches(*self, value)
+//     }
+// }
 
 // Data retrieval by predicate
 impl NodeSlice {
