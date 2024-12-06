@@ -37,6 +37,57 @@ pub enum ArrayError {
     NotFound,
 }
 
+/// A predicate used for searching in the [`NodeSlice::find_array`] and
+/// [`NodeSlice::find_data`] family of functions.
+///
+/// This trait is primarily just a helper and is not meant to be implemented directly,
+/// though nothing will go wrong if you do (barring any logic errors in said implementation).
+pub trait FindDataPredicate {
+    fn matches(this: &Self, value: &NodeValue) -> bool;
+}
+
+// No blanket implementation is provided to allow all values which are comparable to NodeValue,
+// because very few of the variants make sense to be used as data keys as-is.
+// Instead, an implementation is provided for Fn(&NodeValue) -> bool which allows for custom searches,
+// so if a more special need arises, it can be handled using that custom logic.
+
+macro_rules! find_pred_impl {
+    ($type:ident => |$predicate:ident, $value:ident| $block:expr) => {
+        impl FindDataPredicate for $type {
+            fn matches($predicate: &Self, $value: &NodeValue) -> bool {
+                $block
+            }
+        }
+
+        // Using a blanket implementation for this isn't possible due to the
+        // impl for Fn(&NodeValue) -> bool, which inherently handles references
+        impl FindDataPredicate for &$type {
+            fn matches(this: &Self, value: &NodeValue) -> bool {
+                FindDataPredicate::matches(*this, value)
+            }
+        }
+    };
+}
+
+find_pred_impl!(Symbol => |predicate, value| value == predicate);
+// We could allow this, but really, you should use a Symbol instead...
+// find_pred_impl!(String => |predicate, value| value == predicate);
+find_pred_impl!(Integer => |predicate, value| value == predicate);
+find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
+
+impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
+    fn matches(this: &Self, value: &NodeValue) -> bool {
+        this(value)
+    }
+}
+
+// Clashes with the Fn(&NodeValue) -> bool implementation
+// impl<T: FindDataPredicate> FindDataPredicate for &T {
+//     fn matches(&self, value: &NodeValue) -> bool {
+//         FindDataPredicate::matches(*self, value)
+//     }
+// }
+
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -72,19 +123,10 @@ impl NodeSlice {
     pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
         self.nodes.get(index)
     }
+}
 
-    pub fn set<T: Into<Node>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
-        self.get(index)?.set(context, value)
-    }
-
-    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
-        self.get(index)?.evaluate(context)
-    }
-
-    pub fn unevaluated(&self, index: usize) -> crate::Result<&NodeValue> {
-        Ok(self.get(index)?.unevaluated())
-    }
-
+// Data retrieval by index
+impl NodeSlice {
     pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
         self.get(index)?.integer(context)
     }
@@ -125,17 +167,27 @@ impl NodeSlice {
         self.get(index)?.property()
     }
 
-    pub fn find_array<T>(&self, tag: &T) -> crate::Result<Rc<NodeArray>>
-    where
-        NodeValue: PartialEq<T>,
-    {
-        self.find_array_opt(tag).ok_or_else(|| ArrayError::NotFound.into())
+    pub fn unevaluated(&self, index: usize) -> crate::Result<&NodeValue> {
+        Ok(self.get(index)?.unevaluated())
     }
 
-    pub fn find_array_opt<T>(&self, tag: &T) -> Option<Rc<NodeArray>>
-    where
-        NodeValue: PartialEq<T>,
-    {
+    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
+        self.get(index)?.evaluate(context)
+    }
+
+    pub fn set<T: Into<Node>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
+        self.get(index)?.set(context, value)
+    }
+}
+
+// Data retrieval by predicate
+impl NodeSlice {
+    pub fn find_array(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeArray>> {
+        self.find_array_opt(predicate)
+            .ok_or_else(|| ArrayError::NotFound.into())
+    }
+
+    pub fn find_array_opt(&self, predicate: impl FindDataPredicate) -> Option<Rc<NodeArray>> {
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -144,12 +196,62 @@ impl NodeSlice {
                 continue;
             };
 
-            if *node == *tag {
+            if FindDataPredicate::matches(&predicate, node) {
                 return Some(array.clone());
             }
         }
 
         None
+    }
+
+    pub fn find_data(&self, predicate: impl FindDataPredicate) -> crate::Result<Node> {
+        let array = self.find_array(predicate)?;
+        arson_assert_len!(array, 2, "Expected only one value in array");
+        array.get(1).cloned()
+    }
+
+    pub fn find_data_opt(&self, predicate: impl FindDataPredicate) -> Option<Node> {
+        let array = self.find_array_opt(predicate)?;
+        if array.len() != 2 {
+            return None;
+        }
+        array.get_opt(1).cloned()
+    }
+
+    pub fn find_integer(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Integer> {
+        self.find_data(predicate)?.integer(context)
+    }
+
+    pub fn find_float(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Float> {
+        self.find_data(predicate)?.float(context)
+    }
+
+    pub fn find_number(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Number> {
+        self.find_data(predicate)?.number(context)
+    }
+
+    pub fn find_boolean(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<bool> {
+        self.find_data(predicate)?.boolean(context)
+    }
+
+    pub fn find_string(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Rc<String>> {
+        self.find_data(predicate)?.string(context)
+    }
+
+    pub fn find_symbol(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Symbol> {
+        self.find_data(predicate)?.symbol(context)
+    }
+
+    pub fn find_variable(&self, predicate: impl FindDataPredicate) -> crate::Result<Variable> {
+        self.find_data(predicate)?.variable().cloned()
+    }
+
+    pub fn find_command(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeCommand>> {
+        self.find_data(predicate)?.command().cloned()
+    }
+
+    pub fn find_property(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeProperty>> {
+        self.find_data(predicate)?.property().cloned()
     }
 
     pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
