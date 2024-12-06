@@ -58,6 +58,8 @@ enum NodeResult<'define> {
     Value(Node),
     IncludeFile(NodeArray),
     IncludeMacro(&'define NodeArray),
+    MergeFile(NodeArray),
+    MergeMacro(&'define NodeArray),
     Skip,
 }
 
@@ -76,6 +78,8 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     NodeResult::Value(node) => array.push(node),
                     NodeResult::IncludeFile(mut file) => array.append(&mut file),
                     NodeResult::IncludeMacro(define) => array.extend_from_slice(define),
+                    NodeResult::MergeFile(file) => array.merge(&file),
+                    NodeResult::MergeMacro(define) => array.merge(define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {
@@ -144,8 +148,20 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     None => return Ok(NodeResult::Skip),
                 }
             },
-            ExpressionValue::Merge(_name) => {
-                todo!("#merge loading");
+            ExpressionValue::Merge(name) => {
+                if let Some(symbol) = self.context.get_symbol(name.text) {
+                    match self.context.get_macro(&symbol) {
+                        Some(define) => return Ok(NodeResult::MergeMacro(define)),
+                        None => return Err(LoadError::MacroNotFound),
+                    }
+                } else {
+                    if !self.options.allow_include {
+                        return Err(LoadError::IncludeNotAllowed);
+                    }
+
+                    let file = self.load_path(name.text)?;
+                    return Ok(NodeResult::MergeFile(file));
+                }
             },
             ExpressionValue::Autorun(_exprs) => {
                 todo!("#autorun loading")
@@ -372,6 +388,12 @@ mod tests {
         assert_loaded(&mut context, "#include numbers.dta", arson_array![1, 2, 3, 4, 5]);
         assert_loaded(&mut context, "#include_opt numbers.dta", arson_array![1, 2, 3, 4, 5]);
 
+        // Merges
+        assert_loaded(&mut context, "#merge empty.dta", arson_array![]);
+        // Note: #merge does *not* copy over all top-level elements!
+        // It only copies non-empty arrays whose tags don't match an existing array
+        assert_loaded(&mut context, "#merge numbers.dta", arson_array![]);
+
         // Ensure working directory behaves properly during includes
         let cwd = context.cwd().clone();
         let sym_included = context.add_symbol("included");
@@ -382,12 +404,6 @@ mod tests {
         );
         assert_eq!(*context.cwd(), cwd);
 
-        // Ensure #include_opt is truly optional
-        assert!(!context.file_system().exists("nonexistent.dta"));
-        assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
-
-        // TODO: #merge and #autorun
-
         // Ensure included paths are not added as symbols
         // (despite being lexed as them)
         assert_eq!(context.get_symbol("empty.dta"), None);
@@ -395,6 +411,38 @@ mod tests {
         assert_eq!(context.get_symbol("nonexistent.dta"), None);
         assert_eq!(context.get_symbol("./config/config.dta"), None);
         assert_eq!(context.get_symbol("../numbers.dta"), None);
+
+        // Ensure #include_opt is truly optional
+        assert!(!context.file_system().exists("nonexistent.dta"));
+        assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
+
+        // Ensure #merge overrides included keys with already-present ones
+        let sym_number = context.add_symbol("number");
+        let sym_string = context.add_symbol("string");
+        let sym_list = context.add_symbol("list");
+        let sym_number2 = context.add_symbol("number2");
+        let sym_string2 = context.add_symbol("string2");
+        let sym_list2 = context.add_symbol("list2");
+        assert_loaded(
+            &mut context,
+            "
+            (number 10)
+            (string \"test.dta\")
+            (list 10 20 30)
+            #merge merge.dta
+            ",
+            arson_array![
+                arson_array![sym_number, 10],
+                arson_array![sym_string, "test.dta"],
+                arson_array![sym_list, 10, 20, 30],
+                arson_array![sym_number2, 2],
+                arson_array![sym_string2, "foo"],
+                arson_array![sym_list2, 4, 5, 6],
+            ],
+        );
+
+        // TODO: #autorun test
+        // assert_loaded_with_context(&mut context, "#autorun {print \"Auto-run action\"}", arson_array![]);
     }
 
     #[test]

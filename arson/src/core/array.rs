@@ -341,6 +341,40 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
+    pub fn merge(&mut self, source: &NodeArray) {
+        for node in source.iter() {
+            let NodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(borrow) = array.borrow() else {
+                continue;
+            };
+            let Ok(tag) = borrow.get(0) else {
+                continue;
+            };
+
+            // todo: there's probably a better way to handle finding an array by NodeValue, but for now this will do
+            // unsure if this should be the hard-set behavior for NodeValue
+            match self.find_array_opt(|value: &NodeValue| match (tag.unevaluated(), value) {
+                (NodeValue::Symbol(left), NodeValue::Symbol(right)) => *left == *right,
+                (NodeValue::Integer(left), NodeValue::Integer(right)) => *left == *right,
+                _ => false,
+            }) {
+                Some(found) => if let Ok(mut found_borrow) = found.borrow_mut() {
+                    found_borrow.merge(&borrow)
+                },
+                None => self.push(NodeValue::Array(array.clone())),
+            }
+        }
+    }
+
+    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
+        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
+    }
+}
+
+// Vec forwards
+impl NodeArray {
     pub fn capacity(&self) -> usize {
         self.nodes.capacity()
     }
@@ -395,10 +429,6 @@ impl NodeArray {
 
     pub fn shrink_to_fit(&mut self) {
         self.nodes.shrink_to_fit()
-    }
-
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
-        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
     }
 }
 
