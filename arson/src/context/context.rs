@@ -16,43 +16,47 @@ pub enum ExecutionError {
 
 pub struct Context {
     symbol_table: SymbolTable,
+    file_system: FileSystem,
+
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<Node>,
     functions: SymbolMap<HandleFn>,
-    file_system: FileSystem,
 }
 
 impl Context {
     pub fn new() -> Self {
-        let context = Self {
+        let mut context = Self {
             symbol_table: SymbolTable::new(),
-            macros: SymbolMap::new(),
-            variables: SymbolMap::new(),
-            functions: SymbolMap::new(),
             file_system: FileSystem::new_empty(),
-        };
 
-        Self::initialize(context)
-    }
-
-    pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
-        let context = Self {
-            symbol_table: SymbolTable::new(),
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
-            file_system: FileSystem::new(driver),
         };
 
-        Self::initialize(context)
-    }
-
-    #[inline]
-    fn initialize(mut context: Self) -> Self {
         super::flow::register_funcs(&mut context);
         super::operators::register_funcs(&mut context);
 
         context
+    }
+
+    pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
+        Self {
+            file_system: FileSystem::new(driver),
+            ..Self::new()
+        }
+    }
+
+    pub fn file_system(&self) -> &FileSystem {
+        &self.file_system
+    }
+
+    pub fn cwd(&self) -> &AbsolutePath {
+        self.file_system.cwd()
+    }
+
+    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
+        self.file_system.set_cwd(path)
     }
 
     pub fn add_symbol(&mut self, name: &str) -> Symbol {
@@ -109,18 +113,6 @@ impl Context {
             Some(func) => self.register_func(alias, *func),
             None => false,
         }
-    }
-
-    pub fn file_system(&self) -> &FileSystem {
-        &self.file_system
-    }
-
-    pub fn cwd(&self) -> &AbsolutePath {
-        self.file_system.cwd()
-    }
-
-    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
-        self.file_system.set_cwd(path)
     }
 
     pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
