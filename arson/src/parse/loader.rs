@@ -10,6 +10,7 @@ use crate::parse::{self, Expression, ExpressionValue, ParseError};
 #[derive(Clone)]
 pub struct LoadOptions {
     pub allow_include: bool,
+    pub allow_autorun: bool,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -25,6 +26,12 @@ pub enum LoadError {
 
     #[error("Inclusion is disallowed by the given load options")]
     IncludeNotAllowed,
+
+    #[error("Auto-run is disallowed by the given load options")]
+    AutorunNotAllowed,
+
+    #[error("Error occurred in #autorun block: {0}")]
+    AutorunError(#[from] Box<crate::Error>),
 
     #[error("Encountered errors while including other files")]
     Inner {
@@ -163,8 +170,16 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                     return Ok(NodeResult::MergeFile(file));
                 }
             },
-            ExpressionValue::Autorun(_exprs) => {
-                todo!("#autorun loading")
+            ExpressionValue::Autorun(exprs) => {
+                if !self.options.allow_autorun {
+                    return Err(LoadError::AutorunNotAllowed);
+                }
+
+                let command = self.load_array(exprs.exprs.into_iter())?;
+                match self.context.execute(&NodeCommand::from(command)) {
+                    Ok(_) => return Ok(NodeResult::Skip),
+                    Err(err) => return Err(LoadError::AutorunError(Box::new(err))),
+                }
             },
 
             ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
@@ -251,7 +266,7 @@ mod tests {
     use super::*;
 
     fn assert_loaded(context: &mut Context, text: &str, expected: NodeArray) {
-        let options = LoadOptions { allow_include: true };
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
             Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
@@ -261,7 +276,7 @@ mod tests {
 
     fn assert_error(text: &str, expected: LoadError) {
         let mut context = Context::new();
-        let options = LoadOptions { allow_include: true };
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
         let errors = match load_text(&mut context, options, text) {
             Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
             Err(errors) => errors,
@@ -441,8 +456,19 @@ mod tests {
             ],
         );
 
-        // TODO: #autorun test
-        // assert_loaded_with_context(&mut context, "#autorun {print \"Auto-run action\"}", arson_array![]);
+        // Autorun
+        use std::sync::Mutex;
+        static G_STRING: Mutex<String> = Mutex::new(String::new());
+
+        fn autorun_func(context: &mut Context, args: &crate::NodeSlice) -> crate::ExecuteResult {
+            *G_STRING.lock().unwrap() = args.string(context, 0)?.as_ref().clone();
+            Ok(Node::HANDLED)
+        }
+
+        context.register_func("autorun_func", autorun_func);
+
+        assert_loaded(&mut context, "#autorun {autorun_func \"Auto-run was run\"}", arson_array![]);
+        assert_eq!(*G_STRING.lock().unwrap(), "Auto-run was run");
     }
 
     #[test]

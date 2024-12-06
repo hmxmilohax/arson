@@ -76,7 +76,9 @@ pub mod fs {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
-        let array = context.load_path(LoadOptions { allow_include: true }, path.as_ref())?;
+        // TODO: Allow configuring default load options
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
+        let array = context.load_path(options, path.as_ref())?;
         Ok(array.into())
     }
 

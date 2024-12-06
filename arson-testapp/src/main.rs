@@ -18,7 +18,7 @@ fn main() -> arson::Result<()> {
     println!("Created context.");
 
     // Load main.dta file
-    let options = LoadOptions { allow_include: true };
+    let options = LoadOptions { allow_include: true, allow_autorun: true };
     let file = context.load_path(options, "/main.dta")?;
     println!("Loaded main.dta");
 
