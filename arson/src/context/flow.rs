@@ -125,7 +125,7 @@ pub mod vars {
             args = args.slice(1..)?;
 
             let variable = initializer.variable(0)?;
-            saved_variables.save(context, &variable);
+            saved_variables.save(context, variable);
 
             if let Some(value) = initializer.get_opt(1) {
                 arson_assert_len!(initializer, 2, "too many values present in `do` variable initializer");

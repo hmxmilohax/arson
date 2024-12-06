@@ -173,7 +173,7 @@ impl Context {
 
             for i in 0..parameters.len() {
                 let variable = parameters.variable(i)?;
-                saved_variables.save(self, &variable);
+                saved_variables.save(self, variable);
 
                 let value = args.evaluate(self, i)?;
                 variable.set(self, value);
