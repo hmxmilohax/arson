@@ -27,7 +27,7 @@ pub mod basic {
         context.register_func("count_bits", self::count_bits);
     }
 
-    pub fn abs(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn abs(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
             Number::Integer(value) => Ok(value.0.saturating_abs().into()),
@@ -35,10 +35,10 @@ pub mod basic {
         }
     }
 
-    pub fn divide_remainder(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn divide_remainder(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
 
-        pub fn div_rem<T: Copy + Div + Rem>(left: T, right: T) -> HandleResult
+        pub fn div_rem<T: Copy + Div + Rem>(left: T, right: T) -> ExecuteResult
         where
             NodeValue: From<<T as Div>::Output> + From<<T as Rem>::Output>,
         {
@@ -58,7 +58,7 @@ pub mod basic {
         }
     }
 
-    pub fn mask_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn mask_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? & !args.integer(context, 1)?;
         args.set(context, 0, result)?;
@@ -72,7 +72,7 @@ pub mod basic {
         }
     }
 
-    pub fn highest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn highest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, (0..IntegerValue::BITS).rev());
@@ -80,7 +80,7 @@ pub mod basic {
         Ok(result.into())
     }
 
-    pub fn lowest_bit(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn lowest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, 0..IntegerValue::BITS);
@@ -88,7 +88,7 @@ pub mod basic {
         Ok(result.into())
     }
 
-    pub fn count_bits(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn count_bits(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.0.count_ones() as IntegerValue;
         args.set(context, 0, result)?;
@@ -113,7 +113,7 @@ pub mod limit {
         context.register_func("round", self::round);
     }
 
-    pub fn min(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn min(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -122,7 +122,7 @@ pub mod limit {
         )
     }
 
-    pub fn max(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn max(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -131,7 +131,7 @@ pub mod limit {
         )
     }
 
-    pub fn clamp(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn clamp(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
 
         let min = match args.number(context, 0)? {
@@ -159,40 +159,40 @@ pub mod limit {
         Ok(value.clamp(min, max).into())
     }
 
-    pub fn min_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn min_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::min(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn max_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn max_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::max(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn clamp_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn clamp_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::clamp(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn ceiling(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn ceiling(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.ceil().into())
     }
 
-    pub fn floor(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn floor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.floor().into())
     }
 
-    pub fn truncate(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn truncate(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.trunc().into())
     }
 
-    pub fn round(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn round(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.round().into())
     }
@@ -215,7 +215,7 @@ pub mod exponential {
         context.register_func("log2", self::logarithm_base_2);
     }
 
-    pub fn power(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn power(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         match args.number(context, 0)? {
             Number::Integer(left) => Ok(left.0.pow(args.integer(context, 1)?.0 as u32).into()),
@@ -226,51 +226,51 @@ pub mod exponential {
         }
     }
 
-    pub fn square_root(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn square_root(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sqrt().into())
     }
 
-    pub fn cube_root(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn cube_root(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cbrt().into())
     }
 
-    pub fn hypotenuse(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn hypotenuse(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.hypot(y).into())
     }
 
-    pub fn power_of_e(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn power_of_e(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp().into())
     }
 
-    pub fn power_of_2(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn power_of_2(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp2().into())
     }
 
-    pub fn power_of_e_minus_one(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn power_of_e_minus_one(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp_m1().into())
     }
 
-    pub fn logarithm_natural(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn logarithm_natural(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.log(y).into())
     }
 
-    pub fn logarithm_base_10(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn logarithm_base_10(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.log10().into())
     }
 
-    pub fn logarithm_base_2(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn logarithm_base_2(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.log2().into())
     }
@@ -296,69 +296,69 @@ pub mod trigonometry {
         context.register_func("atanh", self::arc_tangent_hyperbolic);
     }
 
-    pub fn sine(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn sine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sin().into())
     }
 
-    pub fn cosine(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn cosine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cos().into())
     }
 
-    pub fn tangent(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn tangent(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.tan().into())
     }
 
-    pub fn arc_sine(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_sine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.asin().into())
     }
 
-    pub fn arc_cosine(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_cosine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.acos().into())
     }
 
-    pub fn arc_tangent(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_tangent(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.atan().into())
     }
 
-    pub fn arc_tangent_quadrant(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_tangent_quadrant(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.atan2(y).into())
     }
 
-    pub fn sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sinh().into())
     }
 
-    pub fn cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cosh().into())
     }
 
-    pub fn tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.tanh().into())
     }
 
-    pub fn arc_sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.asinh().into())
     }
 
-    pub fn arc_cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.acosh().into())
     }
 
-    pub fn arc_tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn arc_tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.atanh().into())
     }

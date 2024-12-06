@@ -10,13 +10,14 @@ use std::{
 
 use crate::*;
 
-/// A function which is callable by a [`NodeCommand`].
-pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> HandleResult;
-/// The result of a [`HandleFn`].
-pub type HandleResult = crate::Result<NodeValue>;
+/// A function which is callable from script.
+pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> ExecuteResult;
+/// The result of a script execution.
+pub type ExecuteResult = crate::Result<Node>;
 
 /// The integer value type used within nodes.
 pub type IntegerValue = i64;
+/// An integer value with wrapping/overflow semantics.
 pub type Integer = Wrapping<IntegerValue>;
 /// The floating-point value type used within nodes.
 pub type Float = f64;
@@ -24,9 +25,9 @@ pub type Float = f64;
 /// A numerical value, either integer or floating-point.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Number {
-    /// An integer value; see [`Integer`].
+    /// An integer value (see [`Integer`]).
     Integer(Integer),
-    /// A floating-point value; see [`Float`].
+    /// A floating-point value (see [`Float`]).
     Float(Float),
 }
 
@@ -39,40 +40,41 @@ pub enum NodeKind {
     Symbol,
     Variable,
 
-    Unhandled,
-
     Array,
     Command,
     Property,
+
+    Unhandled,
 }
 
 macro_rules! define_node_types {
     (
-        $(#[$name_attr:meta])*
-        pub enum $name:ident {
-            $(
-                $(#[$variant_attr:meta])*
-                $variant:ident$(($variant_type:ident$(<$variant_gen:tt>)?) $({
-                    $(
-                        from: {
-                            $($from_type:ty => |$from_value:ident| $from_expr:expr,)+
-                        },
-                    )?
-                    $(
-                        eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
-                        cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
-                    )?
-                })?)?
-            ),+
-            $(,)?
-        }
+        $(
+            $(#[$variant_attr:meta])*
+            $variant:ident$(($variant_type:ident$(<$variant_gen:tt>)?) $({
+                $(
+                    from: {
+                        $($from_type:ty => |$from_value:ident| $from_expr:expr,)+
+                    },
+                )?
+                $(
+                    eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
+                    cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                )?
+            })?)?
+        ),+
+        $(,)?
     ) => {
-        $(#[$name_attr])*
-        pub enum $name {
-            $($(#[$variant_attr])* $variant$(($variant_type$(<$variant_gen>)?))?,)+
+        /// A value stored within a [`Node`].
+        #[derive(Debug, Clone)]
+        pub enum NodeValue {
+            $(
+                $(#[$variant_attr])*
+                $variant$(($variant_type$(<$variant_gen>)?))?,
+            )+
         }
 
-        impl PartialEq for $name {
+        impl PartialEq for NodeValue {
             fn eq(&self, other: &Self) -> bool {
                 match (self, other) {
                     $(
@@ -91,7 +93,7 @@ macro_rules! define_node_types {
             }
         }
 
-        impl PartialOrd for $name {
+        impl PartialOrd for NodeValue {
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
                 match (self, other) {
                     $(
@@ -109,10 +111,10 @@ macro_rules! define_node_types {
             }
         }
 
-        impl<T> From<&T> for $name
+        impl<T> From<&T> for NodeValue
         where
             T: Clone,
-            $name: From<T>
+            NodeValue: From<T>
         {
             fn from(value: &T) -> Self {
                 Self::from(value.clone())
@@ -121,7 +123,7 @@ macro_rules! define_node_types {
 
         $(
             $(
-                impl From<$variant_type$(<$variant_gen>)?> for $name {
+                impl From<$variant_type$(<$variant_gen>)?> for NodeValue {
                     fn from(value: $variant_type$(<$variant_gen>)?) -> Self {
                         Self::$variant(value)
                     }
@@ -130,7 +132,7 @@ macro_rules! define_node_types {
                 $(
                     $(
                         $(
-                            impl From<$from_type> for $name {
+                            impl From<$from_type> for NodeValue {
                                 fn from($from_value: $from_type) -> Self {
                                     Self::$variant($from_expr)
                                 }
@@ -139,7 +141,7 @@ macro_rules! define_node_types {
                     )?
                 )?
 
-                impl PartialEq<$variant_type$(<$variant_gen>)?> for $name {
+                impl PartialEq<$variant_type$(<$variant_gen>)?> for NodeValue {
                     fn eq(&self, meta_select!($($($eq_right)?)?, other): &$variant_type$(<$variant_gen>)?) -> bool {
                         match self {
                             Self::$variant(meta_select!($($($eq_left)?)?, value)) => {
@@ -150,8 +152,8 @@ macro_rules! define_node_types {
                     }
                 }
 
-                impl PartialEq<$name> for $variant_type$(<$variant_gen>)? {
-                    fn eq(&self, other: &$name) -> bool {
+                impl PartialEq<NodeValue> for $variant_type$(<$variant_gen>)? {
+                    fn eq(&self, other: &NodeValue) -> bool {
                         other.eq(self)
                     }
                 }
@@ -161,232 +163,47 @@ macro_rules! define_node_types {
 }
 
 define_node_types! {
-    /// A raw, unevaluated value stored within a [`Node`].
-    #[derive(Debug, Clone)]
-    pub enum RawNodeValue {
-        Integer(Integer) {
-            from: {
-                IntegerValue => |value| Wrapping(value),
-                i32 => |value| Wrapping(value as IntegerValue),
-                bool => |value| Wrapping(value as IntegerValue),
-            },
+    Integer(Integer) {
+        from: {
+            IntegerValue => |value| Wrapping(value),
+            i32 => |value| Wrapping(value as IntegerValue),
+            bool => |value| Wrapping(value as IntegerValue),
         },
-        Float(Float) {
-            from: {
-                f32 => |value| value as Float,
-            },
+    },
+    Float(Float) {
+        from: {
+            f32 => |value| value as Float,
         },
-        String(Rc<String>) {
-            from: {
-                String => |value| Rc::new(value),
-                &str => |value| Rc::new(value.to_owned()),
-            },
+    },
+    String(Rc<String>) {
+        from: {
+            String => |value| Rc::new(value),
+            &str => |value| Rc::new(value.to_owned()),
         },
-        Symbol(Symbol),
-        Variable(Variable) {
-            eq: |left, right| left.symbol() == right.symbol(),
-            cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
+    },
+    Symbol(Symbol),
+    Variable(Variable) {
+        eq: |left, right| left.symbol() == right.symbol(),
+        cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
+    },
+
+    Array(Rc<NodeArray>) {
+        from: {
+            NodeArray => |value| Rc::new(value),
         },
-
-        Array(Rc<NodeArray>) {
-            from: {
-                NodeArray => |value| Rc::new(value),
-            },
+    },
+    Command(Rc<NodeCommand>) {
+        from: {
+            NodeCommand => |value| Rc::new(value),
         },
-        Command(Rc<NodeCommand>) {
-            from: {
-                NodeCommand => |value| Rc::new(value),
-            },
+    },
+    Property(Rc<NodeProperty>) {
+        from: {
+            NodeProperty => |value| Rc::new(value),
         },
-        Property(Rc<NodeProperty>) {
-            from: {
-                NodeProperty => |value| Rc::new(value),
-            },
-        },
+    },
 
-        Unhandled,
-    }
-}
-
-define_node_types! {
-    /// A node value which has been evaluated.
-    #[derive(Debug, Clone)]
-    pub enum NodeValue {
-        Integer(Integer) {
-            from: {
-                IntegerValue => |value| Wrapping(value),
-                i32 => |value| Wrapping(value as IntegerValue),
-                bool => |value| Wrapping(value as IntegerValue),
-            },
-        },
-        Float(Float) {
-            from: {
-                f32 => |value| value as Float,
-            },
-        },
-        String(Rc<String>) {
-            from: {
-                String => |value| Rc::new(value),
-                &str => |value| Rc::new(value.to_owned()),
-            },
-        },
-        Symbol(Symbol),
-
-        Array(Rc<NodeArray>) {
-            from: {
-                NodeArray => |value| Rc::new(value),
-            },
-        },
-
-        Unhandled,
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Node {
-    value: RawNodeValue,
-}
-
-impl RawNodeValue {
-    /// Generic value to be returned when a script call has been handled,
-    /// but no specific value is returned from the method handling the call.
-    pub const HANDLED: RawNodeValue = Self::Integer(Wrapping(0));
-
-    /// Boolean TRUE value.
-    pub const TRUE: RawNodeValue = Self::Integer(Wrapping(1));
-    /// Boolean FALSE value.
-    pub const FALSE: RawNodeValue = Self::Integer(Wrapping(0));
-
-    pub const fn get_kind(&self) -> NodeKind {
-        match self {
-            RawNodeValue::Integer(_) => NodeKind::Integer,
-            RawNodeValue::Float(_) => NodeKind::Float,
-            RawNodeValue::String(_) => NodeKind::String,
-            RawNodeValue::Symbol(_) => NodeKind::Symbol,
-            RawNodeValue::Variable(_) => NodeKind::Variable,
-
-            RawNodeValue::Array(_) => NodeKind::Array,
-            RawNodeValue::Command(_) => NodeKind::Command,
-            RawNodeValue::Property(_) => NodeKind::Property,
-
-            RawNodeValue::Unhandled => NodeKind::Unhandled,
-        }
-    }
-
-    pub fn integer(&self) -> Option<Integer> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(Wrapping(*value as IntegerValue)),
-            _ => None,
-        }
-    }
-
-    pub fn integer_strict(&self) -> Option<Integer> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn float(&self) -> Option<Float> {
-        match self {
-            Self::Integer(value) => Some(value.0 as Float),
-            Self::Float(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn float_strict(&self) -> Option<Float> {
-        match self {
-            Self::Float(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn number(&self) -> Option<Number> {
-        match self {
-            Self::Integer(value) => Some(Number::Integer(*value)),
-            Self::Float(value) => Some(Number::Float(*value)),
-            _ => None,
-        }
-    }
-
-    pub fn string(&self) -> Option<&Rc<String>> {
-        match self {
-            Self::String(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn symbol(&self) -> Option<&Symbol> {
-        match self {
-            Self::Symbol(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn variable(&self) -> Option<&Variable> {
-        match self {
-            Self::Variable(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn array(&self) -> Option<&Rc<NodeArray>> {
-        match self {
-            Self::Array(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn command(&self) -> Option<&Rc<NodeCommand>> {
-        match self {
-            Self::Command(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn property(&self) -> Option<&Rc<NodeProperty>> {
-        match self {
-            Self::Property(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn is_unhandled(&self) -> bool {
-        matches!(self, Self::Unhandled)
-    }
-}
-
-impl From<NodeValue> for RawNodeValue {
-    fn from(value: NodeValue) -> Self {
-        match value {
-            NodeValue::Integer(value) => RawNodeValue::Integer(value),
-            NodeValue::Float(value) => RawNodeValue::Float(value),
-            NodeValue::String(value) => RawNodeValue::String(value),
-            NodeValue::Symbol(value) => RawNodeValue::Symbol(value),
-            NodeValue::Unhandled => RawNodeValue::Unhandled,
-            NodeValue::Array(value) => RawNodeValue::Array(value),
-        }
-    }
-}
-
-impl Display for RawNodeValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RawNodeValue::Integer(value) => Display::fmt(value, f),
-            RawNodeValue::Float(value) => Display::fmt(value, f),
-            RawNodeValue::String(value) => Display::fmt(value, f),
-            RawNodeValue::Symbol(value) => Display::fmt(value, f),
-            RawNodeValue::Variable(value) => write!(f, "${}", value.symbol()),
-
-            RawNodeValue::Array(value) => Display::fmt(value, f),
-            RawNodeValue::Command(value) => Display::fmt(value, f),
-            RawNodeValue::Property(value) => Display::fmt(value, f),
-
-            RawNodeValue::Unhandled => write!(f, "kDataUnhandled"),
-        }
-    }
+    Unhandled,
 }
 
 impl NodeValue {
@@ -401,14 +218,17 @@ impl NodeValue {
 
     pub const fn get_kind(&self) -> NodeKind {
         match self {
-            NodeValue::Integer(_) => NodeKind::Integer,
-            NodeValue::Float(_) => NodeKind::Float,
-            NodeValue::String(_) => NodeKind::String,
-            NodeValue::Symbol(_) => NodeKind::Symbol,
+            Self::Integer(_) => NodeKind::Integer,
+            Self::Float(_) => NodeKind::Float,
+            Self::String(_) => NodeKind::String,
+            Self::Symbol(_) => NodeKind::Symbol,
+            Self::Variable(_) => NodeKind::Variable,
 
-            NodeValue::Array(_) => NodeKind::Array,
+            Self::Array(_) => NodeKind::Array,
+            Self::Command(_) => NodeKind::Command,
+            Self::Property(_) => NodeKind::Property,
 
-            NodeValue::Unhandled => NodeKind::Unhandled,
+            Self::Unhandled => NodeKind::Unhandled,
         }
     }
 
@@ -420,23 +240,9 @@ impl NodeValue {
         }
     }
 
-    pub fn integer_strict(&self) -> Option<Integer> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            _ => None,
-        }
-    }
-
     pub fn float(&self) -> Option<Float> {
         match self {
             Self::Integer(value) => Some(value.0 as Float),
-            Self::Float(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn float_strict(&self) -> Option<Float> {
-        match self {
             Self::Float(value) => Some(*value),
             _ => None,
         }
@@ -450,179 +256,161 @@ impl NodeValue {
         }
     }
 
-    pub fn boolean(&self) -> bool {
+    pub fn boolean(&self) -> Option<bool> {
         match self {
-            Self::Integer(value) => value.0 != 0,
-            Self::Float(value) => *value != 0.0,
-            Self::String(value) => !value.is_empty(),
-            Self::Symbol(value) => !value.name().is_empty(),
-            Self::Array(value) => !value.is_empty(),
-            Self::Unhandled => false,
+            NodeValue::Integer(value) => Some(value.0 != 0),
+            NodeValue::Float(value) => Some(*value != 0.0),
+            NodeValue::String(value) => Some(!value.is_empty()),
+            NodeValue::Symbol(value) => Some(!value.name().is_empty()),
+            NodeValue::Variable(_) => None,
+
+            NodeValue::Array(value) => Some(!value.is_empty()),
+            NodeValue::Command(_) => None,
+            NodeValue::Property(_) => None,
+
+            NodeValue::Unhandled => Some(false),
         }
-    }
-
-    pub fn boolean_strict(&self) -> Option<bool> {
-        Some(self.integer_strict()?.0 != 0)
-    }
-
-    pub fn string(&self) -> Option<&Rc<String>> {
-        match self {
-            Self::String(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn symbol(&self) -> Option<&Symbol> {
-        match self {
-            Self::Symbol(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn array(&self) -> Option<&Rc<NodeArray>> {
-        match self {
-            Self::Array(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn is_unhandled(&self) -> bool {
-        matches!(self, Self::Unhandled)
     }
 }
 
 impl Display for NodeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NodeValue::Integer(value) => Display::fmt(value, f),
-            NodeValue::Float(value) => Display::fmt(value, f),
-            NodeValue::String(value) => Display::fmt(value, f),
-            NodeValue::Symbol(value) => Display::fmt(value, f),
+            Self::Integer(value) => Display::fmt(value, f),
+            Self::Float(value) => Display::fmt(value, f),
+            Self::String(value) => Display::fmt(value, f),
+            Self::Symbol(value) => Display::fmt(value, f),
+            Self::Variable(value) => write!(f, "${}", value.symbol()),
 
-            NodeValue::Array(value) => Display::fmt(value, f),
+            Self::Array(value) => Display::fmt(value, f),
+            Self::Command(value) => Display::fmt(value, f),
+            Self::Property(value) => Display::fmt(value, f),
 
-            NodeValue::Unhandled => write!(f, "kDataUnhandled"),
+            Self::Unhandled => write!(f, "kDataUnhandled"),
         }
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Node {
+    value: NodeValue,
+}
+
+macro_rules! match_value {
+    ($value:expr, $kind:ident($inner:ident) => $expr:expr) => {{
+        let value = $value;
+        match value {
+            NodeValue::$kind($inner) => Ok($expr),
+            _ => Err(Error::TypeMismatch {
+                expected: NodeKind::$kind,
+                actual: value.get_kind(),
+            }),
+        }
+    }};
+}
+
 impl Node {
     /// Value returned when a script call has not been handled by a receiver.
-    pub const UNHANDLED: Node = Self { value: RawNodeValue::Unhandled };
+    pub const UNHANDLED: Node = Self { value: NodeValue::Unhandled };
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
-    pub const HANDLED: Node = Self { value: RawNodeValue::HANDLED };
+    pub const HANDLED: Node = Self { value: NodeValue::HANDLED };
 
     /// Boolean TRUE value.
-    pub const TRUE: Node = Self { value: RawNodeValue::TRUE };
+    pub const TRUE: Node = Self { value: NodeValue::TRUE };
     /// Boolean FALSE value.
-    pub const FALSE: Node = Self { value: RawNodeValue::FALSE };
+    pub const FALSE: Node = Self { value: NodeValue::FALSE };
 
     pub const fn get_kind(&self) -> NodeKind {
         self.value.get_kind()
     }
 
-    fn evaluate_kind<R>(
-        &self,
-        context: &mut Context,
-        expected: NodeKind,
-        f: impl Fn(&NodeValue) -> Option<R>,
-    ) -> crate::Result<R> {
-        self.evaluate(context).and_then(|v| match f(&v) {
+    pub fn integer(&self, context: &mut Context) -> crate::Result<Integer> {
+        let value = self.evaluate(context)?;
+        match value.integer() {
             Some(value) => Ok(value),
-            None => Err(Error::TypeMismatch { expected, actual: v.get_kind() }),
-        })
-    }
-
-    fn unevaluated_kind<R>(&self, expected: NodeKind, f: impl Fn(&RawNodeValue) -> Option<R>) -> crate::Result<R> {
-        match f(self.unevaluated()) {
-            Some(value) => Ok(value),
-            None => Err(Error::TypeMismatch { expected, actual: self.get_kind() }),
+            None => Err(Error::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }),
         }
     }
 
-    pub fn integer(&self, context: &mut Context) -> crate::Result<Integer> {
-        self.evaluate_kind(context, NodeKind::Integer, NodeValue::integer)
-    }
-
-    pub fn integer_strict(&self, context: &mut Context) -> crate::Result<Integer> {
-        self.evaluate_kind(context, NodeKind::Integer, NodeValue::integer_strict)
-    }
-
     pub fn float(&self, context: &mut Context) -> crate::Result<Float> {
-        self.evaluate_kind(context, NodeKind::Float, NodeValue::float)
-    }
-
-    pub fn float_strict(&self, context: &mut Context) -> crate::Result<Float> {
-        self.evaluate_kind(context, NodeKind::Float, NodeValue::float_strict)
+        let value = self.evaluate(context)?;
+        match value.float() {
+            Some(value) => Ok(value),
+            None => Err(Error::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }),
+        }
     }
 
     pub fn number(&self, context: &mut Context) -> crate::Result<Number> {
-        self.evaluate_kind(context, NodeKind::Float, NodeValue::number)
+        let value = self.evaluate(context)?;
+        match value.number() {
+            Some(value) => Ok(value),
+            None => arson_fail!("Value of type {:?} is not a number", value.get_kind()),
+        }
     }
 
     pub fn boolean(&self, context: &mut Context) -> crate::Result<bool> {
-        Ok(self.evaluate(context)?.boolean())
-    }
-
-    pub fn boolean_strict(&self, context: &mut Context) -> crate::Result<bool> {
-        self.evaluate_kind(context, NodeKind::Integer, NodeValue::boolean_strict)
+        let value = self.evaluate(context)?;
+        match value.boolean() {
+            Some(b) => Ok(b),
+            None => arson_fail!("Value of type {:?} is not convertible to a boolean", value.get_kind()),
+        }
     }
 
     pub fn string(&self, context: &mut Context) -> crate::Result<Rc<String>> {
-        self.evaluate_kind(context, NodeKind::String, |value| value.string().cloned())
+        match_value!(self.evaluate(context)?, String(value) => value)
     }
 
     pub fn symbol(&self, context: &mut Context) -> crate::Result<Symbol> {
-        self.evaluate_kind(context, NodeKind::Symbol, |value| value.symbol().cloned())
+        match_value!(self.evaluate(context)?, Symbol(value) => value)
     }
 
-    pub fn variable(&self) -> crate::Result<Variable> {
-        self.unevaluated_kind(NodeKind::Variable, |value| value.variable().cloned())
+    pub const fn variable(&self) -> crate::Result<&Variable> {
+        match_value!(self.unevaluated(), Variable(value) => value)
     }
 
     pub fn array(&self, context: &mut Context) -> crate::Result<Rc<NodeArray>> {
-        self.evaluate_kind(context, NodeKind::Array, |value| value.array().cloned())
+        match_value!(self.evaluate(context)?, Array(value) => value)
     }
 
-    pub fn command(&self) -> crate::Result<Rc<NodeCommand>> {
-        self.unevaluated_kind(NodeKind::Variable, |value| value.command().cloned())
+    pub const fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
+        match_value!(self.unevaluated(), Command(value) => value)
     }
 
-    pub fn property(&self) -> crate::Result<Rc<NodeProperty>> {
-        self.unevaluated_kind(NodeKind::Variable, |value| value.property().cloned())
+    pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+        match_value!(self.unevaluated(), Property(value) => value)
     }
 
-    pub fn is_unhandled(&self) -> bool {
-        self.unevaluated().is_unhandled()
+    pub const fn is_unhandled(&self) -> bool {
+        matches!(self.unevaluated(), NodeValue::Unhandled)
     }
 
     #[inline]
-    pub const fn unevaluated(&self) -> &RawNodeValue {
+    pub const fn unevaluated(&self) -> &NodeValue {
         &self.value
     }
 
     pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
         let evaluated = match self.unevaluated() {
-            RawNodeValue::Integer(value) => NodeValue::Integer(*value),
-            RawNodeValue::Float(value) => NodeValue::Float(*value),
-            RawNodeValue::String(value) => NodeValue::String(value.clone()),
+            NodeValue::Integer(value) => NodeValue::Integer(*value),
+            NodeValue::Float(value) => NodeValue::Float(*value),
+            NodeValue::String(value) => NodeValue::String(value.clone()),
 
-            RawNodeValue::Symbol(value) => NodeValue::Symbol(value.clone()),
-            RawNodeValue::Variable(variable) => variable.get(context),
-            RawNodeValue::Unhandled => NodeValue::Unhandled,
+            NodeValue::Symbol(value) => NodeValue::Symbol(value.clone()),
+            NodeValue::Variable(variable) => variable.get(context).value,
+            NodeValue::Unhandled => NodeValue::Unhandled,
 
-            RawNodeValue::Array(value) => NodeValue::from(value),
-            RawNodeValue::Command(value) => context.execute(value)?,
-            RawNodeValue::Property(_property) => todo!("property node evaluation"),
+            NodeValue::Array(value) => NodeValue::from(value),
+            NodeValue::Command(value) => context.execute(value)?.value,
+            NodeValue::Property(_property) => todo!("property node evaluation"),
         };
         Ok(evaluated)
     }
 
-    pub fn set_variable<T: Into<NodeValue>>(&self, context: &mut Context, value: T) -> crate::Result<()> {
+    pub fn set<T: Into<Node>>(&self, context: &mut Context, value: T) -> crate::Result<()> {
         match self.unevaluated() {
-            RawNodeValue::Variable(var) => var.set(context, value.into()),
-            RawNodeValue::Property(_prop) => todo!("op_assign property access"),
+            NodeValue::Variable(var) => var.set(context, value.into()),
+            NodeValue::Property(_prop) => todo!("op_assign property access"),
             unhandled => arson_fail!("Cannot set non-variable value {:?}", unhandled),
         };
         Ok(())
@@ -647,10 +435,10 @@ impl PartialOrd for Node {
 
 impl<T> From<T> for Node
 where
-    RawNodeValue: From<T>,
+    NodeValue: From<T>,
 {
     fn from(value: T) -> Self {
-        Self { value: RawNodeValue::from(value) }
+        Self { value: NodeValue::from(value) }
     }
 }
 

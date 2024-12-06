@@ -1,6 +1,6 @@
 use crate::Context;
 
-use super::{NodeValue, Symbol};
+use super::{Node, Symbol};
 
 #[derive(Debug, Clone)]
 pub struct Variable {
@@ -17,11 +17,11 @@ impl Variable {
         &self.symbol
     }
 
-    pub fn get(&self, context: &mut Context) -> NodeValue {
+    pub fn get(&self, context: &mut Context) -> Node {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set(&self, context: &mut Context, value: NodeValue) {
+    pub fn set<T: Into<Node>>(&self, context: &mut Context, value: T) {
         context.set_variable(&self.symbol, value)
     }
 }
@@ -29,7 +29,7 @@ impl Variable {
 #[derive(Debug)]
 struct VariableEntry {
     variable: Variable,
-    value: NodeValue,
+    value: Node,
 }
 
 #[derive(Debug, Default)]

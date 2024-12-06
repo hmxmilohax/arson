@@ -18,14 +18,14 @@ pub(crate) fn number_chain(
     args: &NodeSlice,
     f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
     f_float: impl Fn(Float, Float) -> crate::Result<Float>,
-) -> HandleResult {
+) -> ExecuteResult {
     fn integer_chain(
         context: &mut Context,
         args: &NodeSlice,
         left: Integer,
         f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
         f_float: impl Fn(Float, Float) -> crate::Result<Float>,
-    ) -> HandleResult {
+    ) -> ExecuteResult {
         let Some(node) = args.get_opt(0) else {
             return Ok(left.into());
         };
@@ -41,7 +41,7 @@ pub(crate) fn number_chain(
         args: &NodeSlice,
         left: Float,
         f_float: FF,
-    ) -> HandleResult {
+    ) -> ExecuteResult {
         let Some(node) = args.get_opt(0) else {
             return Ok(left.into());
         };

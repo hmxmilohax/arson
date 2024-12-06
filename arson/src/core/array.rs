@@ -61,15 +61,15 @@ impl NodeSlice {
         self.nodes.get(index)
     }
 
-    pub fn set<T: Into<NodeValue>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
-        self.get(index)?.set_variable(context, value)
+    pub fn set<T: Into<Node>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
+        self.get(index)?.set(context, value)
     }
 
     pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
         self.get(index)?.evaluate(context)
     }
 
-    pub fn unevaluated(&self, index: usize) -> crate::Result<&RawNodeValue> {
+    pub fn unevaluated(&self, index: usize) -> crate::Result<&NodeValue> {
         Ok(self.get(index)?.unevaluated())
     }
 
@@ -77,16 +77,8 @@ impl NodeSlice {
         self.get(index)?.integer(context)
     }
 
-    pub fn integer_strict(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
-        self.get(index)?.integer_strict(context)
-    }
-
     pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<Float> {
         self.get(index)?.float(context)
-    }
-
-    pub fn float_strict(&self, context: &mut Context, index: usize) -> crate::Result<Float> {
-        self.get(index)?.float_strict(context)
     }
 
     pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<Number> {
@@ -97,10 +89,6 @@ impl NodeSlice {
         self.get(index)?.boolean(context)
     }
 
-    pub fn boolean_strict(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
-        self.get(index)?.boolean_strict(context)
-    }
-
     pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<Rc<String>> {
         self.get(index)?.string(context)
     }
@@ -109,7 +97,7 @@ impl NodeSlice {
         self.get(index)?.symbol(context)
     }
 
-    pub fn variable(&self, index: usize) -> crate::Result<Variable> {
+    pub fn variable(&self, index: usize) -> crate::Result<&Variable> {
         self.get(index)?.variable()
     }
 
@@ -117,27 +105,27 @@ impl NodeSlice {
         self.get(index)?.array(context)
     }
 
-    pub fn command(&self, index: usize) -> crate::Result<Rc<NodeCommand>> {
+    pub fn command(&self, index: usize) -> crate::Result<&Rc<NodeCommand>> {
         self.get(index)?.command()
     }
 
-    pub fn property(&self, index: usize) -> crate::Result<Rc<NodeProperty>> {
+    pub fn property(&self, index: usize) -> crate::Result<&Rc<NodeProperty>> {
         self.get(index)?.property()
     }
 
     pub fn find_array<T>(&self, tag: &T) -> crate::Result<Rc<NodeArray>>
     where
-        RawNodeValue: PartialEq<T>,
+        NodeValue: PartialEq<T>,
     {
         self.find_array_opt(tag).ok_or(Error::EntryNotFound)
     }
 
     pub fn find_array_opt<T>(&self, tag: &T) -> Option<Rc<NodeArray>>
     where
-        RawNodeValue: PartialEq<T>,
+        NodeValue: PartialEq<T>,
     {
         for node in self.iter() {
-            let RawNodeValue::Array(array) = node.unevaluated() else {
+            let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
             };
             let Ok(node) = array.unevaluated(0) else {
@@ -271,14 +259,6 @@ impl FromIterator<Node> for NodeArray {
 
 impl FromIterator<NodeValue> for NodeArray {
     fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
-        Self {
-            nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
-        }
-    }
-}
-
-impl FromIterator<RawNodeValue> for NodeArray {
-    fn from_iter<T: IntoIterator<Item = RawNodeValue>>(iter: T) -> Self {
         Self {
             nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
         }
@@ -424,7 +404,7 @@ define_array_wrapper! {
 }
 
 impl NodeCommand {
-    pub fn execute(&self, context: &mut Context) -> crate::Result<NodeValue> {
+    pub fn execute(&self, context: &mut Context) -> ExecuteResult {
         context.execute(self)
     }
 

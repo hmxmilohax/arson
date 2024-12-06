@@ -23,7 +23,7 @@ pub mod unary {
         context.register_func("~", self::not);
     }
 
-    pub fn increment(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn increment(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         // Forward to arithmetic operator
@@ -33,7 +33,7 @@ pub mod unary {
         Ok(result)
     }
 
-    pub fn decrement(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn decrement(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         // Forward to arithmetic operator
@@ -43,7 +43,7 @@ pub mod unary {
         Ok(result)
     }
 
-    pub fn negate(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn negate(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
             Number::Integer(value) => Ok((-value).into()),
@@ -51,7 +51,7 @@ pub mod unary {
         }
     }
 
-    pub fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn not(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = !args.integer(context, 0)?;
         Ok(result.into())
@@ -74,7 +74,7 @@ pub mod binary {
         context.register_func("%=", self::modulo_assign);
     }
 
-    pub fn add(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn add(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -83,7 +83,7 @@ pub mod binary {
         )
     }
 
-    pub fn subtract(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn subtract(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if args.len() == 1 {
             return unary::negate(context, args);
         }
@@ -96,7 +96,7 @@ pub mod binary {
         )
     }
 
-    pub fn multiply(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn multiply(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -105,7 +105,7 @@ pub mod binary {
         )
     }
 
-    pub fn divide(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn divide(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -117,7 +117,7 @@ pub mod binary {
         )
     }
 
-    pub fn modulo(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn modulo(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         number_chain(
             context,
             args,
@@ -129,31 +129,31 @@ pub mod binary {
         )
     }
 
-    pub fn add_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn add_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::add(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn subtract_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn subtract_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::subtract(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn multiply_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn multiply_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::multiply(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn divide_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn divide_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::divide(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn modulo_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn modulo_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::modulo(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
@@ -172,7 +172,7 @@ pub mod bitwise {
         context.register_func("^=", self::xor_assign);
     }
 
-    pub fn bitwise_op(context: &mut Context, args: &NodeSlice, f: fn(Integer, Integer) -> Integer) -> HandleResult {
+    pub fn bitwise_op(context: &mut Context, args: &NodeSlice, f: fn(Integer, Integer) -> Integer) -> ExecuteResult {
         let result = args.integer(context, 0)?;
         let result = args
             .slice(1..)?
@@ -182,33 +182,33 @@ pub mod bitwise {
         Ok(result.into())
     }
 
-    pub fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn and(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         bitwise_op(context, args, |current, value| current & value)
     }
 
-    pub fn or(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn or(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         bitwise_op(context, args, |current, value| current | value)
     }
 
-    pub fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn xor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? ^ args.integer(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn and_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn and_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::and(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn or_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn or_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::or(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
     }
 
-    pub fn xor_assign(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn xor_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::xor(context, args)?;
         args.set(context, 0, result.clone())?;
         Ok(result)
@@ -225,33 +225,33 @@ pub mod logical {
         context.register_func("!", self::not);
     }
 
-    pub fn and(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn and(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         for node in args {
             if !node.boolean(context)? {
-                return Ok(NodeValue::FALSE);
+                return Ok(Node::FALSE);
             }
         }
 
-        Ok(NodeValue::TRUE)
+        Ok(Node::TRUE)
     }
 
-    pub fn or(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn or(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         for node in args {
             if node.boolean(context)? {
-                return Ok(NodeValue::TRUE);
+                return Ok(Node::TRUE);
             }
         }
 
-        Ok(NodeValue::FALSE)
+        Ok(Node::FALSE)
     }
 
-    pub fn xor(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn xor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.boolean(context, 0)? ^ args.boolean(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn not(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn not(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = !args.boolean(context, 0)?;
         Ok(result.into())
@@ -270,37 +270,37 @@ pub mod comparison {
         context.register_func("<=", self::less_equal);
     }
 
-    pub fn equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? == args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn not_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn not_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? != args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn greater_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn greater_than(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? > args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn greater_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn greater_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? >= args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn less_than(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn less_than(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? < args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    pub fn less_equal(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn less_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? <= args.evaluate(context, 1)?;
         Ok(result.into())

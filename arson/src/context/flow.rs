@@ -17,17 +17,17 @@ pub mod control {
         context.register_func("unless", self::unless_block);
     }
 
-    pub fn if_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn if_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
             }
         }
 
-        Ok(NodeValue::HANDLED)
+        Ok(Node::HANDLED)
     }
 
-    pub fn if_else_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn if_else_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             args.command(1)?.execute(context)
         } else {
@@ -35,14 +35,14 @@ pub mod control {
         }
     }
 
-    pub fn unless_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn unless_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if !args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
             }
         }
 
-        Ok(NodeValue::HANDLED)
+        Ok(Node::HANDLED)
     }
 }
 
@@ -55,17 +55,17 @@ pub mod loops {
         context.register_func("foreach_int", self::foreach_int);
     }
 
-    pub fn while_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn while_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         while args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
             }
         }
 
-        Ok(NodeValue::HANDLED)
+        Ok(Node::HANDLED)
     }
 
-    pub fn foreach_block(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn foreach_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let variable = args.variable(0)?;
 
         for node in args.array(context, 1)?.iter() {
@@ -76,24 +76,24 @@ pub mod loops {
             }
         }
 
-        Ok(NodeValue::HANDLED)
+        Ok(Node::HANDLED)
     }
 
-    pub fn foreach_int(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn foreach_int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         fn run_loop(
             context: &mut Context,
             args: &NodeSlice,
-            variable: Variable,
+            variable: &Variable,
             values: impl Iterator<Item = i64>,
-        ) -> HandleResult {
+        ) -> ExecuteResult {
             for value in values {
-                variable.set(context, value.into());
+                variable.set(context, value);
                 for node in args.get(3..)? {
                     node.command()?.execute(context)?;
                 }
             }
 
-            Ok(NodeValue::HANDLED)
+            Ok(Node::HANDLED)
         }
 
         let variable = args.variable(0)?;
@@ -119,9 +119,9 @@ pub mod vars {
         context.register_func("with", self::with_block);
     }
 
-    pub fn do_block(context: &mut Context, mut args: &NodeSlice) -> HandleResult {
+    pub fn do_block(context: &mut Context, mut args: &NodeSlice) -> ExecuteResult {
         let mut saved_variables = VariableStack::new();
-        while let RawNodeValue::Array(initializer) = args.unevaluated(0)? {
+        while let NodeValue::Array(initializer) = args.unevaluated(0)? {
             args = args.slice(1..)?;
 
             let variable = initializer.variable(0)?;
@@ -139,7 +139,7 @@ pub mod vars {
         Ok(result)
     }
 
-    pub fn with_block(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
+    pub fn with_block(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
         todo!("`with` func")
     }
 }

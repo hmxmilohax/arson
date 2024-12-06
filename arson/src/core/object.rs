@@ -2,8 +2,8 @@
 
 use crate::Context;
 
-use super::{HandleResult, NodeSlice};
+use super::{ExecuteResult, NodeSlice};
 
 pub trait Object: std::fmt::Debug {
-    fn handle(&mut self, context: &mut Context, args: NodeSlice) -> HandleResult;
+    fn handle(&mut self, context: &mut Context, args: NodeSlice) -> ExecuteResult;
 }

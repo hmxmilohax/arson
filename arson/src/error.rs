@@ -12,6 +12,9 @@ pub enum Error {
     #[error("Type mismatch: expected {expected:?}, got {actual:?}")]
     TypeMismatch { expected: NodeKind, actual: NodeKind },
 
+    #[error("Value of type {src:?} is not convertible to {dest:?}")]
+    NotConvertible { src: NodeKind, dest: NodeKind },
+
     #[error("Bad array length {actual}, expected {expected}")]
     LengthMismatch { expected: usize, actual: usize },
 

@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use crate::core::*;
 use crate::fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
 use crate::parse::{self, Expression, LoadOptions};
-use crate::{
-    arson_array, arson_assert_len, Error, HandleFn, LoadError, NodeArray, NodeCommand, NodeSlice, NodeValue,
-    RawNodeValue, Symbol, SymbolMap, SymbolTable, VariableStack,
-};
+use crate::{arson_array, arson_assert_len, Error, LoadError};
 
 pub struct Context {
     symbol_table: SymbolTable,
     macros: SymbolMap<NodeArray>,
-    variables: SymbolMap<NodeValue>,
+    variables: SymbolMap<Node>,
     functions: SymbolMap<HandleFn>,
     file_system: FileSystem,
 }
@@ -76,19 +74,19 @@ impl Context {
         self.macros.get(name)
     }
 
-    pub fn get_variable(&mut self, name: &Symbol) -> NodeValue {
+    pub fn get_variable(&mut self, name: &Symbol) -> Node {
         match self.variables.get(name) {
             Some(value) => value.clone(),
             None => {
-                let value = NodeValue::from(0);
+                let value = Node::from(0);
                 self.variables.insert(name.clone(), value.clone());
                 value
             },
         }
     }
 
-    pub fn set_variable(&mut self, name: &Symbol, value: NodeValue) {
-        self.variables.insert(name.clone(), value);
+    pub fn set_variable<T: Into<Node>>(&mut self, name: &Symbol, value: T) {
+        self.variables.insert(name.clone(), value.into());
     }
 
     pub fn register_func(&mut self, name: &str, func: HandleFn) -> bool {
@@ -132,34 +130,34 @@ impl Context {
         parse::load_ast(self, options, ast)
     }
 
-    pub fn execute(&mut self, command: &NodeCommand) -> crate::Result<NodeValue> {
+    pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 // TODO: cache function/object lookups
                 Some(func) => func(self, command.slice(1..)?)?,
                 None => return Err(Error::EntryNotFound),
             },
-            _ => NodeValue::Unhandled,
+            _ => Node::UNHANDLED,
         };
 
-        if let NodeValue::Unhandled = result {
+        if let NodeValue::Unhandled = result.unevaluated() {
             todo!("default handler")
         }
 
         Ok(result)
     }
 
-    pub fn execute_block(&mut self, script: &NodeSlice) -> crate::Result<NodeValue> {
+    pub fn execute_block(&mut self, script: &NodeSlice) -> ExecuteResult {
         for node in script.slice(..script.len() - 1)? {
             node.command()?.execute(self)?;
         }
 
-        script.evaluate(self, script.len() - 1)
+        script.evaluate(self, script.len() - 1).map(|v| v.into())
     }
 
-    pub fn execute_args(&mut self, mut script: &NodeSlice, args: &NodeSlice) -> crate::Result<NodeValue> {
+    pub fn execute_args(&mut self, mut script: &NodeSlice, args: &NodeSlice) -> ExecuteResult {
         let mut saved_variables = VariableStack::new();
-        if let RawNodeValue::Array(parameters) = script.unevaluated(0)? {
+        if let NodeValue::Array(parameters) = script.unevaluated(0)? {
             script = script.slice(1..)?;
 
             arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");

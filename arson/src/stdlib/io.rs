@@ -17,7 +17,7 @@ pub mod stdio {
         context.register_func("print", self::print);
     }
 
-    pub fn print(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn print(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if !args.is_empty() {
             // Manual enumeration of nodes to avoid adding a separator,
             // to match the original `print`
@@ -28,7 +28,7 @@ pub mod stdio {
             println!();
         }
 
-        Ok(NodeValue::HANDLED)
+        Ok(Node::HANDLED)
     }
 }
 
@@ -48,7 +48,7 @@ pub mod fs {
         context.register_func("file_list_paths", self::file_list_paths);
     }
 
-    pub fn basename(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn basename(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         let path_str = args.string(context, 0)?;
@@ -60,7 +60,7 @@ pub mod fs {
         }
     }
 
-    pub fn dirname(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn dirname(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         let path_str = args.string(context, 0)?;
@@ -72,7 +72,7 @@ pub mod fs {
         }
     }
 
-    pub fn read_file(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn read_file(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
@@ -80,11 +80,11 @@ pub mod fs {
         Ok(array.into())
     }
 
-    pub fn write_file(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
+    pub fn write_file(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
         todo!("write_file")
     }
 
-    pub fn file_exists(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn file_exists(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
@@ -92,7 +92,7 @@ pub mod fs {
         Ok(exists.into())
     }
 
-    pub fn file_read_only(context: &mut Context, args: &NodeSlice) -> HandleResult {
+    pub fn file_read_only(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         let path = args.string(context, 0)?;
@@ -105,11 +105,11 @@ pub mod fs {
         }
     }
 
-    pub fn file_list(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
+    pub fn file_list(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
         todo!("file_list")
     }
 
-    pub fn file_list_paths(_context: &mut Context, _args: &NodeSlice) -> HandleResult {
+    pub fn file_list_paths(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
         todo!("file_list_paths")
     }
 }
