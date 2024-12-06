@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::{
+    borrow::Borrow,
     cell::Cell,
     cmp::Ordering,
     fmt::{self, Display},
@@ -60,6 +61,11 @@ macro_rules! define_node_types {
                 $(
                     eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
                     cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                )?
+                $(
+                    extra_eq: {
+                        $($extra_eq_type:ty => |$extra_eq_left:ident, $extra_eq_right:ident| $extra_eq_expr:expr,)+
+                    },
                 )?
             })?)?
         ),+
@@ -121,17 +127,21 @@ macro_rules! define_node_types {
             }
         }
 
+        // variant types
         $(
+            // variant value
             $(
+                // default variant conversions
                 impl From<$variant_type$(<$variant_gen>)?> for NodeValue {
                     fn from(value: $variant_type$(<$variant_gen>)?) -> Self {
                         Self::$variant(value)
                     }
                 }
 
-                $(
-                    $(
-                        $(
+                // additional conversions from `from:`
+                $( // repeater for options block
+                    $( // repeater for `from:`
+                        $( // repeater for types
                             impl From<$from_type> for NodeValue {
                                 fn from($from_value: $from_type) -> Self {
                                     Self::$variant($from_expr)
@@ -141,6 +151,7 @@ macro_rules! define_node_types {
                     )?
                 )?
 
+                // `eq:` implementation (with defaults)
                 impl PartialEq<$variant_type$(<$variant_gen>)?> for NodeValue {
                     fn eq(&self, meta_select!($($($eq_right)?)?, other): &$variant_type$(<$variant_gen>)?) -> bool {
                         match self {
@@ -157,6 +168,28 @@ macro_rules! define_node_types {
                         other.eq(self)
                     }
                 }
+
+                // `extra_eq:` implementations
+                $( // repeater for options block
+                    $( // repeater for `extra_eq:`
+                        $( // repeater for types
+                            impl PartialEq<$extra_eq_type> for NodeValue {
+                                fn eq(&self, $extra_eq_right: &$extra_eq_type) -> bool {
+                                    match self {
+                                        Self::$variant($extra_eq_left) => $extra_eq_expr,
+                                        _ => false,
+                                    }
+                                }
+                            }
+
+                            impl PartialEq<NodeValue> for $extra_eq_type {
+                                fn eq(&self, other: &NodeValue) -> bool {
+                                    other.eq(self)
+                                }
+                            }
+                        )+
+                    )?
+                )?
             )?
         )+
     }
@@ -169,6 +202,9 @@ define_node_types! {
             i32 => |value| Wrapping(value as IntegerValue),
             bool => |value| Wrapping(value as IntegerValue),
         },
+        extra_eq: {
+            IntegerValue => |left, right| left.0 == *right,
+        },
     },
     Float(Float) {
         from: {
@@ -179,6 +215,10 @@ define_node_types! {
         from: {
             String => |value| Rc::new(value),
             &str => |value| Rc::new(value.to_owned()),
+        },
+        extra_eq: {
+            String => |left, right| left.as_str() == right,
+            str => |left, right| left.as_str() == right,
         },
     },
     Symbol(Symbol),
@@ -191,15 +231,24 @@ define_node_types! {
         from: {
             NodeArray => |value| Rc::new(value),
         },
+        extra_eq: {
+            NodeArray => |left, right| Borrow::<NodeArray>::borrow(left) == right,
+        },
     },
     Command(Rc<NodeCommand>) {
         from: {
             NodeCommand => |value| Rc::new(value),
         },
+        extra_eq: {
+            NodeCommand => |left, right| Borrow::<NodeCommand>::borrow(left) == right,
+        },
     },
     Property(Rc<NodeProperty>) {
         from: {
             NodeProperty => |value| Rc::new(value),
+        },
+        extra_eq: {
+            NodeProperty => |left, right| Borrow::<NodeProperty>::borrow(left) == right,
         },
     },
 
