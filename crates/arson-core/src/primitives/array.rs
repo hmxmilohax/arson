@@ -335,7 +335,7 @@ impl NodeSlice {
         self.find_data(predicate)?.property().cloned()
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
     }
 }
@@ -466,7 +466,7 @@ impl NodeArray {
         }
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
     }
 }
@@ -693,7 +693,7 @@ impl NodeCommand {
         context.execute(self)
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Command, context)
     }
 }
@@ -705,7 +705,7 @@ impl fmt::Display for NodeCommand {
 }
 
 impl NodeProperty {
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Property, context)
     }
 }
@@ -728,7 +728,7 @@ impl<'a, S> ArrayDisplay<'a, S> {
     }
 }
 
-impl<'a, S> fmt::Display for ArrayDisplay<'a, S> {
+impl<S> fmt::Display for ArrayDisplay<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.context.take() {
             Some(context) => {

@@ -718,7 +718,7 @@ impl<'path> Iterator for VirtualComponents<'path> {
     }
 }
 
-impl<'path> DoubleEndedIterator for VirtualComponents<'path> {
+impl DoubleEndedIterator for VirtualComponents<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             return match self.remaining.rsplit_once('/') {
@@ -762,7 +762,7 @@ impl<'path> Iterator for VirtualPathIter<'path> {
     }
 }
 
-impl<'path> DoubleEndedIterator for VirtualPathIter<'path> {
+impl DoubleEndedIterator for VirtualPathIter<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(Self::map_component)
     }
@@ -787,7 +787,7 @@ impl<'path> Iterator for AbsolutePathIter<'path> {
     }
 }
 
-impl<'path> DoubleEndedIterator for AbsolutePathIter<'path> {
+impl DoubleEndedIterator for AbsolutePathIter<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         match self.remaining.trim_end_matches('/').rsplit_once('/') {
             Some((component, remaining)) => {

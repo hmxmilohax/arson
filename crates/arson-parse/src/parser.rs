@@ -129,7 +129,7 @@ pub struct Expression<'src> {
     pub location: Span,
 }
 
-impl<'src> ExpressionValue<'src> {
+impl ExpressionValue<'_> {
     pub fn get_kind(&self) -> ExpressionKind {
         match self {
             ExpressionValue::Integer(_) => ExpressionKind::Integer,
@@ -156,7 +156,7 @@ impl<'src> ExpressionValue<'src> {
     }
 }
 
-impl<'src> Expression<'src> {
+impl Expression<'_> {
     pub fn get_kind(&self) -> ExpressionKind {
         self.value.get_kind()
     }

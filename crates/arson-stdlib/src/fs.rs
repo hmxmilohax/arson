@@ -72,10 +72,7 @@ pub fn file_read_only<S: FsState>(context: &mut Context<S>, args: &NodeSlice) ->
     let path = args.string(context, 0)?;
     match context.file_system().metadata(path.as_ref())? {
         Metadata::File { is_readonly, .. } => Ok(is_readonly.into()),
-        Metadata::Directory { .. } => {
-            // FIXME: Use ErrorKind::IsADirectory when that stabilizes
-            Err(io::Error::new(io::ErrorKind::InvalidInput, "not a file").into())
-        },
+        Metadata::Directory { .. } => Err(io::Error::from(io::ErrorKind::NotADirectory).into()),
     }
 }
 

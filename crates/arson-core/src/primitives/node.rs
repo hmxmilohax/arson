@@ -481,7 +481,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'_, S> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
         NodeDisplay { context: Cell::new(Some(context)), node: self }
     }
 }
@@ -518,7 +518,7 @@ pub struct NodeDisplay<'a, S> {
     node: &'a Node,
 }
 
-impl<'a, S> fmt::Display for NodeDisplay<'a, S> {
+impl<S> fmt::Display for NodeDisplay<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.context.take() {
             Some(context) => {

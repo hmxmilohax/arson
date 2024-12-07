@@ -13,7 +13,7 @@ pub struct Token<'src> {
     pub location: Span,
 }
 
-impl<'src> Token<'src> {
+impl Token<'_> {
     pub fn to_owned(&self) -> OwnedToken {
         OwnedToken {
             kind: self.kind.to_owned(),

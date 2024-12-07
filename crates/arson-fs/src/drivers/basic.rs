@@ -27,8 +27,7 @@ impl BasicFileSystemDriver {
     pub fn new(mount_dir: &Path) -> io::Result<Self> {
         let mount_dir = mount_dir.canonicalize()?;
         if !mount_dir.is_dir() {
-            // FIXME: Use ErrorKind::NotADirectory when that stabilizes
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a directory"));
+            return Err(io::ErrorKind::NotADirectory.into());
         }
 
         Ok(Self { mount_dir })
