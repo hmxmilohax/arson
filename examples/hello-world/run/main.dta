@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: MIT OR Apache-2.0
 (main
     {print "Hello from script!"}
     {print "1 + 2 is " {+ 1 2}}

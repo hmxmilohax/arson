@@ -4,6 +4,14 @@ An independent implementation of the Data Array (DTA) scripting language used by
 
 ## License
 
+This repository is licensed under the GNU Lesser General Public License, version 3 or later.
+The example code under the [`examples`](examples) folder is licensed under either of
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](examples/LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](examples/LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option.
+
 Copyright (C) 2024 MiloHax
 
 These programs are free software: you can redistribute them and/or modify
