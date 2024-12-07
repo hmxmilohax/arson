@@ -31,3 +31,10 @@ mod error;
 
 pub use context::*;
 pub use error::*;
+
+pub mod prolog {
+    pub use super::{
+        context::Context,
+        primitives::{Node, NodeArray, NodeCommand, NodeProperty, NodeSlice, NodeValue, Symbol, Variable},
+    };
+}

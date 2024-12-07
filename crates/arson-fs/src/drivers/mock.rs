@@ -100,3 +100,9 @@ impl FileSystemDriver for MockFileSystemDriver {
         self.open(path)
     }
 }
+
+impl Default for MockFileSystemDriver {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -50,7 +50,7 @@ pub fn read_file<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> Exec
     let path = args.string(context, 0)?;
     // TODO: Allow configuring default load options
     let options = LoadOptions { allow_include: true, allow_autorun: true };
-    let array = arson_parse::load_path(context, options, path.as_ref()).map_err(|e| io::Error::from(e))?;
+    let array = arson_parse::load_path(context, options, path.as_ref()).map_err(io::Error::from)?;
     Ok(array.into())
 }
 

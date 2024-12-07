@@ -9,3 +9,7 @@ mod path;
 pub use driver::*;
 pub use filesystem::*;
 pub use path::*;
+
+pub mod prolog {
+    pub use super::{AbsolutePath, FileSystem, VirtualPath, VirtualPathBuf};
+}
