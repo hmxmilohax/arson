@@ -178,7 +178,7 @@ impl NodeSlice {
         self.get(index)?.evaluate(context)
     }
 
-    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, index: usize, value: T) -> crate::Result<()> {
+    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, index: usize, value: T) -> crate::Result {
         self.get(index)?.set(context, value)
     }
 }

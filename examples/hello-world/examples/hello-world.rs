@@ -5,7 +5,7 @@ use std::path::Path;
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::prolog::*;
 
-fn main() -> arson::Result<()> {
+fn main() -> arson::Result {
     println!("> Hello from native!");
 
     // Mount `run` directory for scripts

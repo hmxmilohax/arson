@@ -472,7 +472,7 @@ impl Node {
         Ok(evaluated)
     }
 
-    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) -> crate::Result<()> {
+    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) -> crate::Result {
         match self.unevaluated() {
             NodeValue::Variable(var) => var.set(context, value.into()),
             NodeValue::Property(_prop) => todo!("op_assign property access"),

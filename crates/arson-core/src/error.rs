@@ -21,7 +21,7 @@ pub enum Error {
     IoError(#[from] std::io::Error),
 }
 
-pub type Result<T> = std::result::Result<T, self::Error>;
+pub type Result<T = ()> = std::result::Result<T, self::Error>;
 
 #[macro_export]
 macro_rules! arson_assert {
