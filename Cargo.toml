@@ -1,10 +1,25 @@
+[package]
+name = "arson"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
 [workspace]
 members = [
-    "arson",
-    "arson-testapp",
+    "crates/*",
 ]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 license = "LGPL-3.0-or-later"
+
+[dependencies]
+arson-core = { version = "0.1.0", path = "crates/arson-core" }
+arson-fs = { version = "0.1.0", path = "crates/arson-fs" }
+arson-parse = { version = "0.1.0", path = "crates/arson-parse" }
+arson-stdlib = { version = "0.1.0", path = "crates/arson-stdlib" }
+
+[[example]]
+name = "hello-world"
+path = "examples/hello-world/main.rs"

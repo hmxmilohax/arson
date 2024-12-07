@@ -1,0 +1,15 @@
+[package]
+name = "arson-parse"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+publish = false
+
+[dependencies]
+arson-core = { version = "0.1.0", path = "../arson-core" }
+arson-fs = { version = "0.1.0", path = "../arson-fs" }
+
+codespan-reporting = "0.11.1"
+logos = { version = "0.14.2", features = ["forbid_unsafe"] }
+thiserror = "1.0.65"

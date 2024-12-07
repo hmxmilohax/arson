@@ -6,16 +6,44 @@ version = 3
 name = "arson"
 version = "0.1.0"
 dependencies = [
+ "arson-core",
+ "arson-fs",
+ "arson-parse",
+ "arson-stdlib",
+]
+
+[[package]]
+name = "arson-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "arson-fs"
+version = "0.1.0"
+dependencies = [
+ "arson-core",
+ "thiserror",
+]
+
+[[package]]
+name = "arson-parse"
+version = "0.1.0"
+dependencies = [
+ "arson-core",
+ "arson-fs",
  "codespan-reporting",
  "logos",
  "thiserror",
 ]
 
 [[package]]
-name = "arson-testapp"
+name = "arson-stdlib"
 version = "0.1.0"
 dependencies = [
- "arson",
+ "arson-core",
+ "thiserror",
 ]
 
 [[package]]
