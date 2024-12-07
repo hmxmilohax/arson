@@ -24,7 +24,6 @@ pub enum LoadError {
     #[error("A required macro definition was not found")]
     MacroNotFound,
 
-
     #[error("Inclusion is disallowed by the given load options")]
     IncludeNotAllowed,
 
@@ -423,7 +422,7 @@ mod tests {
 
         let mut context = Context::new(TestState {
             autorun_str: String::new(),
-            file_system: FileSystem::new(MockFileSystemDriver::new()),
+            file_system: FileSystem::new(driver),
         });
 
         // Defines
