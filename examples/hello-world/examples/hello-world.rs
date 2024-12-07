@@ -9,7 +9,7 @@ fn main() -> arson::Result<()> {
     println!("> Hello from native!");
 
     // Mount `run` directory for scripts
-    let mount_dir = Path::new(file!()).join("../run");
+    let mount_dir = Path::new(file!()).join("../../run");
     let driver = BasicFileSystemDriver::new(&mount_dir)?;
 
     // Make context

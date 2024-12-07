@@ -1,8 +1,10 @@
 [package]
 name = "arson-core"
-version = "0.1.0"
+
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 # Due to the proprietary origins of the language this library seeks to implement,
 # it's probably best not to allow it to be published to any registries.

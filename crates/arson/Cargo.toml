@@ -1,16 +1,13 @@
 [package]
-name = "arson-stdlib"
+name = "arson"
 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
-publish = false
-
 [dependencies]
 arson-core = { version = "0.1.0", path = "../arson-core" }
 arson-fs = { version = "0.1.0", path = "../arson-fs" }
 arson-parse = { version = "0.1.0", path = "../arson-parse" }
-
-thiserror = "1.0.65"
+arson-stdlib = { version = "0.1.0", path = "../arson-stdlib" }
