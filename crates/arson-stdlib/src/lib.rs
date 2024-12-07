@@ -2,10 +2,12 @@
 
 use arson_core::Context;
 
-pub mod io;
+pub mod fs;
 pub mod math;
+pub mod stdio;
 
-pub fn register_funcs(context: &mut Context) {
-    io::register_funcs(context);
+pub fn register_funcs<S: arson_fs::FsState>(context: &mut Context<S>) {
+    fs::register_funcs(context);
     math::register_funcs(context);
+    stdio::register_funcs(context);
 }

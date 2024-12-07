@@ -11,11 +11,6 @@ use std::{
 
 use crate::*;
 
-/// A function which is callable from script.
-pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> ExecuteResult;
-/// The result of a script execution.
-pub type ExecuteResult = crate::Result<Node>;
-
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum NodeKind {
@@ -336,7 +331,7 @@ impl Display for NodeValue {
 
             Self::Array(value) => match ArrayRef::borrow(value) {
                 Ok(borrow) => borrow.fmt(f),
-                Err(err) => write!(f, "<failed to borrow array: {err}>")
+                Err(err) => write!(f, "<failed to borrow array: {err}>"),
             },
             Self::Command(value) => Display::fmt(value, f),
             Self::Property(value) => Display::fmt(value, f),
@@ -395,7 +390,7 @@ impl Node {
         self.value.get_kind()
     }
 
-    pub fn integer(&self, context: &mut Context) -> crate::Result<Integer> {
+    pub fn integer<S>(&self, context: &mut Context<S>) -> crate::Result<Integer> {
         let value = self.evaluate(context)?;
         match value.integer() {
             Some(value) => Ok(value),
@@ -403,7 +398,7 @@ impl Node {
         }
     }
 
-    pub fn float(&self, context: &mut Context) -> crate::Result<FloatValue> {
+    pub fn float<S>(&self, context: &mut Context<S>) -> crate::Result<FloatValue> {
         let value = self.evaluate(context)?;
         match value.float() {
             Some(value) => Ok(value),
@@ -411,7 +406,7 @@ impl Node {
         }
     }
 
-    pub fn number(&self, context: &mut Context) -> crate::Result<Number> {
+    pub fn number<S>(&self, context: &mut Context<S>) -> crate::Result<Number> {
         let value = self.evaluate(context)?;
         match value.number() {
             Some(value) => Ok(value),
@@ -419,7 +414,7 @@ impl Node {
         }
     }
 
-    pub fn boolean(&self, context: &mut Context) -> crate::Result<bool> {
+    pub fn boolean<S>(&self, context: &mut Context<S>) -> crate::Result<bool> {
         let value = self.evaluate(context)?;
         match value.boolean() {
             Some(b) => Ok(b),
@@ -427,11 +422,11 @@ impl Node {
         }
     }
 
-    pub fn string(&self, context: &mut Context) -> crate::Result<Rc<String>> {
+    pub fn string<S>(&self, context: &mut Context<S>) -> crate::Result<Rc<String>> {
         match_value!(self.evaluate(context)?, String(value) => value)
     }
 
-    pub fn symbol(&self, context: &mut Context) -> crate::Result<Symbol> {
+    pub fn symbol<S>(&self, context: &mut Context<S>) -> crate::Result<Symbol> {
         match_value!(self.evaluate(context)?, Symbol(value) => value)
     }
 
@@ -439,7 +434,7 @@ impl Node {
         match_value!(self.unevaluated(), Variable(value) => value)
     }
 
-    pub fn array(&self, context: &mut Context) -> crate::Result<ArrayRef> {
+    pub fn array<S>(&self, context: &mut Context<S>) -> crate::Result<ArrayRef> {
         match_value!(self.evaluate(context)?, Array(value) => value)
     }
 
@@ -460,7 +455,7 @@ impl Node {
         &self.value
     }
 
-    pub fn evaluate(&self, context: &mut Context) -> crate::Result<NodeValue> {
+    pub fn evaluate<S>(&self, context: &mut Context<S>) -> crate::Result<NodeValue> {
         let evaluated = match self.unevaluated() {
             NodeValue::Integer(value) => NodeValue::Integer(*value),
             NodeValue::Float(value) => NodeValue::Float(*value),
@@ -477,7 +472,7 @@ impl Node {
         Ok(evaluated)
     }
 
-    pub fn set<T: Into<Node>>(&self, context: &mut Context, value: T) -> crate::Result<()> {
+    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) -> crate::Result<()> {
         match self.unevaluated() {
             NodeValue::Variable(var) => var.set(context, value.into()),
             NodeValue::Property(_prop) => todo!("op_assign property access"),
@@ -486,7 +481,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> NodeDisplay<'_> {
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'_, S> {
         NodeDisplay { context: Cell::new(Some(context)), node: self }
     }
 }
@@ -518,12 +513,12 @@ impl Display for Node {
     }
 }
 
-pub struct NodeDisplay<'a> {
-    context: Cell<Option<&'a mut Context>>,
+pub struct NodeDisplay<'a, S> {
+    context: Cell<Option<&'a mut Context<S>>>,
     node: &'a Node,
 }
 
-impl<'a> fmt::Display for NodeDisplay<'a> {
+impl<'a, S> fmt::Display for NodeDisplay<'a, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.context.take() {
             Some(context) => {

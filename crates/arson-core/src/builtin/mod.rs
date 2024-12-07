@@ -5,7 +5,7 @@ use crate::*;
 mod flow;
 mod operators;
 
-pub fn register_funcs(context: &mut Context) {
+pub fn register_funcs<S>(context: &mut Context<S>) {
     flow::register_funcs(context);
     operators::register_funcs(context);
 }

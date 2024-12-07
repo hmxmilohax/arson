@@ -130,27 +130,27 @@ impl NodeSlice {
 
 // Data retrieval by index
 impl NodeSlice {
-    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
+    pub fn integer<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<Integer> {
         self.get(index)?.integer(context)
     }
 
-    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<FloatValue> {
+    pub fn float<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<FloatValue> {
         self.get(index)?.float(context)
     }
 
-    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<Number> {
+    pub fn number<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<Number> {
         self.get(index)?.number(context)
     }
 
-    pub fn boolean(&self, context: &mut Context, index: usize) -> crate::Result<bool> {
+    pub fn boolean<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<bool> {
         self.get(index)?.boolean(context)
     }
 
-    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<Rc<String>> {
+    pub fn string<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<Rc<String>> {
         self.get(index)?.string(context)
     }
 
-    pub fn symbol(&self, context: &mut Context, index: usize) -> crate::Result<Symbol> {
+    pub fn symbol<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<Symbol> {
         self.get(index)?.symbol(context)
     }
 
@@ -158,7 +158,7 @@ impl NodeSlice {
         self.get(index)?.variable()
     }
 
-    pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayRef> {
+    pub fn array<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<ArrayRef> {
         self.get(index)?.array(context)
     }
 
@@ -174,11 +174,11 @@ impl NodeSlice {
         Ok(self.get(index)?.unevaluated())
     }
 
-    pub fn evaluate(&self, context: &mut Context, index: usize) -> crate::Result<NodeValue> {
+    pub fn evaluate<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<NodeValue> {
         self.get(index)?.evaluate(context)
     }
 
-    pub fn set<T: Into<Node>>(&self, context: &mut Context, index: usize, value: T) -> crate::Result<()> {
+    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, index: usize, value: T) -> crate::Result<()> {
         self.get(index)?.set(context, value)
     }
 }
@@ -287,31 +287,39 @@ impl NodeSlice {
         array.get_opt(1).cloned()
     }
 
-    pub fn find_integer(
+    pub fn find_integer<S>(
         &self,
-        context: &mut Context,
+        context: &mut Context<S>,
         predicate: impl FindDataPredicate,
     ) -> crate::Result<Integer> {
         self.find_data(predicate)?.integer(context)
     }
 
-    pub fn find_float(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<FloatValue> {
+    pub fn find_float<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl FindDataPredicate,
+    ) -> crate::Result<FloatValue> {
         self.find_data(predicate)?.float(context)
     }
 
-    pub fn find_number(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Number> {
+    pub fn find_number<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<Number> {
         self.find_data(predicate)?.number(context)
     }
 
-    pub fn find_boolean(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<bool> {
+    pub fn find_boolean<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<bool> {
         self.find_data(predicate)?.boolean(context)
     }
 
-    pub fn find_string(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Rc<String>> {
+    pub fn find_string<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl FindDataPredicate,
+    ) -> crate::Result<Rc<String>> {
         self.find_data(predicate)?.string(context)
     }
 
-    pub fn find_symbol(&self, context: &mut Context, predicate: impl FindDataPredicate) -> crate::Result<Symbol> {
+    pub fn find_symbol<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<Symbol> {
         self.find_data(predicate)?.symbol(context)
     }
 
@@ -327,21 +335,21 @@ impl NodeSlice {
         self.find_data(predicate)?.property().cloned()
     }
 
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
-        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
     }
 }
 
 // Number utilities
 impl NodeSlice {
-    pub fn number_chain(
+    pub fn number_chain<S>(
         &self,
-        context: &mut Context,
+        context: &mut Context<S>,
         f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
         f_float: impl Fn(FloatValue, FloatValue) -> crate::Result<FloatValue>,
     ) -> ExecuteResult {
-        fn integer_chain(
-            context: &mut Context,
+        fn integer_chain<S>(
+            context: &mut Context<S>,
             args: &NodeSlice,
             left: Integer,
             f_int: impl Fn(Integer, Integer) -> crate::Result<Integer>,
@@ -362,8 +370,8 @@ impl NodeSlice {
             }
         }
 
-        fn float_chain(
-            context: &mut Context,
+        fn float_chain<S>(
+            context: &mut Context<S>,
             args: &NodeSlice,
             left: FloatValue,
             f_float: impl Fn(FloatValue, FloatValue) -> crate::Result<FloatValue>,
@@ -410,7 +418,7 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
 
 impl fmt::Display for NodeSlice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Array).fmt(f)
+        write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
     }
 }
 
@@ -458,8 +466,8 @@ impl NodeArray {
         }
     }
 
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
-        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Array, context)
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
     }
 }
 
@@ -589,7 +597,7 @@ impl<'nodes> IntoIterator for &'nodes NodeArray {
 
 impl fmt::Display for NodeArray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Array).fmt(f)
+        write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
     }
 }
 
@@ -681,71 +689,88 @@ define_array_wrapper! {
 }
 
 impl NodeCommand {
-    pub fn execute(&self, context: &mut Context) -> ExecuteResult {
+    pub fn execute<S>(&self, context: &mut Context<S>) -> ExecuteResult {
         context.execute(self)
     }
 
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
-        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Command, context)
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Command, context)
     }
 }
 
 impl fmt::Display for NodeCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Command).fmt(f)
+        write_nodes_unevaluated(&self.nodes, ArrayKind::Command, f)
     }
 }
 
 impl NodeProperty {
-    pub fn display_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayDisplay<'_> {
-        ArrayDisplay::new_evaluated(&self.nodes, ArrayKind::Property, context)
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'_, S> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Property, context)
     }
 }
 
 impl fmt::Display for NodeProperty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        ArrayDisplay::new_unevaluated(&self.nodes, ArrayKind::Property).fmt(f)
+        write_nodes_unevaluated(&self.nodes, ArrayKind::Property, f)
     }
 }
 
-pub struct ArrayDisplay<'a> {
-    context: Cell<Option<&'a mut Context>>,
+pub struct ArrayDisplay<'a, S> {
+    context: Cell<Option<&'a mut Context<S>>>,
     nodes: &'a [Node],
     kind: ArrayKind,
 }
 
-impl<'a> ArrayDisplay<'a> {
-    fn new_unevaluated(nodes: &'a [Node], kind: ArrayKind) -> Self {
-        Self { context: Cell::new(None), nodes, kind }
-    }
-
-    fn new_evaluated(nodes: &'a [Node], kind: ArrayKind, context: &'a mut Context) -> Self {
+impl<'a, S> ArrayDisplay<'a, S> {
+    fn new(nodes: &'a [Node], kind: ArrayKind, context: &'a mut Context<S>) -> Self {
         Self { context: Cell::new(Some(context)), nodes, kind }
-    }
-
-    fn write_nodes(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-        mut display: impl FnMut(&Node, &mut fmt::Formatter<'_>) -> fmt::Result,
-    ) -> fmt::Result {
-        let (l, r) = self.kind.delimiters();
-        f.write_char(l)?;
-        if !self.nodes.is_empty() {
-            display(&self.nodes[0], f)?;
-            for node in &self.nodes[1..] {
-                f.write_char(' ')?;
-                display(node, f)?;
-            }
-        }
-        f.write_char(r)
     }
 }
 
-impl<'a> fmt::Display for ArrayDisplay<'a> {
+impl<'a, S> fmt::Display for ArrayDisplay<'a, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.context.replace(None) {
-            Some(context) => self.write_nodes(f, |node, f| write!(f, "{}", node.display_evaluated(context))),
-            None => self.write_nodes(f, |node, f| write!(f, "{}", node.unevaluated())),
+        match self.context.take() {
+            Some(context) => {
+                let result = write_nodes_evaluated(self.nodes, self.kind, context, f);
+                // Re-store context to ensure repeated uses have the same result
+                self.context.set(Some(context));
+                result
+            },
+            None => write_nodes_unevaluated(self.nodes, self.kind, f),
         }
     }
+}
+
+fn write_nodes_evaluated<S>(
+    nodes: &[Node],
+    kind: ArrayKind,
+    context: &mut Context<S>,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    write_nodes(nodes, kind, f, |node, f| {
+        write!(f, "{}", node.display_evaluated(context))
+    })
+}
+
+fn write_nodes_unevaluated(nodes: &[Node], kind: ArrayKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write_nodes(nodes, kind, f, |node, f| write!(f, "{}", node.unevaluated()))
+}
+
+fn write_nodes(
+    nodes: &[Node],
+    kind: ArrayKind,
+    f: &mut fmt::Formatter<'_>,
+    mut display: impl FnMut(&Node, &mut fmt::Formatter<'_>) -> fmt::Result,
+) -> fmt::Result {
+    let (l, r) = kind.delimiters();
+    f.write_char(l)?;
+    if !nodes.is_empty() {
+        display(&nodes[0], f)?;
+        for node in &nodes[1..] {
+            f.write_char(' ')?;
+            display(node, f)?;
+        }
+    }
+    f.write_char(r)
 }

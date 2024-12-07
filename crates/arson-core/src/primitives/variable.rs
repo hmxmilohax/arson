@@ -10,7 +10,7 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(name: &str, context: &mut Context) -> Self {
+    pub fn new<S>(name: &str, context: &mut Context<S>) -> Self {
         let symbol = context.add_symbol(name);
         Self { symbol }
     }
@@ -19,11 +19,11 @@ impl Variable {
         &self.symbol
     }
 
-    pub fn get(&self, context: &mut Context) -> Node {
+    pub fn get<S>(&self, context: &mut Context<S>) -> Node {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set<T: Into<Node>>(&self, context: &mut Context, value: T) {
+    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) {
         context.set_variable(&self.symbol, value)
     }
 }
@@ -44,7 +44,7 @@ impl VariableStack {
         Self { stack: Vec::new() }
     }
 
-    pub fn save(&mut self, context: &mut Context, variable: &Variable) {
+    pub fn save<S>(&mut self, context: &mut Context<S>, variable: &Variable) {
         self.stack.push(VariableEntry {
             variable: variable.clone(),
             value: variable.get(context),
@@ -53,7 +53,7 @@ impl VariableStack {
 
     // Would have liked if there were a way to do this implicitly,
     // but the borrow checker said no, so this will have to do...
-    pub fn restore(&mut self, context: &mut Context) {
+    pub fn restore<S>(&mut self, context: &mut Context<S>) {
         for entry in self.stack.iter() {
             entry.variable.set(context, entry.value.clone());
         }

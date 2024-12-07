@@ -43,6 +43,8 @@ name = "arson-stdlib"
 version = "0.1.0"
 dependencies = [
  "arson-core",
+ "arson-fs",
+ "arson-parse",
  "thiserror",
 ]
 

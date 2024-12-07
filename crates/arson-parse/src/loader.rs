@@ -3,7 +3,7 @@
 use std::{io, marker::PhantomData};
 
 use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
-use arson_fs::VirtualPath;
+use arson_fs::{FsState, VirtualPath};
 
 use crate::{Expression, ExpressionValue, ParseError};
 
@@ -24,6 +24,7 @@ pub enum LoadError {
     #[error("A required macro definition was not found")]
     MacroNotFound,
 
+
     #[error("Inclusion is disallowed by the given load options")]
     IncludeNotAllowed,
 
@@ -31,7 +32,7 @@ pub enum LoadError {
     AutorunNotAllowed,
 
     #[error("Error occurred in #autorun block: {0}")]
-    AutorunError(#[from] Box<arson_core::Error>),
+    AutorunError(#[from] arson_core::Error),
 
     #[error("Encountered errors while including other files")]
     Inner {
@@ -55,8 +56,23 @@ impl PartialEq for LoadError {
     }
 }
 
-struct Loader<'ctx, 'src> {
-    context: &'ctx mut Context,
+impl From<LoadError> for io::Error {
+    fn from(value: LoadError) -> Self {
+        let io_kind = match value {
+            LoadError::IO(error) => return error,
+            LoadError::Parse(_) => io::ErrorKind::InvalidData,
+            LoadError::MacroNotFound => io::ErrorKind::Other,
+            LoadError::IncludeNotAllowed => io::ErrorKind::PermissionDenied,
+            LoadError::AutorunNotAllowed => io::ErrorKind::PermissionDenied,
+            LoadError::AutorunError(_) => io::ErrorKind::Other,
+            LoadError::Inner { .. } => io::ErrorKind::Other,
+        };
+        io::Error::new(io_kind, value.to_string())
+    }
+}
+
+struct Loader<'ctx, 'src, S: FsState> {
+    context: &'ctx mut Context<S>,
     options: LoadOptions,
     phantom: PhantomData<&'src ()>,
 }
@@ -70,8 +86,8 @@ enum NodeResult<'define> {
     Skip,
 }
 
-impl<'ctx, 'src> Loader<'ctx, 'src> {
-    fn new(context: &'ctx mut Context, options: LoadOptions) -> Self {
+impl<'ctx, 'src, S: FsState> Loader<'ctx, 'src, S> {
+    fn new(context: &'ctx mut Context<S>, options: LoadOptions) -> Self {
         Self { context, options, phantom: PhantomData }
     }
 
@@ -178,7 +194,7 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
                 let command = self.load_array(exprs.exprs.into_iter())?;
                 match self.context.execute(&NodeCommand::from(command)) {
                     Ok(_) => return Ok(NodeResult::Skip),
-                    Err(err) => return Err(LoadError::AutorunError(Box::new(err))),
+                    Err(err) => return Err(LoadError::AutorunError(err)),
                 }
             },
 
@@ -211,33 +227,35 @@ impl<'ctx, 'src> Loader<'ctx, 'src> {
     }
 
     fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
-        self.context.load_path(self.options.clone(), path)
+        load_path(self.context, self.options.clone(), path)
     }
 }
 
-pub fn load_path<P: AsRef<VirtualPath>>(
-    context: &mut Context,
+pub fn load_path<S: FsState, P: AsRef<VirtualPath>>(
+    context: &mut Context<S>,
     options: LoadOptions,
     path: P,
 ) -> Result<NodeArray, LoadError> {
-    let file_system = context.file_system();
-
-    let file = file_system.open_execute(&path)?;
+    let file = context.file_system().open_execute(&path)?;
     let text = io::read_to_string(file)?;
 
-    let canon = file_system.canonicalize(&path);
+    let canon = context.file_system().canonicalize(&path);
     let Some(dir) = canon.parent() else {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
     };
 
-    let old_cwd = context.set_cwd(dir);
+    let old_cwd = context.file_system_mut().set_cwd(dir);
     let array = load_text(context, options, &text)?;
-    context.set_cwd(&old_cwd);
+    context.file_system_mut().set_cwd(&old_cwd);
 
     Ok(array)
 }
 
-pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
+pub fn load_text<S: FsState>(
+    context: &mut Context<S>,
+    options: LoadOptions,
+    text: &str,
+) -> Result<NodeArray, LoadError> {
     let ast = match super::parse_text(text) {
         Ok(ast) => ast,
         Err(errors) => return Err(LoadError::Parse(errors)),
@@ -245,8 +263,8 @@ pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Res
     load_ast(context, options, ast.into_iter())
 }
 
-pub fn load_ast<'src>(
-    context: &mut Context,
+pub fn load_ast<'src, S: FsState>(
+    context: &mut Context<S>,
     options: LoadOptions,
     ast: impl Iterator<Item = Expression<'src>>,
 ) -> Result<NodeArray, LoadError> {
@@ -260,13 +278,17 @@ mod tests {
 
     use arson_core::*;
     use arson_fs::drivers::MockFileSystemDriver;
-    use arson_fs::AbsolutePath;
+    use arson_fs::*;
 
     use crate::{OwnedToken, OwnedTokenValue, TokenKind};
 
     use super::*;
 
-    fn assert_loaded(context: &mut Context, text: &str, expected: NodeArray) {
+    fn default_context() -> Context<FileSystem> {
+        Context::new(FileSystem::new(MockFileSystemDriver::new()))
+    }
+
+    fn assert_loaded<S: FsState>(context: &mut Context<S>, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
@@ -276,7 +298,7 @@ mod tests {
     }
 
     fn assert_error(text: &str, expected: LoadError) {
-        let mut context = Context::new();
+        let mut context = default_context();
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let errors = match load_text(&mut context, options, text) {
             Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
@@ -287,25 +309,25 @@ mod tests {
 
     #[test]
     fn integer() {
-        let mut context = Context::new();
+        let mut context = default_context();
         assert_loaded(&mut context, "1 2 3", arson_array![1, 2, 3]);
     }
 
     #[test]
     fn float() {
-        let mut context = Context::new();
+        let mut context = default_context();
         assert_loaded(&mut context, "1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn string() {
-        let mut context = Context::new();
+        let mut context = default_context();
         assert_loaded(&mut context, "\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
     }
 
     #[test]
     fn symbol() {
-        let mut context = Context::new();
+        let mut context = default_context();
 
         let sym_asdf = context.add_symbol("asdf");
         let sym_plus = context.add_symbol("+");
@@ -316,7 +338,7 @@ mod tests {
 
     #[test]
     fn variable() {
-        let mut context = Context::new();
+        let mut context = default_context();
 
         let var_asdf = Variable::new("asdf", &mut context);
         let var_this = Variable::new("this", &mut context);
@@ -326,13 +348,13 @@ mod tests {
 
     #[test]
     fn unhandled() {
-        let mut context = Context::new();
+        let mut context = default_context();
         assert_loaded(&mut context, "kDataUnhandled", arson_array![Node::UNHANDLED])
     }
 
     #[test]
     fn arrays() {
-        let mut context = Context::new();
+        let mut context = default_context();
 
         {
             let sym_asdf = context.add_symbol("asdf");
@@ -384,7 +406,25 @@ mod tests {
             ",
         );
 
-        let mut context = Context::with_file_driver(driver);
+        struct TestState {
+            autorun_str: String,
+            file_system: FileSystem,
+        }
+
+        impl FsState for TestState {
+            fn file_system(&self) -> &FileSystem {
+                &self.file_system
+            }
+
+            fn file_system_mut(&mut self) -> &mut FileSystem {
+                &mut self.file_system
+            }
+        }
+
+        let mut context = Context::new(TestState {
+            autorun_str: String::new(),
+            file_system: FileSystem::new(MockFileSystemDriver::new()),
+        });
 
         // Defines
         #[allow(non_snake_case)]
@@ -411,14 +451,14 @@ mod tests {
         assert_loaded(&mut context, "#merge numbers.dta", arson_array![]);
 
         // Ensure working directory behaves properly during includes
-        let cwd = context.cwd().clone();
+        let cwd = context.file_system().cwd().clone();
         let sym_included = context.add_symbol("included");
         assert_loaded(
             &mut context,
             "(included #include ./config/config.dta)",
             arson_array![arson_array![sym_included, 1, 2, 3, 4, 5]],
         );
-        assert_eq!(*context.cwd(), cwd);
+        assert_eq!(*context.file_system().cwd(), cwd);
 
         // Ensure included paths are not added as symbols
         // (despite being lexed as them)
@@ -458,27 +498,22 @@ mod tests {
         );
 
         // Autorun
-        use std::sync::Mutex;
-        static G_STRING: Mutex<String> = Mutex::new(String::new());
-
-        fn autorun_func(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-            *G_STRING.lock().unwrap() = args.string(context, 0)?.as_ref().clone();
+        context.register_func("autorun_func", |context, args| {
+            context.autorun_str = args.string(context, 0)?.as_ref().clone();
             Ok(Node::HANDLED)
-        }
-
-        context.register_func("autorun_func", autorun_func);
+        });
 
         assert_loaded(
             &mut context,
             "#autorun {autorun_func \"Auto-run was run\"}",
             arson_array![],
         );
-        assert_eq!(*G_STRING.lock().unwrap(), "Auto-run was run");
+        assert_eq!(context.autorun_str, "Auto-run was run");
     }
 
     #[test]
     fn conditionals() {
-        let mut context = Context::new();
+        let mut context = default_context();
 
         let sym_define = context.add_symbol("kDefine");
 

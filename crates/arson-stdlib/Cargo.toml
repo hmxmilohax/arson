@@ -8,4 +8,7 @@ publish = false
 
 [dependencies]
 arson-core = { version = "0.1.0", path = "../arson-core" }
+arson-fs = { version = "0.1.0", path = "../arson-fs" }
+arson-parse = { version = "0.1.0", path = "../arson-parse" }
+
 thiserror = "1.0.65"

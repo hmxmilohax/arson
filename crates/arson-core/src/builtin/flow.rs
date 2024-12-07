@@ -2,7 +2,7 @@
 
 use crate::*;
 
-pub fn register_funcs(context: &mut Context) {
+pub fn register_funcs<S>(context: &mut Context<S>) {
     control::register_funcs(context);
     loops::register_funcs(context);
     vars::register_funcs(context);
@@ -11,13 +11,13 @@ pub fn register_funcs(context: &mut Context) {
 pub mod control {
     use super::*;
 
-    pub fn register_funcs(context: &mut Context) {
+    pub fn register_funcs<S>(context: &mut Context<S>) {
         context.register_func("if", self::if_block);
         context.register_func("if_else", self::if_else_block);
         context.register_func("unless", self::unless_block);
     }
 
-    pub fn if_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    pub fn if_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -27,7 +27,7 @@ pub mod control {
         Ok(Node::HANDLED)
     }
 
-    pub fn if_else_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    pub fn if_else_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             args.command(1)?.execute(context)
         } else {
@@ -35,7 +35,7 @@ pub mod control {
         }
     }
 
-    pub fn unless_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    pub fn unless_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         if !args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -49,13 +49,13 @@ pub mod control {
 pub mod loops {
     use super::*;
 
-    pub fn register_funcs(context: &mut Context) {
+    pub fn register_funcs<S>(context: &mut Context<S>) {
         context.register_func("while", self::while_block);
         context.register_func("foreach", self::foreach_block);
         context.register_func("foreach_int", self::foreach_int);
     }
 
-    pub fn while_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    pub fn while_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         while args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -65,7 +65,7 @@ pub mod loops {
         Ok(Node::HANDLED)
     }
 
-    pub fn foreach_block(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    pub fn foreach_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let variable = args.variable(0)?;
 
         for node in args.array(context, 1)?.borrow()?.iter() {
@@ -79,9 +79,9 @@ pub mod loops {
         Ok(Node::HANDLED)
     }
 
-    pub fn foreach_int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        fn run_loop(
-            context: &mut Context,
+    pub fn foreach_int<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        fn run_loop<S>(
+            context: &mut Context<S>,
             args: &NodeSlice,
             variable: &Variable,
             values: impl Iterator<Item = i64>,
@@ -114,12 +114,12 @@ pub mod vars {
 
     use super::*;
 
-    pub fn register_funcs(context: &mut Context) {
+    pub fn register_funcs<S>(context: &mut Context<S>) {
         context.register_func("do", self::do_block);
         context.register_func("with", self::with_block);
     }
 
-    pub fn do_block(context: &mut Context, mut args: &NodeSlice) -> ExecuteResult {
+    pub fn do_block<S>(context: &mut Context<S>, mut args: &NodeSlice) -> ExecuteResult {
         let mut saved_variables = VariableStack::new();
         while let NodeValue::Array(initializer) = args.unevaluated(0)? {
             args = args.slice(1..)?;
@@ -140,7 +140,7 @@ pub mod vars {
         Ok(result)
     }
 
-    pub fn with_block(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
+    pub fn with_block<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
         todo!("`with` func")
     }
 }

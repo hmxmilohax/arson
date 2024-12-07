@@ -3,8 +3,11 @@
 use crate::primitives::*;
 use crate::{arson_array, arson_assert_len};
 
-use arson_fs::{AbsolutePath, FileSystem, FileSystemDriver, VirtualPath};
-use arson_parse::{Expression, LoadOptions, LoadError};
+/// A function which is callable from script.
+pub type HandleFn<State> = fn(context: &mut Context<State>, args: &NodeSlice) -> ExecuteResult;
+
+/// The result of a script execution.
+pub type ExecuteResult = crate::Result<Node>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ExecutionError {
@@ -15,20 +18,24 @@ pub enum ExecutionError {
     Failure(String),
 }
 
-pub struct Context {
+pub struct Context<State> {
+    // State type is exposed via Deref/DerefMut
+    // for more seamless integration
+    state: State,
+
     symbol_table: SymbolTable,
-    file_system: FileSystem,
 
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<Node>,
-    functions: SymbolMap<HandleFn>,
+    functions: SymbolMap<HandleFn<State>>,
 }
 
-impl Context {
-    pub fn new() -> Self {
+impl<State> Context<State> {
+    pub fn new(state: State) -> Self {
         let mut context = Self {
+            state,
+
             symbol_table: SymbolTable::new(),
-            file_system: FileSystem::new_empty(),
 
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
@@ -38,25 +45,6 @@ impl Context {
         crate::builtin::register_funcs(&mut context);
 
         context
-    }
-
-    pub fn with_file_driver<T: FileSystemDriver + 'static>(driver: T) -> Self {
-        Self {
-            file_system: FileSystem::new(driver),
-            ..Self::new()
-        }
-    }
-
-    pub fn file_system(&self) -> &FileSystem {
-        &self.file_system
-    }
-
-    pub fn cwd(&self) -> &AbsolutePath {
-        self.file_system.cwd()
-    }
-
-    pub fn set_cwd<P: AsRef<VirtualPath>>(&mut self, path: P) -> AbsolutePath {
-        self.file_system.set_cwd(path)
     }
 
     pub fn add_symbol(&mut self, name: &str) -> Symbol {
@@ -102,7 +90,7 @@ impl Context {
         self.variables.insert(name.clone(), value.into());
     }
 
-    pub fn register_func(&mut self, name: &str, func: HandleFn) -> bool {
+    pub fn register_func(&mut self, name: &str, func: HandleFn<State>) -> bool {
         let name = self.symbol_table.add(name);
         self.functions.insert(name.clone(), func).is_none()
     }
@@ -113,22 +101,6 @@ impl Context {
             Some(func) => self.register_func(alias, *func),
             None => false,
         }
-    }
-
-    pub fn load_path<P: AsRef<VirtualPath>>(&mut self, options: LoadOptions, path: P) -> Result<NodeArray, LoadError> {
-        arson_parse::load_path(self, options, path)
-    }
-
-    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
-        arson_parse::load_text(self, options, text)
-    }
-
-    pub fn load_ast<'src>(
-        &mut self,
-        options: LoadOptions,
-        ast: impl Iterator<Item = Expression<'src>>,
-    ) -> Result<NodeArray, LoadError> {
-        arson_parse::load_ast(self, options, ast)
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
@@ -179,8 +151,22 @@ impl Context {
     }
 }
 
-impl Default for Context {
+impl<State: Default> Default for Context<State> {
     fn default() -> Self {
-        Self::new()
+        Self::new(Default::default())
+    }
+}
+
+impl<State> std::ops::Deref for Context<State> {
+    type Target = State;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<State> std::ops::DerefMut for Context<State> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
     }
 }
