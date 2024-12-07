@@ -2,12 +2,12 @@
 
 use std::io;
 
+use arson_core::*;
 use arson_fs::*;
 
-use arson_core::*;
-use arson_parse::LoadOptions;
+use crate::{StdlibContextExt, StdlibState};
 
-pub fn register_funcs<S: FsState>(context: &mut Context<S>) {
+pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
     context.register_func("basename", self::basename);
     context.register_func("dirname", self::dirname);
 
@@ -20,7 +20,7 @@ pub fn register_funcs<S: FsState>(context: &mut Context<S>) {
     context.register_func("file_list_paths", self::file_list_paths);
 }
 
-pub fn basename<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn basename<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path_str = args.string(context, 0)?;
@@ -32,7 +32,7 @@ pub fn basename<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> Execu
     }
 }
 
-pub fn dirname<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn dirname<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path_str = args.string(context, 0)?;
@@ -44,21 +44,19 @@ pub fn dirname<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> Execut
     }
 }
 
-pub fn read_file<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn read_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
-    // TODO: Allow configuring default load options
-    let options = LoadOptions { allow_include: true, allow_autorun: true };
-    let array = arson_parse::load_path(context, options, path.as_ref()).map_err(io::Error::from)?;
+    let array = context.load_path(path.as_ref()).map_err(io::Error::from)?;
     Ok(array.into())
 }
 
-pub fn write_file<S: FsState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+pub fn write_file<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
     todo!("write_file")
 }
 
-pub fn file_exists<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
@@ -66,7 +64,7 @@ pub fn file_exists<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> Ex
     Ok(exists.into())
 }
 
-pub fn file_read_only<S: FsState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn file_read_only<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
@@ -76,10 +74,10 @@ pub fn file_read_only<S: FsState>(context: &mut Context<S>, args: &NodeSlice) ->
     }
 }
 
-pub fn file_list<S: FsState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+pub fn file_list<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
     todo!("file_list")
 }
 
-pub fn file_list_paths<S: FsState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+pub fn file_list_paths<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
     todo!("file_list_paths")
 }
