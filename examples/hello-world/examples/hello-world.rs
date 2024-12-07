@@ -40,7 +40,7 @@ fn main() -> arson::Result {
     println!("Created context.");
 
     // Load main.dta file
-    let file = context.load_path("/main.dta").unwrap();
+    let file = context.load_path("/main.dta")?;
     println!("Loaded main.dta");
 
     // Execute (main {...}) script

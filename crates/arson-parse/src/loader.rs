@@ -70,6 +70,12 @@ impl From<LoadError> for io::Error {
     }
 }
 
+impl From<LoadError> for arson_core::Error {
+    fn from(value: LoadError) -> Self {
+        io::Error::from(value).into()
+    }
+}
+
 struct Loader<'ctx, 'src, S: FsState> {
     context: &'ctx mut Context<S>,
     options: LoadOptions,

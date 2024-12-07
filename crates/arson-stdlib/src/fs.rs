@@ -48,7 +48,7 @@ pub fn read_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> 
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
-    let array = context.load_path(path.as_ref()).map_err(io::Error::from)?;
+    let array = context.load_path(path.as_ref())?;
     Ok(array.into())
 }
 
