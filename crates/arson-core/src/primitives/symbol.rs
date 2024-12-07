@@ -100,10 +100,13 @@ impl SymbolTable {
         self.table.get(name).cloned()
     }
 
-    /// Removes the given symbol from the table.
-    pub fn remove(&mut self, symbol: &Symbol) {
-        self.table.remove(&*symbol.name);
-    }
+    // TODO: Find a way to implement this more soundly
+    // Being able to just remove a symbol and invalidate any existing instances
+    // of that symbol is really bad lol
+    // /// Removes the given symbol from the table.
+    // pub fn remove(&mut self, symbol: &Symbol) {
+    //     self.table.remove(&*symbol.name);
+    // }
 }
 
 impl Default for SymbolTable {
@@ -162,14 +165,14 @@ mod tests {
             assert_eq!(symbol, symbol2);
         }
 
-        #[test]
-        fn remove() {
-            let mut table = SymbolTable::new();
-            table.add("asdf");
+        // #[test]
+        // fn remove() {
+        //     let mut table = SymbolTable::new();
+        //     table.add("asdf");
 
-            let symbol = table.get("asdf").expect("The symbol should be added");
-            table.remove(&symbol);
-            assert!(table.get("asdf") == None);
-        }
+        //     let symbol = table.get("asdf").expect("The symbol should be added");
+        //     table.remove(&symbol);
+        //     assert!(table.get("asdf") == None);
+        // }
     }
 }
