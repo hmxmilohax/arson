@@ -44,7 +44,7 @@ fn main() -> arson::Result {
     println!("Loaded main.dta");
 
     // Execute (main {...}) script
-    let script = file.find_array(context.add_symbol("main"))?;
+    let script = file.find_array((&mut context, "main"))?;
     context.execute_block(script.borrow()?.slice(1..)?)?;
     println!("Ran main.dta!");
 

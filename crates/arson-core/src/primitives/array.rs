@@ -234,9 +234,71 @@ impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
 //     }
 // }
 
+pub trait IntoDataPredicate {
+    type Target: FindDataPredicate;
+
+    fn into_predicate(self) -> Self::Target;
+}
+
+impl<T: FindDataPredicate> IntoDataPredicate for T {
+    type Target = T;
+
+    fn into_predicate(self) -> Self::Target {
+        self
+    }
+}
+
+impl<S> IntoDataPredicate for (&mut Context<S>, &str) {
+    type Target = Symbol;
+
+    fn into_predicate(self) -> Self::Target {
+        self.0.add_symbol(self.1)
+    }
+}
+
+impl<S> IntoDataPredicate for (&mut Context<S>, &String) {
+    type Target = Symbol;
+
+    fn into_predicate(self) -> Self::Target {
+        self.0.add_symbol(self.1)
+    }
+}
+
+// this is kinda stupid lol
+pub trait IntoIntoDataPredicate {
+    type Target: IntoDataPredicate;
+
+    fn into_predicate<S>(self, context: &mut Context<S>) -> Self::Target;
+}
+
+impl<T: IntoDataPredicate> IntoIntoDataPredicate for T {
+    type Target = T;
+
+    fn into_predicate<S>(self, _context: &mut Context<S>) -> Self::Target {
+        self
+    }
+}
+
+impl IntoIntoDataPredicate for &str {
+    type Target = Symbol;
+
+    fn into_predicate<S>(self, context: &mut Context<S>) -> Self::Target {
+        context.add_symbol(self)
+    }
+}
+
+impl IntoIntoDataPredicate for &String {
+    type Target = Symbol;
+
+    fn into_predicate<S>(self, context: &mut Context<S>) -> Self::Target {
+        context.add_symbol(self)
+    }
+}
+
 // Data retrieval by predicate
 impl NodeSlice {
-    pub fn find_array(&self, predicate: impl FindDataPredicate) -> crate::Result<ArrayRef> {
+    pub fn find_array(&self, predicate: impl IntoDataPredicate) -> crate::Result<ArrayRef> {
+        let predicate = predicate.into_predicate();
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -251,7 +313,8 @@ impl NodeSlice {
         Err(ArrayError::NotFound.into())
     }
 
-    pub fn find_array_opt(&self, predicate: impl FindDataPredicate) -> Option<ArrayRef> {
+    pub fn find_array_opt(&self, predicate: impl IntoDataPredicate) -> Option<ArrayRef> {
+        let predicate = predicate.into_predicate();
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -271,14 +334,14 @@ impl NodeSlice {
         None
     }
 
-    pub fn find_data(&self, predicate: impl FindDataPredicate) -> crate::Result<Node> {
+    pub fn find_data(&self, predicate: impl IntoDataPredicate) -> crate::Result<Node> {
         let array = self.find_array(predicate)?;
         let array = array.borrow()?;
         arson_assert_len!(array, 2, "Expected only one value in array");
         array.get(1).cloned()
     }
 
-    pub fn find_data_opt(&self, predicate: impl FindDataPredicate) -> Option<Node> {
+    pub fn find_data_opt<S>(&self, predicate: impl IntoDataPredicate) -> Option<Node> {
         let array = self.find_array_opt(predicate)?;
         let array = array.borrow().ok()?;
         if array.len() != 2 {
@@ -290,48 +353,66 @@ impl NodeSlice {
     pub fn find_integer<S>(
         &self,
         context: &mut Context<S>,
-        predicate: impl FindDataPredicate,
+        predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Integer> {
-        self.find_data(predicate)?.integer(context)
+        self.find_data(predicate.into_predicate(context))?
+            .integer(context)
     }
 
     pub fn find_float<S>(
         &self,
         context: &mut Context<S>,
-        predicate: impl FindDataPredicate,
+        predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<FloatValue> {
-        self.find_data(predicate)?.float(context)
+        self.find_data(predicate.into_predicate(context))?
+            .float(context)
     }
 
-    pub fn find_number<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<Number> {
-        self.find_data(predicate)?.number(context)
+    pub fn find_number<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<Number> {
+        self.find_data(predicate.into_predicate(context))?
+            .number(context)
     }
 
-    pub fn find_boolean<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<bool> {
-        self.find_data(predicate)?.boolean(context)
+    pub fn find_boolean<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<bool> {
+        self.find_data(predicate.into_predicate(context))?
+            .boolean(context)
     }
 
     pub fn find_string<S>(
         &self,
         context: &mut Context<S>,
-        predicate: impl FindDataPredicate,
+        predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Rc<String>> {
-        self.find_data(predicate)?.string(context)
+        self.find_data(predicate.into_predicate(context))?
+            .string(context)
     }
 
-    pub fn find_symbol<S>(&self, context: &mut Context<S>, predicate: impl FindDataPredicate) -> crate::Result<Symbol> {
-        self.find_data(predicate)?.symbol(context)
+    pub fn find_symbol<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<Symbol> {
+        self.find_data(predicate.into_predicate(context))?
+            .symbol(context)
     }
 
-    pub fn find_variable(&self, predicate: impl FindDataPredicate) -> crate::Result<Variable> {
+    pub fn find_variable(&self, predicate: impl IntoDataPredicate) -> crate::Result<Variable> {
         self.find_data(predicate)?.variable().cloned()
     }
 
-    pub fn find_command(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeCommand>> {
+    pub fn find_command(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeCommand>> {
         self.find_data(predicate)?.command().cloned()
     }
 
-    pub fn find_property(&self, predicate: impl FindDataPredicate) -> crate::Result<Rc<NodeProperty>> {
+    pub fn find_property(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeProperty>> {
         self.find_data(predicate)?.property().cloned()
     }
 
