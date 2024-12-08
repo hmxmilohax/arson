@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::rc::Rc;
+
 use crate::Context;
 
 use super::{Node, Symbol};
@@ -19,12 +21,22 @@ impl Variable {
         &self.symbol
     }
 
+    pub fn name(&self) -> &Rc<String> {
+        &self.symbol.name()
+    }
+
     pub fn get<S>(&self, context: &mut Context<S>) -> Node {
         context.get_variable(&self.symbol)
     }
 
     pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) {
         context.set_variable(&self.symbol, value)
+    }
+}
+
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${}", self.name())
     }
 }
 

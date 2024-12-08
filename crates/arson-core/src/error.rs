@@ -58,9 +58,9 @@ macro_rules! arson_assert_len {
             }));
         }
     };
-    ($array:ident, $len:expr, $msg:literal) => {
+    ($array:ident, $len:expr, $($arg:expr)+) => {
         if $array.len() != $len {
-            $crate::arson_fail!(concat!($msg, ": expected {}, got {}"), $len, $array.len());
+            $crate::arson_fail!("{}: expected {}, got {}", format!($($arg)+), $len, $array.len());
         }
     };
 }

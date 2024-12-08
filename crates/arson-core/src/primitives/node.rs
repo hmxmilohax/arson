@@ -335,7 +335,7 @@ impl Display for NodeValue {
             Self::Float(value) => Display::fmt(value, f),
             Self::String(value) => Display::fmt(value, f),
             Self::Symbol(value) => Display::fmt(value, f),
-            Self::Variable(value) => write!(f, "${}", value.symbol()),
+            Self::Variable(value) => Display::fmt(value, f),
 
             Self::Array(value) => match ArrayRef::borrow(value) {
                 Ok(borrow) => borrow.fmt(f),
