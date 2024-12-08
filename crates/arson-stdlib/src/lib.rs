@@ -14,3 +14,7 @@ pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
     math::register_funcs(context);
     stdio::register_funcs(context);
 }
+
+pub mod prolog {
+    pub use super::state::*;
+}

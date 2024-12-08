@@ -16,5 +16,5 @@ pub use loader::*;
 pub use parser::*;
 
 pub mod prolog {
-    pub use super::loader::{load_path, load_text, LoadError, LoadOptions};
+    pub use super::loader::{LoadError, LoadOptions};
 }

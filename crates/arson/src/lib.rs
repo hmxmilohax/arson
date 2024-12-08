@@ -11,5 +11,6 @@ pub use arson_parse::prolog::*;
 pub mod prolog {
     pub use super::core::prolog::*;
     pub use super::fs::prolog::*;
-    pub use super::parse::prolog::{LoadError, LoadOptions};
+    pub use super::parse::prolog::*;
+    pub use super::stdlib::prolog::*;
 }

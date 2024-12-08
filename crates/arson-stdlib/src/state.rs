@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_core::prolog::*;
-use arson_fs::{FsState, VirtualPath};
+use arson_fs::prolog::*;
 use arson_parse::prolog::*;
 
-pub trait StdlibState: FsState {
+pub trait StdlibState: FileSystemState {
     fn file_load_options(&self) -> LoadOptions;
 }
 

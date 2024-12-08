@@ -3,7 +3,7 @@
 use std::{io, marker::PhantomData};
 
 use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
-use arson_fs::{FsState, VirtualPath};
+use arson_fs::{FileSystemState, VirtualPath};
 
 use crate::{Expression, ExpressionValue, ParseError};
 
@@ -76,7 +76,7 @@ impl From<LoadError> for arson_core::Error {
     }
 }
 
-struct Loader<'ctx, 'src, S: FsState> {
+struct Loader<'ctx, 'src, S: FileSystemState> {
     context: &'ctx mut Context<S>,
     options: LoadOptions,
     phantom: PhantomData<&'src ()>,
@@ -91,7 +91,7 @@ enum NodeResult<'define> {
     Skip,
 }
 
-impl<'ctx, 'src, S: FsState> Loader<'ctx, 'src, S> {
+impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
     fn new(context: &'ctx mut Context<S>, options: LoadOptions) -> Self {
         Self { context, options, phantom: PhantomData }
     }
@@ -236,7 +236,7 @@ impl<'ctx, 'src, S: FsState> Loader<'ctx, 'src, S> {
     }
 }
 
-pub fn load_path<S: FsState, P: AsRef<VirtualPath>>(
+pub fn load_path<S: FileSystemState, P: AsRef<VirtualPath>>(
     context: &mut Context<S>,
     options: LoadOptions,
     path: P,
@@ -256,7 +256,7 @@ pub fn load_path<S: FsState, P: AsRef<VirtualPath>>(
     Ok(array)
 }
 
-pub fn load_text<S: FsState>(
+pub fn load_text<S: FileSystemState>(
     context: &mut Context<S>,
     options: LoadOptions,
     text: &str,
@@ -268,7 +268,7 @@ pub fn load_text<S: FsState>(
     load_ast(context, options, ast.into_iter())
 }
 
-pub fn load_ast<'src, S: FsState>(
+pub fn load_ast<'src, S: FileSystemState>(
     context: &mut Context<S>,
     options: LoadOptions,
     ast: impl Iterator<Item = Expression<'src>>,
@@ -293,7 +293,7 @@ mod tests {
         Context::new(FileSystem::new(MockFileSystemDriver::new()))
     }
 
-    fn assert_loaded<S: FsState>(context: &mut Context<S>, text: &str, expected: NodeArray) {
+    fn assert_loaded<S: FileSystemState>(context: &mut Context<S>, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
@@ -416,7 +416,7 @@ mod tests {
             file_system: FileSystem,
         }
 
-        impl FsState for TestState {
+        impl FileSystemState for TestState {
             fn file_system(&self) -> &FileSystem {
                 &self.file_system
             }

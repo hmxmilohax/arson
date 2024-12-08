@@ -11,5 +11,6 @@ pub use filesystem::*;
 pub use path::*;
 
 pub mod prolog {
-    pub use super::{AbsolutePath, FileSystem, VirtualPath, VirtualPathBuf};
+    pub use super::drivers::BasicFileSystemDriver;
+    pub use super::{AbsolutePath, FileSystem, FileSystemState, VirtualPath, VirtualPathBuf};
 }

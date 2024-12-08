@@ -2,16 +2,13 @@
 
 use std::path::Path;
 
-use arson::fs::drivers::BasicFileSystemDriver;
-use arson::fs::FsState;
 use arson::prolog::*;
-use arson::stdlib::*;
 
 struct State {
     file_system: FileSystem,
 }
 
-impl FsState for State {
+impl FileSystemState for State {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
     }

@@ -8,7 +8,7 @@ use super::{AbsolutePath, FileSystemDriver, Metadata, ReadWrite, VirtualPath};
 ///
 /// Use this as a bound to the state type on [`Context`](arson_core::Context)
 /// to require file system access for a function.
-pub trait FsState {
+pub trait FileSystemState {
     fn file_system(&self) -> &FileSystem;
     fn file_system_mut(&mut self) -> &mut FileSystem;
 }
@@ -97,7 +97,7 @@ impl FileSystem {
     }
 }
 
-impl FsState for FileSystem {
+impl FileSystemState for FileSystem {
     fn file_system(&self) -> &FileSystem {
         self
     }
