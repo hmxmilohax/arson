@@ -61,26 +61,14 @@ fn new_symbol(str: &str) -> Symbol {
     Symbol { name: Rc::new(str.to_owned()) }
 }
 
-pub struct SymbolTable {
+pub(crate) struct SymbolTable {
     table: HashMap<String, Symbol>,
-    empty_sym: Symbol,
 }
 
 impl SymbolTable {
     /// Constructs a new [`SymbolTable`].
     pub fn new() -> Self {
-        let mut table = HashMap::new();
-
-        // Make empty symbol and insert it into the table
-        let empty_sym = new_symbol("");
-        table.insert(empty_sym.name().as_ref().clone(), empty_sym.clone());
-
-        Self { table, empty_sym }
-    }
-
-    /// Retrieves the empty symbol for this table
-    pub fn empty_sym(&self) -> Symbol {
-        self.empty_sym.clone()
+        Self { table: HashMap::new() }
     }
 
     /// Adds a symbol by name to the table.
@@ -107,12 +95,6 @@ impl SymbolTable {
     // pub fn remove(&mut self, symbol: &Symbol) {
     //     self.table.remove(&*symbol.name);
     // }
-}
-
-impl Default for SymbolTable {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 #[cfg(test)]
