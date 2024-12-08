@@ -216,8 +216,7 @@ pub enum LexError {
 }
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexError> {
-    text.get(before..text.len() - after)
-        .ok_or(LexError::DelimiterError)
+    text.get(before..text.len() - after).ok_or(LexError::DelimiterError)
 }
 
 fn parse_hex(lex: &mut Lexer<'_>) -> Result<IntegerValue, LexError> {
@@ -395,13 +394,10 @@ mod tests {
     fn comments() {
         assert_token("; comment", TokenValue::Comment, 0..9);
         assert_token(";comment", TokenValue::Comment, 0..8);
-        assert_tokens(
-            "/* comment */",
-            vec![
-                TokenValue::BlockCommentStart("/* comment "),
-                TokenValue::BlockCommentEnd("*/"),
-            ],
-        );
+        assert_tokens("/* comment */", vec![
+            TokenValue::BlockCommentStart("/* comment "),
+            TokenValue::BlockCommentEnd("*/"),
+        ]);
 
         // These get parsed as symbols in the original lexer
         assert_token("a;symbol", TokenValue::Symbol("a;symbol"), 0..8);

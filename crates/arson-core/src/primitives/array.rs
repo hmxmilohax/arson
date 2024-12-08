@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    cell::{Cell, RefCell},
-    fmt::{self, Write},
-    ops::Range,
-    rc::Rc,
-    slice::SliceIndex,
-};
+use std::cell::{Cell, RefCell};
+use std::fmt::{self, Write};
+use std::ops::Range;
+use std::rc::Rc;
+use std::slice::SliceIndex;
 
 use crate::*;
 
@@ -79,15 +77,11 @@ impl ArrayRef {
     }
 
     pub fn borrow(&self) -> crate::Result<std::cell::Ref<'_, NodeArray>> {
-        self.inner
-            .try_borrow()
-            .map_err(|e| ArrayError::BadBorrow(e).into())
+        self.inner.try_borrow().map_err(|e| ArrayError::BadBorrow(e).into())
     }
 
     pub fn borrow_mut(&self) -> crate::Result<std::cell::RefMut<'_, NodeArray>> {
-        self.inner
-            .try_borrow_mut()
-            .map_err(|e| ArrayError::BadMutBorrow(e).into())
+        self.inner.try_borrow_mut().map_err(|e| ArrayError::BadMutBorrow(e).into())
     }
 }
 
@@ -355,8 +349,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Integer> {
-        self.find_data(predicate.into_predicate(context))?
-            .integer(context)
+        self.find_data(predicate.into_predicate(context))?.integer(context)
     }
 
     pub fn find_float<S>(
@@ -364,8 +357,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<FloatValue> {
-        self.find_data(predicate.into_predicate(context))?
-            .float(context)
+        self.find_data(predicate.into_predicate(context))?.float(context)
     }
 
     pub fn find_number<S>(
@@ -373,8 +365,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Number> {
-        self.find_data(predicate.into_predicate(context))?
-            .number(context)
+        self.find_data(predicate.into_predicate(context))?.number(context)
     }
 
     pub fn find_boolean<S>(
@@ -382,8 +373,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<bool> {
-        self.find_data(predicate.into_predicate(context))?
-            .boolean(context)
+        self.find_data(predicate.into_predicate(context))?.boolean(context)
     }
 
     pub fn find_string<S>(
@@ -391,8 +381,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Rc<String>> {
-        self.find_data(predicate.into_predicate(context))?
-            .string(context)
+        self.find_data(predicate.into_predicate(context))?.string(context)
     }
 
     pub fn find_symbol<S>(
@@ -400,8 +389,7 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Symbol> {
-        self.find_data(predicate.into_predicate(context))?
-            .symbol(context)
+        self.find_data(predicate.into_predicate(context))?.symbol(context)
     }
 
     pub fn find_variable(&self, predicate: impl IntoDataPredicate) -> crate::Result<Variable> {
@@ -441,13 +429,12 @@ impl NodeSlice {
             };
 
             match node.number(context)? {
-                Number::Integer(right) => integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float),
-                Number::Float(right) => float_chain(
-                    context,
-                    args.slice(1..)?,
-                    f_float(left.0 as FloatValue, right)?,
-                    f_float,
-                ),
+                Number::Integer(right) => {
+                    integer_chain(context, args.slice(1..)?, f_int(left, right)?, f_int, f_float)
+                },
+                Number::Float(right) => {
+                    float_chain(context, args.slice(1..)?, f_float(left.0 as FloatValue, right)?, f_float)
+                },
             }
         }
 
@@ -462,13 +449,12 @@ impl NodeSlice {
             };
 
             match node.number(context)? {
-                Number::Integer(right) => float_chain(
-                    context,
-                    args.slice(1..)?,
-                    f_float(left, right.0 as FloatValue)?,
-                    f_float,
-                ),
-                Number::Float(right) => float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float),
+                Number::Integer(right) => {
+                    float_chain(context, args.slice(1..)?, f_float(left, right.0 as FloatValue)?, f_float)
+                },
+                Number::Float(right) => {
+                    float_chain(context, args.slice(1..)?, f_float(left, right)?, f_float)
+                },
             }
         }
 
@@ -829,9 +815,7 @@ fn write_nodes_evaluated<S>(
     context: &mut Context<S>,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    write_nodes(nodes, kind, f, |node, f| {
-        write!(f, "{}", node.display_evaluated(context))
-    })
+    write_nodes(nodes, kind, f, |node, f| write!(f, "{}", node.display_evaluated(context)))
 }
 
 fn write_nodes_unevaluated(nodes: &[Node], kind: ArrayKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {

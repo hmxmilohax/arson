@@ -14,9 +14,6 @@ pub enum Error {
     #[error("Array error: {0}")]
     ArrayError(#[from] ArrayError),
 
-    // #[error("Error loading script file: {0}")]
-    // LoadError(#[from] LoadError),
-
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }

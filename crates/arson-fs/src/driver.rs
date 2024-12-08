@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    io::{self, Read, Write},
-    time::SystemTime,
-};
+use std::io::{self, Read, Write};
+use std::time::SystemTime;
 
 use super::AbsolutePath;
 

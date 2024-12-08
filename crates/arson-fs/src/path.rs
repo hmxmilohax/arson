@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    borrow::Borrow,
-    collections::TryReserveError,
-    fmt::{Debug, Display},
-    ops::{Deref, DerefMut},
-};
+use std::borrow::Borrow;
+use std::collections::TryReserveError;
+use std::fmt::{Debug, Display};
+use std::ops::{Deref, DerefMut};
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[error("prefix not found")]
@@ -801,10 +799,9 @@ impl DoubleEndedIterator for AbsolutePathIter<'_> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use {VirtualPath as Path, VirtualPathBuf as PathBuf};
 
-    use VirtualPath as Path;
-    use VirtualPathBuf as PathBuf;
+    use super::*;
 
     mod path {
         use super::*;

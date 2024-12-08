@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    collections::HashMap,
-    io::{self, Read, Write},
-    rc::Rc,
-    time::SystemTime,
-};
+use std::collections::HashMap;
+use std::io::{self, Read, Write};
+use std::rc::Rc;
+use std::time::SystemTime;
 
 use crate::{AbsolutePath, FileSystemDriver, Metadata, ReadWrite};
 

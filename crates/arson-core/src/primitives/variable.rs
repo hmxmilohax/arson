@@ -2,9 +2,8 @@
 
 use std::rc::Rc;
 
-use crate::Context;
-
 use super::{Node, Symbol};
+use crate::Context;
 
 #[derive(Debug, Clone)]
 pub struct Variable {

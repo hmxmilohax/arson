@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    borrow::Borrow,
-    cell::Cell,
-    cmp::Ordering,
-    fmt::{self, Display},
-    num::Wrapping,
-    rc::Rc,
-};
+use std::borrow::Borrow;
+use std::cell::Cell;
+use std::cmp::Ordering;
+use std::fmt::{self, Display};
+use std::num::Wrapping;
+use std::rc::Rc;
 
 use crate::*;
 
@@ -402,7 +400,9 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.integer() {
             Some(value) => Ok(value),
-            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }.into()),
+            None => {
+                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }.into())
+            },
         }
     }
 
@@ -410,7 +410,9 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.float() {
             Some(value) => Ok(value),
-            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }.into()),
+            None => {
+                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }.into())
+            },
         }
     }
 
@@ -434,7 +436,9 @@ impl Node {
         let value = self.evaluate(context)?;
         match value.string() {
             Some(value) => Ok(value.clone()),
-            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::String }.into()),
+            None => {
+                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::String }.into())
+            },
         }
     }
 

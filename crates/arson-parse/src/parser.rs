@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{iter::Peekable, marker::PhantomData};
+use std::iter::Peekable;
+use std::marker::PhantomData;
 
 use arson_core::{ArrayKind, FloatValue, IntegerValue};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -198,9 +199,7 @@ impl ParseError {
             ParseError::UnmatchedConditional(range) => Diagnostic::error()
                 .with_code("DTA0004")
                 .with_message("unmatched conditional directive")
-                .with_notes(vec![
-                    "#else or #endif required to close the conditional block".to_owned()
-                ])
+                .with_notes(vec!["#else or #endif required to close the conditional block".to_owned()])
                 .with_labels(vec![Label::primary(file_id, range.clone())]),
             ParseError::UnbalancedConditional(range) => Diagnostic::error()
                 .with_code("DTA0005")
@@ -352,7 +351,9 @@ impl<'src> Preprocessor<'src> {
             TokenValue::PropertyOpen => PreprocessedTokenKind::PropertyOpen,
             TokenValue::PropertyClose => PreprocessedTokenKind::PropertyClose,
 
-            TokenValue::Define => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define),
+            TokenValue::Define => {
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define)
+            },
             TokenValue::Undefine => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Undefine)
             },
@@ -362,16 +363,20 @@ impl<'src> Preprocessor<'src> {
             TokenValue::IncludeOptional => {
                 return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::IncludeOptional)
             },
-            TokenValue::Merge => return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge),
+            TokenValue::Merge => {
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge)
+            },
             TokenValue::Autorun => PreprocessedTokenKind::Autorun,
 
             TokenValue::Ifdef => {
                 let (name, name_location) = next_token!(self, tokens, Symbol());
-                return self.parse_conditional(tokens, token.location, true, StrExpression::new(name, name_location));
+                let name = StrExpression::new(name, name_location);
+                return self.parse_conditional(tokens, token.location, true, name);
             },
             TokenValue::Ifndef => {
                 let (name, name_location) = next_token!(self, tokens, Symbol());
-                return self.parse_conditional(tokens, token.location, false, StrExpression::new(name, name_location));
+                let name = StrExpression::new(name, name_location);
+                return self.parse_conditional(tokens, token.location, false, name);
             },
             TokenValue::Else => {
                 match self.conditional_stack.last_mut() {
@@ -379,8 +384,7 @@ impl<'src> Preprocessor<'src> {
                         conditional.false_location = Some(token.location.clone());
                     },
                     None => {
-                        self.errors
-                            .push(ParseError::UnexpectedConditional(token.location.clone()));
+                        self.errors.push(ParseError::UnexpectedConditional(token.location.clone()));
                         self.conditional_stack.push(ConditionalMarker {
                             location: token.location.clone(),
                             is_positive: true,
@@ -401,8 +405,7 @@ impl<'src> Preprocessor<'src> {
             TokenValue::Endif => match self.conditional_stack.last() {
                 Some(_) => return ProcessResult::BlockEnd(token.location),
                 None => {
-                    self.errors
-                        .push(ParseError::UnexpectedConditional(token.location));
+                    self.errors.push(ParseError::UnexpectedConditional(token.location));
                     return ProcessResult::SkipToken;
                 },
             },
@@ -441,10 +444,7 @@ impl<'src> Preprocessor<'src> {
         });
 
         let (true_exprs, true_location) = self.parse_conditional_block(tokens, start);
-        let conditional = self
-            .conditional_stack
-            .pop()
-            .expect("conditional was added just above");
+        let conditional = self.conditional_stack.pop().expect("conditional was added just above");
 
         let location = match &conditional.false_branch {
             Some(false_branch) => conditional.location.start..false_branch.1.end,
@@ -478,8 +478,7 @@ impl<'src> Preprocessor<'src> {
                 Some(else_location) => else_location.clone(),
                 None => unmatched.location.clone(),
             };
-            self.errors
-                .push(ParseError::UnmatchedConditional(location.clone()));
+            self.errors.push(ParseError::UnmatchedConditional(location.clone()));
             self.unexpected_eof = true;
         }
     }
@@ -495,8 +494,7 @@ impl<'src> Preprocessor<'src> {
     }
 
     fn incorrect_token<T>(&mut self, expected: TokenKind, actual: OwnedToken) -> ProcessResult<T> {
-        self.errors
-            .push(ParseError::IncorrectToken { expected, actual });
+        self.errors.push(ParseError::IncorrectToken { expected, actual });
         ProcessResult::SkipToken
     }
 
@@ -644,8 +642,12 @@ impl<'src> Parser<'src> {
                 (ExpressionValue::Property(array), location)
             },
             PreprocessedTokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
-            PreprocessedTokenKind::CommandClose => return self.close_array(ArrayKind::Command, token.location),
-            PreprocessedTokenKind::PropertyClose => return self.close_array(ArrayKind::Property, token.location),
+            PreprocessedTokenKind::CommandClose => {
+                return self.close_array(ArrayKind::Command, token.location)
+            },
+            PreprocessedTokenKind::PropertyClose => {
+                return self.close_array(ArrayKind::Property, token.location)
+            },
 
             PreprocessedTokenKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
                 let true_branch = self.parse_conditional_block(true_branch);
@@ -675,7 +677,9 @@ impl<'src> Parser<'src> {
             },
             PreprocessedTokenKind::Undefine(name) => (ExpressionValue::Undefine(name), token.location),
             PreprocessedTokenKind::Include(path) => (ExpressionValue::Include(path), token.location),
-            PreprocessedTokenKind::IncludeOptional(path) => (ExpressionValue::IncludeOptional(path), token.location),
+            PreprocessedTokenKind::IncludeOptional(path) => {
+                (ExpressionValue::IncludeOptional(path), token.location)
+            },
             PreprocessedTokenKind::Merge(name) => (ExpressionValue::Merge(name), token.location),
             PreprocessedTokenKind::Autorun => {
                 let start_location = {
@@ -695,8 +699,7 @@ impl<'src> Parser<'src> {
             },
 
             PreprocessedTokenKind::Error(error) => {
-                self.errors
-                    .push(ParseError::TokenError(token.location, error));
+                self.errors.push(ParseError::TokenError(token.location, error));
                 return ProcessResult::SkipToken;
             },
         };
@@ -715,8 +718,7 @@ impl<'src> Parser<'src> {
             .iter()
             .any(|e| matches!(e, ParseError::UnmatchedBrace(_, _)))
         {
-            self.errors
-                .push(ParseError::UnbalancedConditional(location.clone()))
+            self.errors.push(ParseError::UnbalancedConditional(location.clone()))
         }
         self.errors.append(&mut block_parser.errors);
 
@@ -764,8 +766,7 @@ impl<'src> Parser<'src> {
         };
         let actual = OwnedToken { kind: actual_kind, location: actual.location };
 
-        self.errors
-            .push(ParseError::IncorrectToken { expected, actual });
+        self.errors.push(ParseError::IncorrectToken { expected, actual });
         ProcessResult::SkipToken
     }
 
@@ -790,7 +791,9 @@ pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<ParseError>> {
     parse_tokens(lexer::lex_text(text))
 }
 
-pub fn parse_tokens<'src>(tokens: impl Iterator<Item = Token<'src>>) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
+pub fn parse_tokens<'src>(
+    tokens: impl Iterator<Item = Token<'src>>,
+) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
     let preprocessed = preprocess(tokens)?;
 
     let mut parser = Parser::new();
@@ -832,112 +835,85 @@ mod tests {
 
         #[test]
         fn integer() {
-            assert_preprocessed(
-                "1 2 3",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::Integer(1), 0..1),
-                    new_pretoken(PreprocessedTokenKind::Integer(2), 2..3),
-                    new_pretoken(PreprocessedTokenKind::Integer(3), 4..5),
-                ],
-            );
+            assert_preprocessed("1 2 3", vec![
+                new_pretoken(PreprocessedTokenKind::Integer(1), 0..1),
+                new_pretoken(PreprocessedTokenKind::Integer(2), 2..3),
+                new_pretoken(PreprocessedTokenKind::Integer(3), 4..5),
+            ]);
         }
 
         #[test]
         fn float() {
-            assert_preprocessed(
-                "1.0 2.0 3.0",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::Float(1.0), 0..3),
-                    new_pretoken(PreprocessedTokenKind::Float(2.0), 4..7),
-                    new_pretoken(PreprocessedTokenKind::Float(3.0), 8..11),
-                ],
-            );
+            assert_preprocessed("1.0 2.0 3.0", vec![
+                new_pretoken(PreprocessedTokenKind::Float(1.0), 0..3),
+                new_pretoken(PreprocessedTokenKind::Float(2.0), 4..7),
+                new_pretoken(PreprocessedTokenKind::Float(3.0), 8..11),
+            ]);
         }
 
         #[test]
         fn string() {
-            assert_preprocessed(
-                "\"a\" \"b\" \"c\"",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::String("a"), 0..3),
-                    new_pretoken(PreprocessedTokenKind::String("b"), 4..7),
-                    new_pretoken(PreprocessedTokenKind::String("c"), 8..11),
-                ],
-            );
+            assert_preprocessed("\"a\" \"b\" \"c\"", vec![
+                new_pretoken(PreprocessedTokenKind::String("a"), 0..3),
+                new_pretoken(PreprocessedTokenKind::String("b"), 4..7),
+                new_pretoken(PreprocessedTokenKind::String("c"), 8..11),
+            ]);
         }
 
         #[test]
         fn symbol() {
-            assert_preprocessed(
-                "asdf + '10'",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 0..4),
-                    new_pretoken(PreprocessedTokenKind::Symbol("+"), 5..6),
-                    new_pretoken(PreprocessedTokenKind::Symbol("10"), 7..11),
-                ],
-            );
+            assert_preprocessed("asdf + '10'", vec![
+                new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 0..4),
+                new_pretoken(PreprocessedTokenKind::Symbol("+"), 5..6),
+                new_pretoken(PreprocessedTokenKind::Symbol("10"), 7..11),
+            ]);
         }
 
         #[test]
         fn variable() {
-            assert_preprocessed(
-                "$asdf $this",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::Variable("asdf"), 0..5),
-                    new_pretoken(PreprocessedTokenKind::Variable("this"), 6..11),
-                ],
-            );
+            assert_preprocessed("$asdf $this", vec![
+                new_pretoken(PreprocessedTokenKind::Variable("asdf"), 0..5),
+                new_pretoken(PreprocessedTokenKind::Variable("this"), 6..11),
+            ]);
         }
 
         #[test]
         fn unhandled() {
-            assert_preprocessed(
-                "kDataUnhandled",
-                vec![new_pretoken(PreprocessedTokenKind::Unhandled, 0..14)],
-            )
+            assert_preprocessed("kDataUnhandled", vec![new_pretoken(
+                PreprocessedTokenKind::Unhandled,
+                0..14,
+            )])
         }
 
         #[test]
         fn arrays() {
-            assert_preprocessed(
-                "(asdf \"text\" 1)",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::ArrayOpen, 0..1),
-                    new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 1..5),
-                    new_pretoken(PreprocessedTokenKind::String("text"), 6..12),
-                    new_pretoken(PreprocessedTokenKind::Integer(1), 13..14),
-                    new_pretoken(PreprocessedTokenKind::ArrayClose, 14..15),
-                ],
-            );
-            assert_preprocessed(
-                "{set $var \"asdf\"}",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::CommandOpen, 0..1),
-                    new_pretoken(PreprocessedTokenKind::Symbol("set"), 1..4),
-                    new_pretoken(PreprocessedTokenKind::Variable("var"), 5..9),
-                    new_pretoken(PreprocessedTokenKind::String("asdf"), 10..16),
-                    new_pretoken(PreprocessedTokenKind::CommandClose, 16..17),
-                ],
-            );
-            assert_preprocessed(
-                "[property]",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::PropertyOpen, 0..1),
-                    new_pretoken(PreprocessedTokenKind::Symbol("property"), 1..9),
-                    new_pretoken(PreprocessedTokenKind::PropertyClose, 9..10),
-                ],
-            );
+            assert_preprocessed("(asdf \"text\" 1)", vec![
+                new_pretoken(PreprocessedTokenKind::ArrayOpen, 0..1),
+                new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 1..5),
+                new_pretoken(PreprocessedTokenKind::String("text"), 6..12),
+                new_pretoken(PreprocessedTokenKind::Integer(1), 13..14),
+                new_pretoken(PreprocessedTokenKind::ArrayClose, 14..15),
+            ]);
+            assert_preprocessed("{set $var \"asdf\"}", vec![
+                new_pretoken(PreprocessedTokenKind::CommandOpen, 0..1),
+                new_pretoken(PreprocessedTokenKind::Symbol("set"), 1..4),
+                new_pretoken(PreprocessedTokenKind::Variable("var"), 5..9),
+                new_pretoken(PreprocessedTokenKind::String("asdf"), 10..16),
+                new_pretoken(PreprocessedTokenKind::CommandClose, 16..17),
+            ]);
+            assert_preprocessed("[property]", vec![
+                new_pretoken(PreprocessedTokenKind::PropertyOpen, 0..1),
+                new_pretoken(PreprocessedTokenKind::Symbol("property"), 1..9),
+                new_pretoken(PreprocessedTokenKind::PropertyClose, 9..10),
+            ]);
         }
 
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
-            assert_errors(
-                &text,
-                vec![ParseError::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
-                }],
-            );
+            assert_errors(&text, vec![ParseError::IncorrectToken {
+                expected: TokenKind::Symbol,
+                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+            }]);
         }
 
         fn assert_directive_eof_error(name: &str) {
@@ -946,56 +922,35 @@ mod tests {
 
         #[test]
         fn directives() {
-            assert_preprocessed(
-                "#define kDefine (1)",
-                vec![
-                    new_pretoken(
-                        PreprocessedTokenKind::Define(StrExpression::new("kDefine", 8..15)),
-                        0..15,
-                    ),
-                    new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
-                    new_pretoken(PreprocessedTokenKind::Integer(1), 17..18),
-                    new_pretoken(PreprocessedTokenKind::ArrayClose, 18..19),
-                ],
-            );
-            assert_preprocessed(
-                "#undef kDefine",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::Undefine(StrExpression::new("kDefine", 7..14)),
-                    0..14,
-                )],
-            );
-            assert_preprocessed(
-                "#include ../file.dta",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::Include(StrExpression::new("../file.dta", 9..20)),
-                    0..20,
-                )],
-            );
-            assert_preprocessed(
-                "#include_opt ../file.dta",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
-                    0..24,
-                )],
-            );
-            assert_preprocessed(
-                "#merge ../file.dta",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::Merge(StrExpression::new("../file.dta", 7..18)),
-                    0..18,
-                )],
-            );
-            assert_preprocessed(
-                "#autorun {print \"Auto-run action\"}",
-                vec![
-                    new_pretoken(PreprocessedTokenKind::Autorun, 0..8),
-                    new_pretoken(PreprocessedTokenKind::CommandOpen, 9..10),
-                    new_pretoken(PreprocessedTokenKind::Symbol("print"), 10..15),
-                    new_pretoken(PreprocessedTokenKind::String("Auto-run action"), 16..33),
-                    new_pretoken(PreprocessedTokenKind::CommandClose, 33..34),
-                ],
-            );
+            assert_preprocessed("#define kDefine (1)", vec![
+                new_pretoken(PreprocessedTokenKind::Define(StrExpression::new("kDefine", 8..15)), 0..15),
+                new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
+                new_pretoken(PreprocessedTokenKind::Integer(1), 17..18),
+                new_pretoken(PreprocessedTokenKind::ArrayClose, 18..19),
+            ]);
+            assert_preprocessed("#undef kDefine", vec![new_pretoken(
+                PreprocessedTokenKind::Undefine(StrExpression::new("kDefine", 7..14)),
+                0..14,
+            )]);
+            assert_preprocessed("#include ../file.dta", vec![new_pretoken(
+                PreprocessedTokenKind::Include(StrExpression::new("../file.dta", 9..20)),
+                0..20,
+            )]);
+            assert_preprocessed("#include_opt ../file.dta", vec![new_pretoken(
+                PreprocessedTokenKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                0..24,
+            )]);
+            assert_preprocessed("#merge ../file.dta", vec![new_pretoken(
+                PreprocessedTokenKind::Merge(StrExpression::new("../file.dta", 7..18)),
+                0..18,
+            )]);
+            assert_preprocessed("#autorun {print \"Auto-run action\"}", vec![
+                new_pretoken(PreprocessedTokenKind::Autorun, 0..8),
+                new_pretoken(PreprocessedTokenKind::CommandOpen, 9..10),
+                new_pretoken(PreprocessedTokenKind::Symbol("print"), 10..15),
+                new_pretoken(PreprocessedTokenKind::String("Auto-run action"), 16..33),
+                new_pretoken(PreprocessedTokenKind::CommandClose, 33..34),
+            ]);
 
             assert_directive_symbol_error("#define");
             assert_directive_symbol_error("#undef");
@@ -1014,54 +969,48 @@ mod tests {
 
         #[test]
         fn conditionals() {
-            assert_preprocessed(
-                "#ifdef kDefine (array1 10) #else (array2 5) #endif",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::Conditional {
-                        is_positive: true,
-                        symbol: StrExpression::new("kDefine", 7..14),
-                        true_branch: (
-                            vec![
-                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 15..16),
-                                new_pretoken(PreprocessedTokenKind::Symbol("array1"), 16..22),
-                                new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
-                                new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
-                            ],
-                            0..32,
-                        ),
-                        false_branch: Some((
-                            vec![
-                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 33..34),
-                                new_pretoken(PreprocessedTokenKind::Symbol("array2"), 34..40),
-                                new_pretoken(PreprocessedTokenKind::Integer(5), 41..42),
-                                new_pretoken(PreprocessedTokenKind::ArrayClose, 42..43),
-                            ],
-                            27..50,
-                        )),
-                    },
-                    0..50,
-                )],
-            );
-            assert_preprocessed(
-                "#ifndef kDefine (array 10) #endif",
-                vec![new_pretoken(
-                    PreprocessedTokenKind::Conditional {
-                        is_positive: false,
-                        symbol: StrExpression::new("kDefine", 8..15),
-                        true_branch: (
-                            vec![
-                                new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
-                                new_pretoken(PreprocessedTokenKind::Symbol("array"), 17..22),
-                                new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
-                                new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
-                            ],
-                            0..33,
-                        ),
-                        false_branch: None,
-                    },
-                    0..33,
-                )],
-            );
+            assert_preprocessed("#ifdef kDefine (array1 10) #else (array2 5) #endif", vec![new_pretoken(
+                PreprocessedTokenKind::Conditional {
+                    is_positive: true,
+                    symbol: StrExpression::new("kDefine", 7..14),
+                    true_branch: (
+                        vec![
+                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 15..16),
+                            new_pretoken(PreprocessedTokenKind::Symbol("array1"), 16..22),
+                            new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
+                            new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
+                        ],
+                        0..32,
+                    ),
+                    false_branch: Some((
+                        vec![
+                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 33..34),
+                            new_pretoken(PreprocessedTokenKind::Symbol("array2"), 34..40),
+                            new_pretoken(PreprocessedTokenKind::Integer(5), 41..42),
+                            new_pretoken(PreprocessedTokenKind::ArrayClose, 42..43),
+                        ],
+                        27..50,
+                    )),
+                },
+                0..50,
+            )]);
+            assert_preprocessed("#ifndef kDefine (array 10) #endif", vec![new_pretoken(
+                PreprocessedTokenKind::Conditional {
+                    is_positive: false,
+                    symbol: StrExpression::new("kDefine", 8..15),
+                    true_branch: (
+                        vec![
+                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
+                            new_pretoken(PreprocessedTokenKind::Symbol("array"), 17..22),
+                            new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
+                            new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
+                        ],
+                        0..33,
+                    ),
+                    false_branch: None,
+                },
+                0..33,
+            )]);
 
             assert_directive_symbol_error("#ifdef");
             assert_directive_symbol_error("#ifndef");
@@ -1069,14 +1018,14 @@ mod tests {
             assert_directive_eof_error("#ifdef");
             assert_directive_eof_error("#ifndef");
 
-            assert_errors(
-                "#ifndef kDefine (array 10)",
-                vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
-            );
-            assert_errors(
-                "#ifdef kDefine (array1 10) #else",
-                vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
-            );
+            assert_errors("#ifndef kDefine (array 10)", vec![
+                ParseError::UnmatchedConditional(0..7),
+                ParseError::UnexpectedEof,
+            ]);
+            assert_errors("#ifdef kDefine (array1 10) #else", vec![
+                ParseError::UnmatchedConditional(27..32),
+                ParseError::UnexpectedEof,
+            ]);
             assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
             assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
         }
@@ -1107,102 +1056,75 @@ mod tests {
 
         #[test]
         fn integer() {
-            assert_parsed(
-                "1 2 3",
-                vec![
-                    new_expression(ExpressionValue::Integer(1), 0..1),
-                    new_expression(ExpressionValue::Integer(2), 2..3),
-                    new_expression(ExpressionValue::Integer(3), 4..5),
-                ],
-            );
+            assert_parsed("1 2 3", vec![
+                new_expression(ExpressionValue::Integer(1), 0..1),
+                new_expression(ExpressionValue::Integer(2), 2..3),
+                new_expression(ExpressionValue::Integer(3), 4..5),
+            ]);
         }
 
         #[test]
         fn float() {
-            assert_parsed(
-                "1.0 2.0 3.0",
-                vec![
-                    new_expression(ExpressionValue::Float(1.0), 0..3),
-                    new_expression(ExpressionValue::Float(2.0), 4..7),
-                    new_expression(ExpressionValue::Float(3.0), 8..11),
-                ],
-            );
+            assert_parsed("1.0 2.0 3.0", vec![
+                new_expression(ExpressionValue::Float(1.0), 0..3),
+                new_expression(ExpressionValue::Float(2.0), 4..7),
+                new_expression(ExpressionValue::Float(3.0), 8..11),
+            ]);
         }
 
         #[test]
         fn string() {
-            assert_parsed(
-                "\"a\" \"b\" \"c\"",
-                vec![
-                    new_expression(ExpressionValue::String("a"), 0..3),
-                    new_expression(ExpressionValue::String("b"), 4..7),
-                    new_expression(ExpressionValue::String("c"), 8..11),
-                ],
-            );
+            assert_parsed("\"a\" \"b\" \"c\"", vec![
+                new_expression(ExpressionValue::String("a"), 0..3),
+                new_expression(ExpressionValue::String("b"), 4..7),
+                new_expression(ExpressionValue::String("c"), 8..11),
+            ]);
         }
 
         #[test]
         fn symbol() {
-            assert_parsed(
-                "asdf + '10'",
-                vec![
-                    new_expression(ExpressionValue::Symbol("asdf"), 0..4),
-                    new_expression(ExpressionValue::Symbol("+"), 5..6),
-                    new_expression(ExpressionValue::Symbol("10"), 7..11),
-                ],
-            );
+            assert_parsed("asdf + '10'", vec![
+                new_expression(ExpressionValue::Symbol("asdf"), 0..4),
+                new_expression(ExpressionValue::Symbol("+"), 5..6),
+                new_expression(ExpressionValue::Symbol("10"), 7..11),
+            ]);
         }
 
         #[test]
         fn variable() {
-            assert_parsed(
-                "$asdf $this",
-                vec![
-                    new_expression(ExpressionValue::Variable("asdf"), 0..5),
-                    new_expression(ExpressionValue::Variable("this"), 6..11),
-                ],
-            );
+            assert_parsed("$asdf $this", vec![
+                new_expression(ExpressionValue::Variable("asdf"), 0..5),
+                new_expression(ExpressionValue::Variable("this"), 6..11),
+            ]);
         }
 
         #[test]
         fn unhandled() {
-            assert_parsed(
-                "kDataUnhandled",
-                vec![new_expression(ExpressionValue::Unhandled, 0..14)],
-            )
+            assert_parsed("kDataUnhandled", vec![new_expression(ExpressionValue::Unhandled, 0..14)])
         }
 
         #[test]
         fn arrays() {
-            assert_parsed(
-                "(asdf \"text\" 1)",
-                vec![new_expression(
-                    ExpressionValue::Array(vec![
-                        new_expression(ExpressionValue::Symbol("asdf"), 1..5),
-                        new_expression(ExpressionValue::String("text"), 6..12),
-                        new_expression(ExpressionValue::Integer(1), 13..14),
-                    ]),
-                    0..15,
-                )],
-            );
-            assert_parsed(
-                "{set $var \"asdf\"}",
-                vec![new_expression(
-                    ExpressionValue::Command(vec![
-                        new_expression(ExpressionValue::Symbol("set"), 1..4),
-                        new_expression(ExpressionValue::Variable("var"), 5..9),
-                        new_expression(ExpressionValue::String("asdf"), 10..16),
-                    ]),
-                    0..17,
-                )],
-            );
-            assert_parsed(
-                "[property]",
-                vec![new_expression(
-                    ExpressionValue::Property(vec![new_expression(ExpressionValue::Symbol("property"), 1..9)]),
-                    0..10,
-                )],
-            );
+            assert_parsed("(asdf \"text\" 1)", vec![new_expression(
+                ExpressionValue::Array(vec![
+                    new_expression(ExpressionValue::Symbol("asdf"), 1..5),
+                    new_expression(ExpressionValue::String("text"), 6..12),
+                    new_expression(ExpressionValue::Integer(1), 13..14),
+                ]),
+                0..15,
+            )]);
+            assert_parsed("{set $var \"asdf\"}", vec![new_expression(
+                ExpressionValue::Command(vec![
+                    new_expression(ExpressionValue::Symbol("set"), 1..4),
+                    new_expression(ExpressionValue::Variable("var"), 5..9),
+                    new_expression(ExpressionValue::String("asdf"), 10..16),
+                ]),
+                0..17,
+            )]);
+            assert_parsed("[property]", vec![new_expression(
+                ExpressionValue::Property(vec![new_expression(ExpressionValue::Symbol("property"), 1..9)]),
+                0..10,
+            )]);
 
             fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
                 let mut expected = vec![ParseError::UnmatchedBrace(location, kind)];
@@ -1247,13 +1169,10 @@ mod tests {
 
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
-            assert_errors(
-                &text,
-                vec![ParseError::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
-                }],
-            );
+            assert_errors(&text, vec![ParseError::IncorrectToken {
+                expected: TokenKind::Symbol,
+                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+            }]);
         }
 
         fn assert_directive_eof_error(name: &str) {
@@ -1262,57 +1181,39 @@ mod tests {
 
         #[test]
         fn directives() {
-            assert_parsed(
-                "#define kDefine (1)",
-                vec![new_expression(
-                    ExpressionValue::Define(
-                        StrExpression::new("kDefine", 8..15),
-                        ArrayExpression::new(vec![new_expression(ExpressionValue::Integer(1), 17..18)], 16..19),
-                    ),
-                    0..19,
-                )],
-            );
-            assert_parsed(
-                "#undef kDefine",
-                vec![new_expression(
-                    ExpressionValue::Undefine(StrExpression::new("kDefine", 7..14)),
-                    0..14,
-                )],
-            );
-            assert_parsed(
-                "#include ../file.dta",
-                vec![new_expression(
-                    ExpressionValue::Include(StrExpression::new("../file.dta", 9..20)),
-                    0..20,
-                )],
-            );
-            assert_parsed(
-                "#include_opt ../file.dta",
-                vec![new_expression(
-                    ExpressionValue::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
-                    0..24,
-                )],
-            );
-            assert_parsed(
-                "#merge ../file.dta",
-                vec![new_expression(
-                    ExpressionValue::Merge(StrExpression::new("../file.dta", 7..18)),
-                    0..18,
-                )],
-            );
-            assert_parsed(
-                "#autorun {print \"Auto-run action\"}",
-                vec![new_expression(
-                    ExpressionValue::Autorun(ArrayExpression::new(
-                        vec![
-                            new_expression(ExpressionValue::Symbol("print"), 10..15),
-                            new_expression(ExpressionValue::String("Auto-run action"), 16..33),
-                        ],
-                        9..34,
-                    )),
-                    0..34,
-                )],
-            );
+            assert_parsed("#define kDefine (1)", vec![new_expression(
+                ExpressionValue::Define(
+                    StrExpression::new("kDefine", 8..15),
+                    ArrayExpression::new(vec![new_expression(ExpressionValue::Integer(1), 17..18)], 16..19),
+                ),
+                0..19,
+            )]);
+            assert_parsed("#undef kDefine", vec![new_expression(
+                ExpressionValue::Undefine(StrExpression::new("kDefine", 7..14)),
+                0..14,
+            )]);
+            assert_parsed("#include ../file.dta", vec![new_expression(
+                ExpressionValue::Include(StrExpression::new("../file.dta", 9..20)),
+                0..20,
+            )]);
+            assert_parsed("#include_opt ../file.dta", vec![new_expression(
+                ExpressionValue::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+                0..24,
+            )]);
+            assert_parsed("#merge ../file.dta", vec![new_expression(
+                ExpressionValue::Merge(StrExpression::new("../file.dta", 7..18)),
+                0..18,
+            )]);
+            assert_parsed("#autorun {print \"Auto-run action\"}", vec![new_expression(
+                ExpressionValue::Autorun(ArrayExpression::new(
+                    vec![
+                        new_expression(ExpressionValue::Symbol("print"), 10..15),
+                        new_expression(ExpressionValue::String("Auto-run action"), 16..33),
+                    ],
+                    9..34,
+                )),
+                0..34,
+            )]);
 
             assert_directive_symbol_error("#define");
             assert_directive_symbol_error("#undef");
@@ -1327,77 +1228,65 @@ mod tests {
             assert_directive_eof_error("#merge");
             assert_directive_eof_error("#autorun");
 
-            assert_errors(
-                "#define kDefine 1",
-                vec![ParseError::IncorrectToken {
-                    expected: TokenKind::ArrayOpen,
-                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
-                }],
-            );
-            assert_errors(
-                "#autorun kDefine",
-                vec![ParseError::IncorrectToken {
-                    expected: TokenKind::CommandOpen,
-                    actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
-                }],
-            );
+            assert_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
+                expected: TokenKind::ArrayOpen,
+                actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
+            }]);
+            assert_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
+                expected: TokenKind::CommandOpen,
+                actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+            }]);
 
             assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
         }
 
         #[test]
         fn conditionals() {
-            assert_parsed(
-                "#ifdef kDefine (array1 10) #else (array2 5) #endif",
-                vec![new_expression(
-                    ExpressionValue::Conditional {
-                        is_positive: true,
-                        symbol: StrExpression::new("kDefine", 7..14),
-                        true_branch: ArrayExpression::new(
-                            vec![new_expression(
-                                ExpressionValue::Array(vec![
-                                    new_expression(ExpressionValue::Symbol("array1"), 16..22),
-                                    new_expression(ExpressionValue::Integer(10), 23..25),
-                                ]),
-                                15..26,
-                            )],
-                            0..32,
-                        ),
-                        false_branch: Some(ArrayExpression::new(
-                            vec![new_expression(
-                                ExpressionValue::Array(vec![
-                                    new_expression(ExpressionValue::Symbol("array2"), 34..40),
-                                    new_expression(ExpressionValue::Integer(5), 41..42),
-                                ]),
-                                33..43,
-                            )],
-                            27..50,
-                        )),
-                    },
-                    0..50,
-                )],
-            );
-            assert_parsed(
-                "#ifndef kDefine (array 10) #endif",
-                vec![new_expression(
-                    ExpressionValue::Conditional {
-                        is_positive: false,
-                        symbol: StrExpression::new("kDefine", 8..15),
-                        true_branch: ArrayExpression::new(
-                            vec![new_expression(
-                                ExpressionValue::Array(vec![
-                                    new_expression(ExpressionValue::Symbol("array"), 17..22),
-                                    new_expression(ExpressionValue::Integer(10), 23..25),
-                                ]),
-                                16..26,
-                            )],
-                            0..33,
-                        ),
-                        false_branch: None,
-                    },
-                    0..33,
-                )],
-            );
+            assert_parsed("#ifdef kDefine (array1 10) #else (array2 5) #endif", vec![new_expression(
+                ExpressionValue::Conditional {
+                    is_positive: true,
+                    symbol: StrExpression::new("kDefine", 7..14),
+                    true_branch: ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionValue::Array(vec![
+                                new_expression(ExpressionValue::Symbol("array1"), 16..22),
+                                new_expression(ExpressionValue::Integer(10), 23..25),
+                            ]),
+                            15..26,
+                        )],
+                        0..32,
+                    ),
+                    false_branch: Some(ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionValue::Array(vec![
+                                new_expression(ExpressionValue::Symbol("array2"), 34..40),
+                                new_expression(ExpressionValue::Integer(5), 41..42),
+                            ]),
+                            33..43,
+                        )],
+                        27..50,
+                    )),
+                },
+                0..50,
+            )]);
+            assert_parsed("#ifndef kDefine (array 10) #endif", vec![new_expression(
+                ExpressionValue::Conditional {
+                    is_positive: false,
+                    symbol: StrExpression::new("kDefine", 8..15),
+                    true_branch: ArrayExpression::new(
+                        vec![new_expression(
+                            ExpressionValue::Array(vec![
+                                new_expression(ExpressionValue::Symbol("array"), 17..22),
+                                new_expression(ExpressionValue::Integer(10), 23..25),
+                            ]),
+                            16..26,
+                        )],
+                        0..33,
+                    ),
+                    false_branch: None,
+                },
+                0..33,
+            )]);
 
             assert_directive_symbol_error("#ifdef");
             assert_directive_symbol_error("#ifndef");
@@ -1405,26 +1294,23 @@ mod tests {
             assert_directive_eof_error("#ifdef");
             assert_directive_eof_error("#ifndef");
 
-            assert_errors(
-                "#ifndef kDefine (array 10)",
-                vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
-            );
-            assert_errors(
-                "#ifdef kDefine (array1 10) #else",
-                vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
-            );
+            assert_errors("#ifndef kDefine (array 10)", vec![
+                ParseError::UnmatchedConditional(0..7),
+                ParseError::UnexpectedEof,
+            ]);
+            assert_errors("#ifdef kDefine (array1 10) #else", vec![
+                ParseError::UnmatchedConditional(27..32),
+                ParseError::UnexpectedEof,
+            ]);
             assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
             assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
 
-            assert_errors(
-                "(#ifdef kDefine array1 10) #else array2 5) #endif)",
-                vec![
-                    ParseError::UnbalancedConditional(1..32),
-                    ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
-                    ParseError::UnbalancedConditional(27..49),
-                    ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
-                ],
-            );
+            assert_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
+                ParseError::UnbalancedConditional(1..32),
+                ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
+                ParseError::UnbalancedConditional(27..49),
+                ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+            ]);
 
             assert_errors(
                 "\

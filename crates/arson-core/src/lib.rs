@@ -33,11 +33,18 @@ pub use context::*;
 pub use error::*;
 
 pub mod prolog {
-    pub use super::{
-        context::Context,
-        primitives::{
-            ArrayRef, Node, NodeArray, NodeCommand, NodeProperty, NodeSlice, NodeValue, Symbol, SymbolMap, Variable,
-            VariableStack,
-        },
+    pub use super::context::Context;
+    pub use super::primitives::{
+        ArrayRef,
+        Node,
+        NodeArray,
+        NodeCommand,
+        NodeProperty,
+        NodeSlice,
+        NodeValue,
+        Symbol,
+        SymbolMap,
+        Variable,
+        VariableStack,
     };
 }

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{
-    fs::File,
-    io::{self, Read, Write},
-    path::{Path, PathBuf},
-};
+use std::fs::File;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 
 use crate::{AbsolutePath, FileSystemDriver, Metadata, ReadWrite};
 

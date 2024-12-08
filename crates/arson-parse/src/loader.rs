@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::{io, marker::PhantomData};
+use std::io;
+use std::marker::PhantomData;
 
 use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 use arson_fs::{FileSystemState, VirtualPath};
@@ -34,10 +35,7 @@ pub enum LoadError {
     AutorunError(#[from] arson_core::Error),
 
     #[error("Encountered errors while including other files")]
-    Inner {
-        recovered: NodeArray,
-        errors: Vec<LoadError>,
-    },
+    Inner { recovered: NodeArray, errors: Vec<LoadError> },
 }
 
 // manual impl because io::Error has no eq impl, but io::Error.kind() does
@@ -96,7 +94,10 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
         Self { context, options, phantom: PhantomData }
     }
 
-    fn load_array(&mut self, ast: impl Iterator<Item = Expression<'src>>) -> Result<NodeArray, LoadError> {
+    fn load_array(
+        &mut self,
+        ast: impl IntoIterator<Item = Expression<'src>>,
+    ) -> Result<NodeArray, LoadError> {
         let mut array = NodeArray::with_capacity(4);
         let mut errors = vec![];
 
@@ -142,13 +143,13 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
             ExpressionValue::Variable(value) => Variable::new(value, self.context).into(),
             ExpressionValue::Unhandled => Node::UNHANDLED,
 
-            ExpressionValue::Array(exprs) => self.load_array(exprs.into_iter())?.into(),
-            ExpressionValue::Command(exprs) => NodeCommand::from(self.load_array(exprs.into_iter())?).into(),
-            ExpressionValue::Property(exprs) => NodeProperty::from(self.load_array(exprs.into_iter())?).into(),
+            ExpressionValue::Array(exprs) => self.load_array(exprs)?.into(),
+            ExpressionValue::Command(exprs) => NodeCommand::from(self.load_array(exprs)?).into(),
+            ExpressionValue::Property(exprs) => NodeProperty::from(self.load_array(exprs)?).into(),
 
             ExpressionValue::Define(name, exprs) => {
                 let name = self.context.add_symbol(name.text);
-                let define = self.load_array(exprs.exprs.into_iter())?;
+                let define = self.load_array(exprs.exprs)?;
                 self.context.add_macro(&name, define);
                 return Ok(NodeResult::Skip);
             },
@@ -196,7 +197,7 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
                     return Err(LoadError::AutorunNotAllowed);
                 }
 
-                let command = self.load_array(exprs.exprs.into_iter())?;
+                let command = self.load_array(exprs.exprs)?;
                 match self.context.execute(&NodeCommand::from(command)) {
                     Ok(_) => return Ok(NodeResult::Skip),
                     Err(err) => return Err(LoadError::AutorunError(err)),
@@ -210,9 +211,9 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
                 };
 
                 let array = match defined == is_positive {
-                    true => self.load_array(true_branch.exprs.into_iter())?,
+                    true => self.load_array(true_branch.exprs)?,
                     false => match false_branch {
-                        Some(false_branch) => self.load_array(false_branch.exprs.into_iter())?,
+                        Some(false_branch) => self.load_array(false_branch.exprs)?,
                         None => return Ok(NodeResult::Skip),
                     },
                 };
@@ -246,7 +247,9 @@ pub fn load_path<S: FileSystemState, P: AsRef<VirtualPath>>(
 
     let canon = context.file_system().canonicalize(&path);
     let Some(dir) = canon.parent() else {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into());
+        return Err(
+            io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into(),
+        );
     };
 
     let old_cwd = context.file_system_mut().set_cwd(dir);
@@ -265,13 +268,13 @@ pub fn load_text<S: FileSystemState>(
         Ok(ast) => ast,
         Err(errors) => return Err(LoadError::Parse(errors)),
     };
-    load_ast(context, options, ast.into_iter())
+    load_ast(context, options, ast)
 }
 
 pub fn load_ast<'src, S: FileSystemState>(
     context: &mut Context<S>,
     options: LoadOptions,
-    ast: impl Iterator<Item = Expression<'src>>,
+    ast: impl IntoIterator<Item = Expression<'src>>,
 ) -> Result<NodeArray, LoadError> {
     let mut loader = Loader::new(context, options);
     loader.load_array(ast)
@@ -279,15 +282,13 @@ pub fn load_ast<'src, S: FileSystemState>(
 
 #[cfg(test)]
 mod tests {
-    use logos::Span;
-
     use arson_core::*;
     use arson_fs::drivers::MockFileSystemDriver;
     use arson_fs::*;
-
-    use crate::{OwnedToken, OwnedTokenValue, TokenKind};
+    use logos::Span;
 
     use super::*;
+    use crate::{OwnedToken, OwnedTokenValue, TokenKind};
 
     fn default_context() -> Context<FileSystem> {
         Context::new(FileSystem::new(MockFileSystemDriver::new()))
@@ -458,11 +459,9 @@ mod tests {
         // Ensure working directory behaves properly during includes
         let cwd = context.file_system().cwd().clone();
         let sym_included = context.add_symbol("included");
-        assert_loaded(
-            &mut context,
-            "(included #include ./config/config.dta)",
-            arson_array![arson_array![sym_included, 1, 2, 3, 4, 5]],
-        );
+        assert_loaded(&mut context, "(included #include ./config/config.dta)", arson_array![
+            arson_array![sym_included, 1, 2, 3, 4, 5]
+        ]);
         assert_eq!(*context.file_system().cwd(), cwd);
 
         // Ensure included paths are not added as symbols
@@ -544,11 +543,9 @@ mod tests {
         assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
 
         context.remove_macro(&sym_define);
-        assert_loaded(
-            &mut context,
-            "#ifndef kDefine (array 10) #endif",
-            arson_array![arson_array![sym_array, 10]],
-        );
+        assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![
+            arson_array![sym_array, 10]
+        ]);
     }
 
     #[test]
@@ -603,32 +600,23 @@ mod tests {
 
         // #region Directives
 
-        assert_parse_errors(
-            "#define kDefine 1",
-            vec![ParseError::IncorrectToken {
-                expected: TokenKind::ArrayOpen,
-                actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
-            }],
-        );
-        assert_parse_errors(
-            "#autorun kDefine",
-            vec![ParseError::IncorrectToken {
-                expected: TokenKind::CommandOpen,
-                actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
-            }],
-        );
+        assert_parse_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
+            expected: TokenKind::ArrayOpen,
+            actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
+        }]);
+        assert_parse_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
+            expected: TokenKind::CommandOpen,
+            actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+        }]);
 
         assert_parse_errors("#bad", vec![ParseError::BadDirective(0..4)]);
 
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
-            assert_parse_errors(
-                &text,
-                vec![ParseError::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
-                }],
-            );
+            assert_parse_errors(&text, vec![ParseError::IncorrectToken {
+                expected: TokenKind::Symbol,
+                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+            }]);
         }
 
         fn assert_directive_eof_error(name: &str) {
@@ -656,26 +644,23 @@ mod tests {
 
         // #region Conditionals
 
-        assert_parse_errors(
-            "#ifndef kDefine (array 10)",
-            vec![ParseError::UnmatchedConditional(0..7), ParseError::UnexpectedEof],
-        );
-        assert_parse_errors(
-            "#ifdef kDefine (array1 10) #else",
-            vec![ParseError::UnmatchedConditional(27..32), ParseError::UnexpectedEof],
-        );
+        assert_parse_errors("#ifndef kDefine (array 10)", vec![
+            ParseError::UnmatchedConditional(0..7),
+            ParseError::UnexpectedEof,
+        ]);
+        assert_parse_errors("#ifdef kDefine (array1 10) #else", vec![
+            ParseError::UnmatchedConditional(27..32),
+            ParseError::UnexpectedEof,
+        ]);
         assert_parse_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
         assert_parse_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
 
-        assert_parse_errors(
-            "(#ifdef kDefine array1 10) #else array2 5) #endif)",
-            vec![
-                ParseError::UnbalancedConditional(1..32),
-                ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
-                ParseError::UnbalancedConditional(27..49),
-                ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
-            ],
-        );
+        assert_parse_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
+            ParseError::UnbalancedConditional(1..32),
+            ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
+            ParseError::UnbalancedConditional(27..49),
+            ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+        ]);
 
         assert_parse_errors(
             "\

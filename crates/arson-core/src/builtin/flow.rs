@@ -110,9 +110,8 @@ pub mod loops {
 }
 
 pub mod vars {
-    use crate::arson_assert_len;
-
     use super::*;
+    use crate::arson_assert_len;
 
     pub fn register_funcs<S>(context: &mut Context<S>) {
         context.register_func("do", self::do_block);
