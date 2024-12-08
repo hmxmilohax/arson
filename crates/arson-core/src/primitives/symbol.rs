@@ -15,7 +15,7 @@ pub struct Symbol {
 
 impl Symbol {
     /// Returns the underlying name of this symbol.
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &Rc<String> {
         &self.name
     }
 }
@@ -73,7 +73,7 @@ impl SymbolTable {
 
         // Make empty symbol and insert it into the table
         let empty_sym = new_symbol("");
-        table.insert(empty_sym.name().clone(), empty_sym.clone());
+        table.insert(empty_sym.name().as_ref().clone(), empty_sym.clone());
 
         Self { table, empty_sym }
     }
@@ -91,7 +91,7 @@ impl SymbolTable {
         }
 
         let sym = new_symbol(name);
-        self.table.insert(sym.name().clone(), sym.clone());
+        self.table.insert(sym.name().as_ref().clone(), sym.clone());
         sym.clone()
     }
 

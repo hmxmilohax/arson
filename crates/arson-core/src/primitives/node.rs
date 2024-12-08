@@ -318,6 +318,14 @@ impl NodeValue {
             NodeValue::Unhandled => Some(false),
         }
     }
+
+    pub fn string(&self) -> Option<&Rc<String>> {
+        match self {
+            Self::String(value) => Some(value),
+            Self::Symbol(value) => Some(value.name()),
+            _ => None,
+        }
+    }
 }
 
 impl Display for NodeValue {
@@ -423,7 +431,11 @@ impl Node {
     }
 
     pub fn string<S>(&self, context: &mut Context<S>) -> crate::Result<Rc<String>> {
-        match_value!(self.evaluate(context)?, String(value) => value)
+        let value = self.evaluate(context)?;
+        match value.string() {
+            Some(value) => Ok(value.clone()),
+            None => Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::String }.into()),
+        }
     }
 
     pub fn symbol<S>(&self, context: &mut Context<S>) -> crate::Result<Symbol> {
