@@ -190,8 +190,8 @@ make_tokens! {
     #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
     BadDirective(str: 'src) => ("invalid directive", "#{}"),
 
-    #[regex(r#";[^\n]*"#, priority = 1)]
-    Comment => ("comment"),
+    #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
+    Comment(str: 'src) => ("comment"),
     // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#)]
     BlockCommentStart(str: 'src) => ("block comment start"),
@@ -392,8 +392,8 @@ mod tests {
 
     #[test]
     fn comments() {
-        assert_token("; comment", TokenValue::Comment, 0..9);
-        assert_token(";comment", TokenValue::Comment, 0..8);
+        assert_token("; comment", TokenValue::Comment(" comment"), 0..9);
+        assert_token(";comment", TokenValue::Comment("comment"), 0..8);
         assert_tokens("/* comment */", vec![
             (TokenValue::BlockCommentStart("/* comment "), 0..11),
             (TokenValue::BlockCommentEnd("*/"), 11..13),
@@ -426,36 +426,29 @@ mod tests {
         // - token location is relative to the current line, not the whole file
         #[rustfmt::skip] // structure/formatting matches the test file
         let tokens = vec![
-            // integers
-            (1, vec![(Comment, 0..10)]),
+            (1, vec![(Comment(" integers"), 0..10)]),
             (2, vec![(Integer(1), 0..1), (Integer(2), 2..4), (Integer(-3), 5..7)]),
             (3, vec![(Integer(1), 0..2), (Integer(2), 3..6), (Integer(-3), 7..10)]),
 
-            // hex numbers
-            (5, vec![(Comment, 0..13)]),
+            (5, vec![(Comment(" hex numbers"), 0..13)]),
             (6, vec![(Integer(0x1), 0..3), (Integer(0xA), 4..7), (Integer(0xa), 8..11)]),
             (7, vec![(Integer(0xFFFFFFFF), 0..10)]),
             (8, vec![(Integer(0xFFFFFFFFFFFFFFFFu64 as IntegerValue), 0..18)]),
-            // invalid (lexed as symbols)
-            (9, vec![(Comment, 0..28)]),
+            (9, vec![(Comment(" invalid (lexed as symbols)"), 0..28)]),
             (10, vec![(Symbol("0x"), 0..2), (Symbol("x1"), 5..7)]),
             (11, vec![(Symbol("+0x2"), 0..4), (Symbol("-0x3"), 5..9)]),
             (12, vec![(Symbol("+0xB"), 0..4), (Symbol("-0xC"), 5..9)]),
             (13, vec![(Symbol("+0xb"), 0..4), (Symbol("-0xc"), 5..9)]),
 
-            // floats
-            (15, vec![(Comment, 0..8)]),
+            (15, vec![(Comment(" floats"), 0..8)]),
             (16, vec![(Float(1.0), 0..3), (Float(2.0), 7..11), (Float(-3.0), 15..19)]),
             (17, vec![(Float(1.0), 0..2), (Float(2.0), 7..10), (Float(-3.0), 15..18)]),
             (18, vec![(Float(0.1), 0..2), (Float(0.2), 7..10), (Float(-0.3), 15..18)]),
-            // these are valid
-            (19, vec![(Comment, 0..17)]),
+            (19, vec![(Comment(" these are valid"), 0..17)]),
             (20, vec![(Float(0.0), 0..1), (Float(0.0), 7..9), (Float(-0.0), 15..17)]),
 
-            // floats with exponents
-            (22, vec![(Comment, 0..23)]),
-            // valid                                          -  invalid
-            (23, vec![(Comment, 0..34)]),
+            (22, vec![(Comment(" floats with exponents"), 0..23)]),
+            (23, vec![(Comment(" valid                 -  invalid"), 0..34)]),
             (24, vec![(Float(1.0E1), 0..5),  (Float(2.0E1), 7..13),  (Float(-3.0E1), 15..21),      (Symbol("1.0-E1"), 27..33),  (Symbol("+2.0-E1"), 35..42),  (Symbol("-3.0-E1"), 44..51)]),
             (25, vec![(Float(1.0E+1), 0..6), (Float(2.0E+1), 7..14), (Float(-3.0E+1), 15..22),     (Symbol("1.0-E+1"), 27..34), (Symbol("+2.0-E+1"), 35..43), (Symbol("-3.0-E+1"), 44..52)]),
             (26, vec![(Float(1.0E-1), 0..6), (Float(2.0E-1), 7..14), (Float(-3.0E-1), 15..22),     (Symbol("1.0-E-1"), 27..34), (Symbol("+2.0-E-1"), 35..43), (Symbol("-3.0-E-1"), 44..52)]),
@@ -472,8 +465,7 @@ mod tests {
             (37, vec![(Float(0.0E+1), 0..4), (Float(0.0E+1), 7..12), (Float(-0.0E+1), 15..20),     (Symbol(".-E+1"), 27..32),   (Symbol("+.-E+1"), 35..41),   (Symbol("-.-E+1"), 44..50)]),
             (38, vec![(Float(0.0E-1), 0..4), (Float(0.0E-1), 7..12), (Float(-0.0E-1), 15..20),     (Symbol(".-E-1"), 27..32),   (Symbol("+.-E-1"), 35..41),   (Symbol("-.-E-1"), 44..50)]),
 
-            // strings
-            (40, vec![(Comment, 0..9)]),
+            (40, vec![(Comment(" strings"), 0..9)]),
             (41, vec![(String("asdf"), 0..6)]),
             (42, vec![(String(""), 0..2), (String(""), 3..5)]),
 
@@ -486,14 +478,12 @@ mod tests {
             ), 0..19)]),
 
 
-            // symbols
-            (51, vec![(Comment, 0..9)]),
+            (51, vec![(Comment(" symbols"), 0..9)]),
             (52, vec![(Symbol("asdf"), 0..4)]),
             (53, vec![(Symbol("jkl"), 0..3)]),
             (54, vec![(Symbol("qwerty"), 0..6)]),
 
-            // quoted symbols
-            (56, vec![(Comment, 0..16)]),
+            (56, vec![(Comment(" quoted symbols"), 0..16)]),
             (57, vec![(Symbol("asdf"), 0..6)]),
             (58, vec![(Symbol(""), 0..2), (Symbol(""), 3..5)]),
 
@@ -505,24 +495,20 @@ mod tests {
                 \n"
             ), 0..19)]),
 
-            // variables
-            (66, vec![(Comment, 0..11)]),
+            (66, vec![(Comment(" variables"), 0..11)]),
             (67, vec![(Variable("asdf"), 0..5)]),
             (68, vec![(Variable("jkl"), 0..4)]),
             (69, vec![(Variable("qwerty"), 0..7)]),
 
-            // kDataUnhandled is its own token
-            (71, vec![(Comment, 0..33)]),
+            (71, vec![(Comment(" kDataUnhandled is its own token"), 0..33)]),
             (72, vec![(Unhandled, 0..14)]),
 
-            // arrays
-            (75, vec![(Comment, 0..8)]),
-            (76, vec![(ArrayOpen, 0..1), (Symbol("array"), 1..6), (Integer(1), 7..8), (Integer(2), 9..10), (ArrayClose, 10..11), (Comment, 13..20)]),
-            (77, vec![(CommandOpen, 0..1), (Symbol("+"), 1..2), (Integer(1), 3..4), (Integer(2), 5..6), (CommandClose, 6..7), (Comment, 13..22)]),
-            (78, vec![(PropertyOpen, 0..1), (Symbol("property"), 1..9), (PropertyClose, 9..10), (Comment, 13..23)]),
+            (75, vec![(Comment(" arrays"), 0..8)]),
+            (76, vec![(ArrayOpen, 0..1), (Symbol("array"), 1..6), (Integer(1), 7..8), (Integer(2), 9..10), (ArrayClose, 10..11), (Comment(" array"), 13..20)]),
+            (77, vec![(CommandOpen, 0..1), (Symbol("+"), 1..2), (Integer(1), 3..4), (Integer(2), 5..6), (CommandClose, 6..7), (Comment(" command"), 13..22)]),
+            (78, vec![(PropertyOpen, 0..1), (Symbol("property"), 1..9), (PropertyClose, 9..10), (Comment(" property"), 13..23)]),
 
-            // directives
-            (81, vec![(Comment, 0..12)]),
+            (81, vec![(Comment(" directives"), 0..12)]),
             (82, vec![(IncludeOptional, 0..12), (Symbol("../file.dta"), 13..24)]),
             (83, vec![(Include, 0..8), (Symbol("../file.dta"), 9..20)]),
             (84, vec![(Merge, 0..6), (Symbol("../file.dta"), 7..18)]),
@@ -534,51 +520,45 @@ mod tests {
             (90, vec![(Else, 0..5)]),
             (91, vec![(Autorun, 0..8), (CommandOpen, 9..10), (Symbol("action"), 10..16), (CommandClose, 16..17)]),
             (92, vec![(Endif, 0..6)]),
-            // invalid
-            (93, vec![(Comment, 0..9)]),
+            (93, vec![(Comment(" invalid"), 0..9)]),
             (94, vec![(BadDirective("bad"), 0..4)]),
             (95, vec![(BadDirective("#"), 0..2)]),
 
-            // *not* directives, these are lexed as symbols
-            (97, vec![(Comment, 0..46)]),
+            (97, vec![(Comment(" *not* directives, these are lexed as symbols"), 0..46)]),
             (98, vec![(Symbol("#"), 0..1)]),
-            (99, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment, 4..21)]),
-            (100, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment, 4..19)]),
-            // lexed as symbols and arrays
-            (101, vec![(Comment, 0..29)]),
-            (102, vec![(Symbol("#"), 0..1), (ArrayOpen, 1..2), (Symbol("#"), 2..3), (ArrayClose, 3..4), (Comment, 5..25)]),
-            (103, vec![(Symbol("#"), 0..1), (CommandOpen, 1..2), (Symbol("#"), 2..3), (CommandClose, 3..4), (Comment, 5..25)]),
-            (104, vec![(Symbol("#"), 0..1), (PropertyOpen, 1..2), (Symbol("#"), 2..3), (PropertyClose, 3..4), (Comment, 5..25)]),
+            (99, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" space-separated"), 4..21)]),
+            (100, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" tab-separated"), 4..19)]),
+            (101, vec![(Comment(" lexed as symbols and arrays"), 0..29)]),
+            (102, vec![(Symbol("#"), 0..1), (ArrayOpen, 1..2), (Symbol("#"), 2..3), (ArrayClose, 3..4), (Comment(" '#', '(', '#', ')'"), 5..25)]),
+            (103, vec![(Symbol("#"), 0..1), (CommandOpen, 1..2), (Symbol("#"), 2..3), (CommandClose, 3..4), (Comment(" '#', '{', '#', '}'"), 5..25)]),
+            (104, vec![(Symbol("#"), 0..1), (PropertyOpen, 1..2), (Symbol("#"), 2..3), (PropertyClose, 3..4), (Comment(" '#', '[', '#', ']'"), 5..25)]),
 
-            // line comment
-            (107, vec![(Comment, 0..14)]),
-            (108, vec![(Comment, 0..2)]), // ;;
-            (109, vec![(Comment, 0..3)]), // ; ;
-            (110, vec![(Comment, 0..3)]), // ;	;
-            (111, vec![(Comment, 0..8)]), // ;;;;;;;;
-            (112, vec![(Comment, 0..8)]), // ;nospace
-            (113, vec![(Symbol("asdf;jkl"), 0..8), (Comment, 9..47)]),
+            (107, vec![(Comment(" line comment"), 0..14)]),
+            (108, vec![(Comment(";"), 0..2)]),
+            (109, vec![(Comment(" ;"), 0..3)]),
+            (110, vec![(Comment("	;"), 0..3)]),
+            (111, vec![(Comment(";;;;;;;"), 0..8)]),
+            (112, vec![(Comment("nospace"), 0..8)]),
+            (113, vec![(Symbol("asdf;jkl"), 0..8), (Comment(" invalid, lexed as part of the symbol"), 9..47)]),
 
-            // block comment
             (115, vec![(BlockCommentStart("/*"), 0..2)]),
             (116, vec![(Symbol("block"), 0..5), (Symbol("comment"), 6..13)]),
             (117, vec![(BlockCommentEnd("*/"), 0..2)]),
 
-            (119, vec![(Symbol("/*asdf*/"), 0..8), (Comment, 9..37)]),
+            (119, vec![(Symbol("/*asdf*/"), 0..8), (Comment(" invalid, lexed as a symbol"), 9..37)]),
             (120, vec![(BlockCommentStart("/*jkl "), 0..6), (BlockCommentEnd("*/"), 6..8)]),
 
-            (122, vec![(Symbol("/**/"), 0..4), (Comment, 5..33)]),
+            (122, vec![(Symbol("/**/"), 0..4), (Comment(" invalid, lexed as a symbol"), 5..33)]),
             (123, vec![(BlockCommentStart("/* "), 0..3), (BlockCommentEnd("*/"), 3..5)]),
             (124, vec![(BlockCommentStart("/*\t"), 0..3), (BlockCommentEnd("*/"), 3..5)]),
 
-            // stray block-comment close, lexed as a symbol
-            // note: handled by the parser
-            (126, vec![(Comment, 0..46)]),
+            // note: the behavior described here is handled by the parser for simplicity
+            (126, vec![(Comment(" stray block-comment close, lexed as a symbol"), 0..46)]),
             (127, vec![(BlockCommentEnd("*/"), 0..2)]),
 
-            (129, vec![(Symbol("/*****/"), 0..7), (Comment, 8..36)]),
+            (129, vec![(Symbol("/*****/"), 0..7), (Comment(" invalid, lexed as a symbol"), 8..36)]),
 
-            (131, vec![(Symbol("/*****"), 0..6), (Comment, 7..35)]),
+            (131, vec![(Symbol("/*****"), 0..6), (Comment(" invalid, lexed as a symbol"), 7..35)]),
             (133, vec![(BlockCommentStart("/*"), 4..6)]),
             (135, vec![(Symbol("*****"), 4..9)]),
             (137, vec![(BlockCommentEnd("***/"), 0..4)]),

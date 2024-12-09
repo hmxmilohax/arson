@@ -421,7 +421,7 @@ impl<'src> Preprocessor<'src> {
                 return ProcessResult::SkipToken;
             },
 
-            TokenValue::Comment => return ProcessResult::SkipToken,
+            TokenValue::Comment(_) => return ProcessResult::SkipToken,
             TokenValue::BlockCommentStart(_) => return self.skip_block_comment(token.location, tokens),
             TokenValue::BlockCommentEnd(text) => {
                 // Block comment ends are handled by skip_block_comment,
