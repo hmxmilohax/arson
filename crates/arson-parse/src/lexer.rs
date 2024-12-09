@@ -9,38 +9,14 @@ type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
-    pub kind: TokenValue<'src>,
+    pub value: TokenValue<'src>,
     pub location: Span,
 }
 
 impl Token<'_> {
-    pub fn to_owned(&self) -> OwnedToken {
-        OwnedToken {
-            kind: self.kind.to_owned(),
-            location: self.location.clone(),
-        }
+    pub fn get_kind(&self) -> TokenKind {
+        self.value.get_kind()
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct OwnedToken {
-    pub kind: OwnedTokenValue,
-    pub location: Span,
-}
-
-impl OwnedToken {
-    pub const fn new(kind: OwnedTokenValue, location: Span) -> OwnedToken {
-        OwnedToken { kind, location }
-    }
-}
-
-macro_rules! to_owned_type {
-    (str) => {
-        String
-    };
-    ($type:tt) => {
-        $type
-    };
 }
 
 /// wizardry
@@ -50,7 +26,7 @@ macro_rules! make_tokens {
     (
         $(
             $(#[$attr:meta])*
-            $type:ident$(($value:ident $(: $life:lifetime)?))?
+            $variant:ident$(($(&$life:lifetime)? $value_type:ident$(<$value_generics:tt>)?))?
                 => ($display:literal $(, $format:literal)?)
             $(,)?
         )+
@@ -59,23 +35,13 @@ macro_rules! make_tokens {
         #[logos(error = LexError)]
         #[logos(skip r#"[ \v\t\r\n\f]+"#)]
         pub enum TokenValue<'src> {
-            $($(#[$attr])* $type$(($(& $life)? $value))?,)+
+            $($(#[$attr])* $variant$(($(&$life)? $value_type$(<$value_generics>)?))?,)+
         }
 
         impl<'src> TokenValue<'src> {
-            pub fn get_type(&self) -> TokenKind {
+            pub fn get_kind(&self) -> TokenKind {
                 match self {
-                    $(TokenValue::$type$((meta_morph!($value => _)))? => TokenKind::$type,)+
-                }
-            }
-
-            pub fn to_owned(&self) -> OwnedTokenValue {
-                match self {
-                    $(TokenValue::$type$((meta_morph!($value => ref value)))?
-                        => OwnedTokenValue::$type$(
-                            (meta_morph!($value => ((*value).to_owned())))
-                        )?,
-                    )+
+                    $(TokenValue::$variant$((meta_morph!($value_type => _)))? => TokenKind::$variant,)+
                 }
             }
         }
@@ -83,30 +49,7 @@ macro_rules! make_tokens {
         impl<'src> std::fmt::Display for TokenValue<'src> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(TokenValue::$type$((meta_morph!($value => _value)))?
-                        => write!(f, concat!($display, $($format)?) $(,meta_morph!($format => _value))?),
-                    )+
-                }
-            }
-        }
-
-        #[derive(Debug, Clone, PartialEq)]
-        pub enum OwnedTokenValue {
-            $($type$((to_owned_type!($value)))?,)+
-        }
-
-        impl OwnedTokenValue {
-            pub fn get_type(&self) -> TokenKind {
-                match self {
-                    $(OwnedTokenValue::$type$((meta_morph!($value => _)))? => TokenKind::$type,)+
-                }
-            }
-        }
-
-        impl std::fmt::Display for OwnedTokenValue {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    $(OwnedTokenValue::$type$((meta_morph!($value => _value)))?
+                    $(TokenValue::$variant$((meta_morph!($value_type => _value)))?
                         => write!(f, concat!($display, $($format)?) $(,meta_morph!($format => _value))?),
                     )+
                 }
@@ -115,13 +58,13 @@ macro_rules! make_tokens {
 
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
         pub enum TokenKind {
-            $($type,)+
+            $($variant,)+
         }
 
         impl<'src> std::fmt::Display for TokenKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(TokenKind::$type => write!(f, $display),)+
+                    $(TokenKind::$variant => write!(f, $display),)+
                 }
             }
         }
@@ -140,15 +83,15 @@ make_tokens! {
     #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, parse_float, priority = 2)]
     Float(FloatValue) => ("float", "{}"),
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    String(str: 'src) => ("string", "\"{}\""),
+    String(&'src str) => ("string", "\"{}\""),
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
     #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, priority = 0)]
     #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    Symbol(str: 'src) => ("symbol", "'{}'"),
+    Symbol(&'src str) => ("symbol", "'{}'"),
     #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    Variable(str: 'src) => ("variable", "${}"),
+    Variable(&'src str) => ("variable", "${}"),
     #[token("kDataUnhandled")]
     Unhandled => ("kDataUnhandled"),
 
@@ -188,15 +131,15 @@ make_tokens! {
     Endif => ("#endif directive"),
 
     #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    BadDirective(str: 'src) => ("invalid directive", "#{}"),
+    BadDirective(&'src str) => ("invalid directive", "#{}"),
 
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
-    Comment(str: 'src) => ("comment"),
+    Comment(&'src str) => ("comment"),
     // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#)]
-    BlockCommentStart(str: 'src) => ("block comment start"),
+    BlockCommentStart(&'src str) => ("block comment start"),
     #[regex(r#"\*+\/"#)]
-    BlockCommentEnd(str: 'src) => ("block comment end"),
+    BlockCommentEnd(&'src str) => ("block comment end"),
 
     Error(LexError) => ("token error", ": {}"),
 }
@@ -211,12 +154,14 @@ pub enum LexError {
     IntegerError(#[from] ParseIntError),
     #[error("Float parse error: {0}")]
     FloatError(#[from] ParseFloatError),
-    #[error("Failed to remove token delimiters")]
-    DelimiterError,
+    #[error("Range of token contents {trim_range:?} is not within text length {actual_length}")]
+    TrimDelimiterError { trim_range: Span, actual_length: usize },
 }
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexError> {
-    text.get(before..text.len() - after).ok_or(LexError::DelimiterError)
+    let trim_range = before..text.len() - after;
+    text.get(trim_range.clone())
+        .ok_or(LexError::TrimDelimiterError { trim_range, actual_length: text.len() })
 }
 
 fn parse_hex(lex: &mut Lexer<'_>) -> Result<IntegerValue, LexError> {
@@ -242,8 +187,8 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, ParseFloatError> {
 
 pub fn lex_text(text: &str) -> impl Iterator<Item = Token<'_>> {
     TokenValue::lexer(text).spanned().map(|t| match t {
-        (Ok(kind), location) => Token { kind, location },
-        (Err(error), location) => Token { kind: TokenValue::Error(error), location },
+        (Ok(kind), location) => Token { value: kind, location },
+        (Err(error), location) => Token { value: TokenValue::Error(error), location },
     })
 }
 
@@ -252,7 +197,7 @@ mod tests {
     use super::*;
 
     fn assert_token(text: &str, kind: TokenValue<'_>, location: Span) {
-        let expected = Token { kind, location };
+        let expected = Token { value: kind, location };
         let tokens = lex_text(text).collect::<Vec<_>>();
         assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
     }

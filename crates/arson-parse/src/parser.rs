@@ -7,7 +7,7 @@ use arson_core::{ArrayKind, FloatValue, IntegerValue};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use logos::Span;
 
-use super::lexer::{self, LexError, OwnedToken, OwnedTokenValue, Token, TokenKind, TokenValue};
+use super::lexer::{self, LexError, Token, TokenKind, TokenValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -34,7 +34,7 @@ impl<'src> ArrayExpression<'src> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum PreprocessedTokenKind<'src> {
+enum PreprocessedTokenValue<'src> {
     Integer(IntegerValue),
     Float(FloatValue),
     String(&'src str),
@@ -68,7 +68,7 @@ enum PreprocessedTokenKind<'src> {
 
 #[derive(Debug, Clone, PartialEq)]
 struct PreprocessedToken<'src> {
-    kind: PreprocessedTokenKind<'src>,
+    value: PreprocessedTokenValue<'src>,
     location: Span,
 }
 
@@ -174,7 +174,11 @@ pub enum ParseError {
     BadDirective(Span),
 
     TokenError(Span, LexError),
-    IncorrectToken { expected: TokenKind, actual: OwnedToken },
+    IncorrectToken {
+        location: Span,
+        expected: TokenKind,
+        actual: TokenKind,
+    },
 
     UnexpectedEof,
 }
@@ -185,44 +189,42 @@ impl ParseError {
             ParseError::UnexpectedEof => Diagnostic::error()
                 .with_code("DTA0000")
                 .with_message("unexpected end of file"),
-            ParseError::TokenError(range, lex_error) => Diagnostic::error()
+            ParseError::TokenError(location, error) => Diagnostic::error()
                 .with_code("DTA0001")
-                .with_message(format!("internal tokenizer error: {lex_error}"))
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::BadDirective(range) => Diagnostic::error()
+                .with_message(format!("internal tokenizer error"))
+                .with_notes(vec![format!("error contents: {error}")])
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::BadDirective(location) => Diagnostic::error()
                 .with_code("DTA0002")
                 .with_message("unrecognized parser directive")
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::UnexpectedConditional(range) => Diagnostic::error()
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::UnexpectedConditional(location) => Diagnostic::error()
                 .with_code("DTA0003")
                 .with_message("unexpected conditional directive")
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::UnmatchedConditional(range) => Diagnostic::error()
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::UnmatchedConditional(location) => Diagnostic::error()
                 .with_code("DTA0004")
                 .with_message("unmatched conditional directive")
                 .with_notes(vec!["#else or #endif required to close the conditional block".to_owned()])
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::UnbalancedConditional(range) => Diagnostic::error()
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::UnbalancedConditional(location) => Diagnostic::error()
                 .with_code("DTA0005")
                 .with_message("unbalanced conditional block")
                 .with_notes(vec!["all arrays in conditionals must be self-contained".to_owned()])
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::UnmatchedBrace(range, array_kind) => Diagnostic::error()
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::UnmatchedBrace(location, kind) => Diagnostic::error()
                 .with_code("DTA0006")
-                .with_message(format!("unmatched {array_kind} delimiter"))
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
-            ParseError::IncorrectToken { expected, actual } => Diagnostic::error()
+                .with_message(format!("unmatched {kind} delimiter"))
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::IncorrectToken { location, expected, actual } => Diagnostic::error()
                 .with_code("DTA0007")
-                .with_message(format!(
-                    "expected token of type {}, found {} instead",
-                    expected, actual.kind
-                ))
-                .with_labels(vec![Label::primary(file_id, actual.location.clone())]),
-            ParseError::UnclosedBlockComment(range) => Diagnostic::error()
+                .with_message(format!("expected token of type {expected}, found {actual} instead"))
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
+            ParseError::UnclosedBlockComment(location) => Diagnostic::error()
                 .with_code("DTA0008")
                 .with_message("unclosed block comment")
                 .with_notes(vec!["*/ required to close the comment".to_owned()])
-                .with_labels(vec![Label::primary(file_id, range.clone())]),
+                .with_labels(vec![Label::primary(file_id, location.clone())]),
         }
     }
 }
@@ -245,6 +247,7 @@ enum ProcessResult<T> {
     Result(T),
     BlockEnd(Span),
     SkipToken,
+    Error(ParseError),
     Eof,
 }
 
@@ -270,8 +273,8 @@ macro_rules! next_token {
         let Some(next) = $tokens.peek() else {
             return $self.unexpected_eof();
         };
-        let TokenValue::$expected(value) = next.kind else {
-            return $self.incorrect_token(TokenKind::$expected, next.to_owned());
+        let TokenValue::$expected(value) = next.value else {
+            return $self.incorrect_token(TokenKind::$expected, next.get_kind(), next.location.clone());
         };
         let result = (value, next.location.clone());
         $tokens.next();
@@ -310,6 +313,10 @@ impl<'src> Preprocessor<'src> {
                 ProcessResult::Result(node) => processed.push(node),
                 ProcessResult::BlockEnd(end_location) => return (processed, end_location),
                 ProcessResult::SkipToken => continue,
+                ProcessResult::Error(err) => {
+                    self.errors.push(err);
+                    continue;
+                },
                 ProcessResult::Eof => {
                     self.verify_eof();
                     match processed.last().cloned() {
@@ -325,12 +332,12 @@ impl<'src> Preprocessor<'src> {
         &mut self,
         tokens: &mut Peekable<I>,
         location: Span,
-        kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenKind<'src>,
+        kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let (name, name_location) = next_token!(self, tokens, Symbol());
         let name = StrExpression::new(name, name_location.clone());
         let location = location.start..name_location.end;
-        ProcessResult::Result(PreprocessedToken { kind: kind(name), location })
+        ProcessResult::Result(PreprocessedToken { value: kind(name), location })
     }
 
     fn process_token<I: Iterator<Item = Token<'src>>>(
@@ -342,37 +349,37 @@ impl<'src> Preprocessor<'src> {
             Some(token) => token,
         };
 
-        let kind = match token.kind {
-            TokenValue::Integer(value) => PreprocessedTokenKind::Integer(value),
-            TokenValue::Float(value) => PreprocessedTokenKind::Float(value),
-            TokenValue::String(value) => PreprocessedTokenKind::String(value),
-            TokenValue::Symbol(value) => PreprocessedTokenKind::Symbol(value),
-            TokenValue::Variable(value) => PreprocessedTokenKind::Variable(value),
-            TokenValue::Unhandled => PreprocessedTokenKind::Unhandled,
+        let kind = match token.value {
+            TokenValue::Integer(value) => PreprocessedTokenValue::Integer(value),
+            TokenValue::Float(value) => PreprocessedTokenValue::Float(value),
+            TokenValue::String(value) => PreprocessedTokenValue::String(value),
+            TokenValue::Symbol(value) => PreprocessedTokenValue::Symbol(value),
+            TokenValue::Variable(value) => PreprocessedTokenValue::Variable(value),
+            TokenValue::Unhandled => PreprocessedTokenValue::Unhandled,
 
-            TokenValue::ArrayOpen => PreprocessedTokenKind::ArrayOpen,
-            TokenValue::ArrayClose => PreprocessedTokenKind::ArrayClose,
-            TokenValue::CommandOpen => PreprocessedTokenKind::CommandOpen,
-            TokenValue::CommandClose => PreprocessedTokenKind::CommandClose,
-            TokenValue::PropertyOpen => PreprocessedTokenKind::PropertyOpen,
-            TokenValue::PropertyClose => PreprocessedTokenKind::PropertyClose,
+            TokenValue::ArrayOpen => PreprocessedTokenValue::ArrayOpen,
+            TokenValue::ArrayClose => PreprocessedTokenValue::ArrayClose,
+            TokenValue::CommandOpen => PreprocessedTokenValue::CommandOpen,
+            TokenValue::CommandClose => PreprocessedTokenValue::CommandClose,
+            TokenValue::PropertyOpen => PreprocessedTokenValue::PropertyOpen,
+            TokenValue::PropertyClose => PreprocessedTokenValue::PropertyClose,
 
             TokenValue::Define => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Define)
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Define)
             },
             TokenValue::Undefine => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Undefine)
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Undefine)
             },
             TokenValue::Include => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Include)
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Include)
             },
             TokenValue::IncludeOptional => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::IncludeOptional)
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::IncludeOptional)
             },
             TokenValue::Merge => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenKind::Merge)
+                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Merge)
             },
-            TokenValue::Autorun => PreprocessedTokenKind::Autorun,
+            TokenValue::Autorun => PreprocessedTokenValue::Autorun,
 
             TokenValue::Ifdef => {
                 let (name, name_location) = next_token!(self, tokens, Symbol());
@@ -410,15 +417,11 @@ impl<'src> Preprocessor<'src> {
             },
             TokenValue::Endif => match self.conditional_stack.last() {
                 Some(_) => return ProcessResult::BlockEnd(token.location),
-                None => {
-                    self.errors.push(ParseError::UnexpectedConditional(token.location));
-                    return ProcessResult::SkipToken;
-                },
+                None => return ProcessResult::Error(ParseError::UnexpectedConditional(token.location)),
             },
 
             TokenValue::BadDirective(_) => {
-                self.errors.push(ParseError::BadDirective(token.location));
-                return ProcessResult::SkipToken;
+                return ProcessResult::Error(ParseError::BadDirective(token.location))
             },
 
             TokenValue::Comment(_) => return ProcessResult::SkipToken,
@@ -426,13 +429,13 @@ impl<'src> Preprocessor<'src> {
             TokenValue::BlockCommentEnd(text) => {
                 // Block comment ends are handled by skip_block_comment,
                 // if we get here this is a stray block comment close which is handled as a symbol
-                PreprocessedTokenKind::Symbol(text)
+                PreprocessedTokenValue::Symbol(text)
             },
 
-            TokenValue::Error(error) => PreprocessedTokenKind::Error(error),
+            TokenValue::Error(error) => PreprocessedTokenValue::Error(error),
         };
 
-        ProcessResult::Result(PreprocessedToken { kind, location: token.location })
+        ProcessResult::Result(PreprocessedToken { value: kind, location: token.location })
     }
 
     fn parse_conditional<I: Iterator<Item = Token<'src>>>(
@@ -459,7 +462,7 @@ impl<'src> Preprocessor<'src> {
         };
 
         ProcessResult::Result(PreprocessedToken {
-            kind: PreprocessedTokenKind::Conditional {
+            value: PreprocessedTokenValue::Conditional {
                 is_positive: conditional.is_positive,
                 symbol: conditional.symbol,
                 true_branch: (true_exprs, true_location),
@@ -497,7 +500,7 @@ impl<'src> Preprocessor<'src> {
     ) -> ProcessResult<T> {
         // Skip tokens until the end token is found
         while let Some(token) = tokens.next() {
-            if let TokenValue::BlockCommentEnd(_) = token.kind {
+            if let TokenValue::BlockCommentEnd(_) = token.value {
                 return ProcessResult::SkipToken;
             }
         }
@@ -507,8 +510,13 @@ impl<'src> Preprocessor<'src> {
         self.unexpected_eof()
     }
 
-    fn incorrect_token<T>(&mut self, expected: TokenKind, actual: OwnedToken) -> ProcessResult<T> {
-        self.errors.push(ParseError::IncorrectToken { expected, actual });
+    fn incorrect_token<T>(
+        &mut self,
+        expected: TokenKind,
+        actual: TokenKind,
+        location: Span,
+    ) -> ProcessResult<T> {
+        self.errors.push(ParseError::IncorrectToken { location, expected, actual });
         ProcessResult::SkipToken
     }
 
@@ -557,6 +565,10 @@ impl<'src> Parser<'src> {
                 ProcessResult::Result(node) => exprs.push(node),
                 ProcessResult::BlockEnd(end_location) => return (exprs, end_location),
                 ProcessResult::SkipToken => continue,
+                ProcessResult::Error(err) => {
+                    self.errors.push(err);
+                    continue;
+                },
                 ProcessResult::Eof => {
                     self.verify_eof();
                     match exprs.last().cloned() {
@@ -600,17 +612,13 @@ impl<'src> Parser<'src> {
                     ProcessResult::BlockEnd(end)
                 }
             },
-            None => {
-                self.errors.push(ParseError::UnmatchedBrace(end, kind));
-                ProcessResult::SkipToken
-            },
+            None => ProcessResult::Error(ParseError::UnmatchedBrace(end, kind)),
         }
     }
 
     fn recover_mismatched_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
         if !self.array_stack.iter().any(|arr| arr.kind == kind) {
-            self.errors.push(ParseError::UnmatchedBrace(end, kind));
-            return ProcessResult::SkipToken;
+            return ProcessResult::Error(ParseError::UnmatchedBrace(end, kind));
         }
 
         while let Some(array) = self.array_stack.last() {
@@ -635,47 +643,47 @@ impl<'src> Parser<'src> {
             Some(token) => token,
         };
 
-        let (kind, location) = match token.kind {
-            PreprocessedTokenKind::Integer(value) => (ExpressionValue::Integer(value), token.location),
-            PreprocessedTokenKind::Float(value) => (ExpressionValue::Float(value), token.location),
-            PreprocessedTokenKind::String(value) => (ExpressionValue::String(value), token.location),
-            PreprocessedTokenKind::Symbol(value) => (ExpressionValue::Symbol(value), token.location),
-            PreprocessedTokenKind::Variable(value) => (ExpressionValue::Variable(value), token.location),
-            PreprocessedTokenKind::Unhandled => (ExpressionValue::Unhandled, token.location),
+        let (kind, location) = match token.value {
+            PreprocessedTokenValue::Integer(value) => (ExpressionValue::Integer(value), token.location),
+            PreprocessedTokenValue::Float(value) => (ExpressionValue::Float(value), token.location),
+            PreprocessedTokenValue::String(value) => (ExpressionValue::String(value), token.location),
+            PreprocessedTokenValue::Symbol(value) => (ExpressionValue::Symbol(value), token.location),
+            PreprocessedTokenValue::Variable(value) => (ExpressionValue::Variable(value), token.location),
+            PreprocessedTokenValue::Unhandled => (ExpressionValue::Unhandled, token.location),
 
-            PreprocessedTokenKind::ArrayOpen => {
+            PreprocessedTokenValue::ArrayOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Array);
                 (ExpressionValue::Array(array), location)
             },
-            PreprocessedTokenKind::CommandOpen => {
+            PreprocessedTokenValue::CommandOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Command);
                 (ExpressionValue::Command(array), location)
             },
-            PreprocessedTokenKind::PropertyOpen => {
+            PreprocessedTokenValue::PropertyOpen => {
                 let (array, location) = self.open_array(tokens, &token.location, ArrayKind::Property);
                 (ExpressionValue::Property(array), location)
             },
-            PreprocessedTokenKind::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
-            PreprocessedTokenKind::CommandClose => {
+            PreprocessedTokenValue::ArrayClose => return self.close_array(ArrayKind::Array, token.location),
+            PreprocessedTokenValue::CommandClose => {
                 return self.close_array(ArrayKind::Command, token.location)
             },
-            PreprocessedTokenKind::PropertyClose => {
+            PreprocessedTokenValue::PropertyClose => {
                 return self.close_array(ArrayKind::Property, token.location)
             },
 
-            PreprocessedTokenKind::Conditional { is_positive, symbol, true_branch, false_branch } => {
+            PreprocessedTokenValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
                 let true_branch = self.parse_conditional_block(true_branch);
                 let false_branch = false_branch.map(|block| self.parse_conditional_block(block));
                 let expr = ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch };
                 (expr, token.location)
             },
 
-            PreprocessedTokenKind::Define(name) => {
+            PreprocessedTokenValue::Define(name) => {
                 let start_location = {
                     let Some(next) = tokens.peek() else {
                         return self.unexpected_eof();
                     };
-                    let PreprocessedTokenKind::ArrayOpen = next.kind else {
+                    let PreprocessedTokenValue::ArrayOpen = next.value else {
                         return self.incorrect_token(TokenKind::ArrayOpen, next.clone());
                     };
                     let location = next.location.clone();
@@ -689,18 +697,18 @@ impl<'src> Parser<'src> {
 
                 (ExpressionValue::Define(name, body), location)
             },
-            PreprocessedTokenKind::Undefine(name) => (ExpressionValue::Undefine(name), token.location),
-            PreprocessedTokenKind::Include(path) => (ExpressionValue::Include(path), token.location),
-            PreprocessedTokenKind::IncludeOptional(path) => {
+            PreprocessedTokenValue::Undefine(name) => (ExpressionValue::Undefine(name), token.location),
+            PreprocessedTokenValue::Include(path) => (ExpressionValue::Include(path), token.location),
+            PreprocessedTokenValue::IncludeOptional(path) => {
                 (ExpressionValue::IncludeOptional(path), token.location)
             },
-            PreprocessedTokenKind::Merge(name) => (ExpressionValue::Merge(name), token.location),
-            PreprocessedTokenKind::Autorun => {
+            PreprocessedTokenValue::Merge(name) => (ExpressionValue::Merge(name), token.location),
+            PreprocessedTokenValue::Autorun => {
                 let start_location = {
                     let Some(next) = tokens.peek() else {
                         return self.unexpected_eof();
                     };
-                    let PreprocessedTokenKind::CommandOpen = next.kind else {
+                    let PreprocessedTokenValue::CommandOpen = next.value else {
                         return self.incorrect_token(TokenKind::CommandOpen, next.clone());
                     };
                     let location = next.location.clone();
@@ -712,7 +720,7 @@ impl<'src> Parser<'src> {
                 (ExpressionValue::Autorun(body), token.location.start..body_location.end)
             },
 
-            PreprocessedTokenKind::Error(error) => {
+            PreprocessedTokenValue::Error(error) => {
                 self.errors.push(ParseError::TokenError(token.location, error));
                 return ProcessResult::SkipToken;
             },
@@ -752,35 +760,35 @@ impl<'src> Parser<'src> {
         expected: TokenKind,
         actual: PreprocessedToken<'src>,
     ) -> ProcessResult<Expression<'src>> {
-        let actual_kind = match actual.kind {
-            PreprocessedTokenKind::Integer(value) => OwnedTokenValue::Integer(value),
-            PreprocessedTokenKind::Float(value) => OwnedTokenValue::Float(value),
-            PreprocessedTokenKind::String(value) => OwnedTokenValue::String(value.to_owned()),
-            PreprocessedTokenKind::Symbol(value) => OwnedTokenValue::Symbol(value.to_owned()),
-            PreprocessedTokenKind::Variable(value) => OwnedTokenValue::Variable(value.to_owned()),
-            PreprocessedTokenKind::Unhandled => OwnedTokenValue::Unhandled,
+        let location = actual.location;
+        let actual = match actual.value {
+            PreprocessedTokenValue::Integer(_) => TokenKind::Integer,
+            PreprocessedTokenValue::Float(_) => TokenKind::Float,
+            PreprocessedTokenValue::String(_) => TokenKind::String,
+            PreprocessedTokenValue::Symbol(_) => TokenKind::Symbol,
+            PreprocessedTokenValue::Variable(_) => TokenKind::Variable,
+            PreprocessedTokenValue::Unhandled => TokenKind::Unhandled,
 
-            PreprocessedTokenKind::ArrayOpen => OwnedTokenValue::ArrayOpen,
-            PreprocessedTokenKind::ArrayClose => OwnedTokenValue::ArrayClose,
-            PreprocessedTokenKind::CommandOpen => OwnedTokenValue::CommandOpen,
-            PreprocessedTokenKind::CommandClose => OwnedTokenValue::CommandClose,
-            PreprocessedTokenKind::PropertyOpen => OwnedTokenValue::PropertyOpen,
-            PreprocessedTokenKind::PropertyClose => OwnedTokenValue::PropertyClose,
+            PreprocessedTokenValue::ArrayOpen => TokenKind::ArrayOpen,
+            PreprocessedTokenValue::ArrayClose => TokenKind::ArrayClose,
+            PreprocessedTokenValue::CommandOpen => TokenKind::CommandOpen,
+            PreprocessedTokenValue::CommandClose => TokenKind::CommandClose,
+            PreprocessedTokenValue::PropertyOpen => TokenKind::PropertyOpen,
+            PreprocessedTokenValue::PropertyClose => TokenKind::PropertyClose,
 
-            PreprocessedTokenKind::Define(_) => OwnedTokenValue::Define,
-            PreprocessedTokenKind::Undefine(_) => OwnedTokenValue::Undefine,
-            PreprocessedTokenKind::Include(_) => OwnedTokenValue::Include,
-            PreprocessedTokenKind::IncludeOptional(_) => OwnedTokenValue::IncludeOptional,
-            PreprocessedTokenKind::Merge(_) => OwnedTokenValue::Merge,
-            PreprocessedTokenKind::Autorun => OwnedTokenValue::Autorun,
+            PreprocessedTokenValue::Define(_) => TokenKind::Define,
+            PreprocessedTokenValue::Undefine(_) => TokenKind::Undefine,
+            PreprocessedTokenValue::Include(_) => TokenKind::Include,
+            PreprocessedTokenValue::IncludeOptional(_) => TokenKind::IncludeOptional,
+            PreprocessedTokenValue::Merge(_) => TokenKind::Merge,
+            PreprocessedTokenValue::Autorun => TokenKind::Autorun,
 
-            PreprocessedTokenKind::Conditional { .. } => OwnedTokenValue::Ifdef,
+            PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
 
-            PreprocessedTokenKind::Error(error) => OwnedTokenValue::Error(error),
+            PreprocessedTokenValue::Error(_) => TokenKind::Error,
         };
-        let actual = OwnedToken { kind: actual_kind, location: actual.location };
 
-        self.errors.push(ParseError::IncorrectToken { expected, actual });
+        self.errors.push(ParseError::IncorrectToken { location, expected, actual });
         ProcessResult::SkipToken
     }
 
@@ -825,11 +833,11 @@ mod tests {
     mod preprocessor {
         use super::*;
 
-        const fn new_pretoken(kind: PreprocessedTokenKind<'_>, location: Span) -> PreprocessedToken<'_> {
-            PreprocessedToken { kind, location }
+        const fn new_pretoken(kind: PreprocessedTokenValue<'_>, location: Span) -> PreprocessedToken<'_> {
+            PreprocessedToken { value: kind, location }
         }
 
-        fn assert_preprocessed(text: &str, expected: Vec<PreprocessedToken>) {
+        fn assert_tokens(text: &str, expected: Vec<PreprocessedToken>) {
             let tokens = lexer::lex_text(text);
             let preprocessed = match preprocess(tokens) {
                 Ok(preprocessed) => preprocessed,
@@ -851,93 +859,100 @@ mod tests {
 
         #[test]
         fn integer() {
-            assert_preprocessed("1 2 3", vec![
-                new_pretoken(PreprocessedTokenKind::Integer(1), 0..1),
-                new_pretoken(PreprocessedTokenKind::Integer(2), 2..3),
-                new_pretoken(PreprocessedTokenKind::Integer(3), 4..5),
+            assert_tokens("1 2 3", vec![
+                new_pretoken(PreprocessedTokenValue::Integer(1), 0..1),
+                new_pretoken(PreprocessedTokenValue::Integer(2), 2..3),
+                new_pretoken(PreprocessedTokenValue::Integer(3), 4..5),
             ]);
         }
 
         #[test]
         fn float() {
-            assert_preprocessed("1.0 2.0 3.0", vec![
-                new_pretoken(PreprocessedTokenKind::Float(1.0), 0..3),
-                new_pretoken(PreprocessedTokenKind::Float(2.0), 4..7),
-                new_pretoken(PreprocessedTokenKind::Float(3.0), 8..11),
+            assert_tokens("1.0 2.0 3.0", vec![
+                new_pretoken(PreprocessedTokenValue::Float(1.0), 0..3),
+                new_pretoken(PreprocessedTokenValue::Float(2.0), 4..7),
+                new_pretoken(PreprocessedTokenValue::Float(3.0), 8..11),
             ]);
         }
 
         #[test]
         fn string() {
-            assert_preprocessed("\"a\" \"b\" \"c\"", vec![
-                new_pretoken(PreprocessedTokenKind::String("a"), 0..3),
-                new_pretoken(PreprocessedTokenKind::String("b"), 4..7),
-                new_pretoken(PreprocessedTokenKind::String("c"), 8..11),
+            assert_tokens("\"a\" \"b\" \"c\"", vec![
+                new_pretoken(PreprocessedTokenValue::String("a"), 0..3),
+                new_pretoken(PreprocessedTokenValue::String("b"), 4..7),
+                new_pretoken(PreprocessedTokenValue::String("c"), 8..11),
             ]);
         }
 
         #[test]
         fn symbol() {
-            assert_preprocessed("asdf + '10'", vec![
-                new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 0..4),
-                new_pretoken(PreprocessedTokenKind::Symbol("+"), 5..6),
-                new_pretoken(PreprocessedTokenKind::Symbol("10"), 7..11),
+            assert_tokens("asdf + '10'", vec![
+                new_pretoken(PreprocessedTokenValue::Symbol("asdf"), 0..4),
+                new_pretoken(PreprocessedTokenValue::Symbol("+"), 5..6),
+                new_pretoken(PreprocessedTokenValue::Symbol("10"), 7..11),
             ]);
         }
 
         #[test]
         fn variable() {
-            assert_preprocessed("$asdf $this", vec![
-                new_pretoken(PreprocessedTokenKind::Variable("asdf"), 0..5),
-                new_pretoken(PreprocessedTokenKind::Variable("this"), 6..11),
+            assert_tokens("$asdf $this", vec![
+                new_pretoken(PreprocessedTokenValue::Variable("asdf"), 0..5),
+                new_pretoken(PreprocessedTokenValue::Variable("this"), 6..11),
             ]);
         }
 
         #[test]
         fn unhandled() {
-            assert_preprocessed("kDataUnhandled", vec![new_pretoken(
-                PreprocessedTokenKind::Unhandled,
+            assert_tokens("kDataUnhandled", vec![new_pretoken(
+                PreprocessedTokenValue::Unhandled,
                 0..14,
             )])
         }
 
         #[test]
         fn arrays() {
-            assert_preprocessed("(asdf \"text\" 1)", vec![
-                new_pretoken(PreprocessedTokenKind::ArrayOpen, 0..1),
-                new_pretoken(PreprocessedTokenKind::Symbol("asdf"), 1..5),
-                new_pretoken(PreprocessedTokenKind::String("text"), 6..12),
-                new_pretoken(PreprocessedTokenKind::Integer(1), 13..14),
-                new_pretoken(PreprocessedTokenKind::ArrayClose, 14..15),
+            assert_tokens("(asdf \"text\" 1)", vec![
+                new_pretoken(PreprocessedTokenValue::ArrayOpen, 0..1),
+                new_pretoken(PreprocessedTokenValue::Symbol("asdf"), 1..5),
+                new_pretoken(PreprocessedTokenValue::String("text"), 6..12),
+                new_pretoken(PreprocessedTokenValue::Integer(1), 13..14),
+                new_pretoken(PreprocessedTokenValue::ArrayClose, 14..15),
             ]);
-            assert_preprocessed("{set $var \"asdf\"}", vec![
-                new_pretoken(PreprocessedTokenKind::CommandOpen, 0..1),
-                new_pretoken(PreprocessedTokenKind::Symbol("set"), 1..4),
-                new_pretoken(PreprocessedTokenKind::Variable("var"), 5..9),
-                new_pretoken(PreprocessedTokenKind::String("asdf"), 10..16),
-                new_pretoken(PreprocessedTokenKind::CommandClose, 16..17),
+            assert_tokens("{set $var \"asdf\"}", vec![
+                new_pretoken(PreprocessedTokenValue::CommandOpen, 0..1),
+                new_pretoken(PreprocessedTokenValue::Symbol("set"), 1..4),
+                new_pretoken(PreprocessedTokenValue::Variable("var"), 5..9),
+                new_pretoken(PreprocessedTokenValue::String("asdf"), 10..16),
+                new_pretoken(PreprocessedTokenValue::CommandClose, 16..17),
             ]);
-            assert_preprocessed("[property]", vec![
-                new_pretoken(PreprocessedTokenKind::PropertyOpen, 0..1),
-                new_pretoken(PreprocessedTokenKind::Symbol("property"), 1..9),
-                new_pretoken(PreprocessedTokenKind::PropertyClose, 9..10),
+            assert_tokens("[property]", vec![
+                new_pretoken(PreprocessedTokenValue::PropertyOpen, 0..1),
+                new_pretoken(PreprocessedTokenValue::Symbol("property"), 1..9),
+                new_pretoken(PreprocessedTokenValue::PropertyClose, 9..10),
             ]);
         }
 
         #[test]
         fn comments() {
-            assert_preprocessed("; comment", vec![]);
-            assert_preprocessed("/* block comment */", vec![]);
-            assert_preprocessed("/*symbol*/", vec![new_pretoken(PreprocessedTokenKind::Symbol("/*symbol*/"), 0..10)]);
-            assert_preprocessed("*/", vec![new_pretoken(PreprocessedTokenKind::Symbol("*/"), 0..2)]);
-            assert_errors("/* a bunch of text", vec![ParseError::UnclosedBlockComment(0..18), ParseError::UnexpectedEof]);
+            assert_tokens("; comment", vec![]);
+            assert_tokens("/* block comment */", vec![]);
+            assert_tokens("/*symbol*/", vec![new_pretoken(
+                PreprocessedTokenValue::Symbol("/*symbol*/"),
+                0..10,
+            )]);
+            assert_tokens("*/", vec![new_pretoken(PreprocessedTokenValue::Symbol("*/"), 0..2)]);
+            assert_errors("/* a bunch of text", vec![
+                ParseError::UnclosedBlockComment(0..18),
+                ParseError::UnexpectedEof,
+            ]);
         }
 
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
             assert_errors(&text, vec![ParseError::IncorrectToken {
+                location: name.len() + 1..name.len() + 2,
                 expected: TokenKind::Symbol,
-                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                actual: TokenKind::Integer,
             }]);
         }
 
@@ -947,34 +962,34 @@ mod tests {
 
         #[test]
         fn directives() {
-            assert_preprocessed("#define kDefine (1)", vec![
-                new_pretoken(PreprocessedTokenKind::Define(StrExpression::new("kDefine", 8..15)), 0..15),
-                new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
-                new_pretoken(PreprocessedTokenKind::Integer(1), 17..18),
-                new_pretoken(PreprocessedTokenKind::ArrayClose, 18..19),
+            assert_tokens("#define kDefine (1)", vec![
+                new_pretoken(PreprocessedTokenValue::Define(StrExpression::new("kDefine", 8..15)), 0..15),
+                new_pretoken(PreprocessedTokenValue::ArrayOpen, 16..17),
+                new_pretoken(PreprocessedTokenValue::Integer(1), 17..18),
+                new_pretoken(PreprocessedTokenValue::ArrayClose, 18..19),
             ]);
-            assert_preprocessed("#undef kDefine", vec![new_pretoken(
-                PreprocessedTokenKind::Undefine(StrExpression::new("kDefine", 7..14)),
+            assert_tokens("#undef kDefine", vec![new_pretoken(
+                PreprocessedTokenValue::Undefine(StrExpression::new("kDefine", 7..14)),
                 0..14,
             )]);
-            assert_preprocessed("#include ../file.dta", vec![new_pretoken(
-                PreprocessedTokenKind::Include(StrExpression::new("../file.dta", 9..20)),
+            assert_tokens("#include ../file.dta", vec![new_pretoken(
+                PreprocessedTokenValue::Include(StrExpression::new("../file.dta", 9..20)),
                 0..20,
             )]);
-            assert_preprocessed("#include_opt ../file.dta", vec![new_pretoken(
-                PreprocessedTokenKind::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
+            assert_tokens("#include_opt ../file.dta", vec![new_pretoken(
+                PreprocessedTokenValue::IncludeOptional(StrExpression::new("../file.dta", 13..24)),
                 0..24,
             )]);
-            assert_preprocessed("#merge ../file.dta", vec![new_pretoken(
-                PreprocessedTokenKind::Merge(StrExpression::new("../file.dta", 7..18)),
+            assert_tokens("#merge ../file.dta", vec![new_pretoken(
+                PreprocessedTokenValue::Merge(StrExpression::new("../file.dta", 7..18)),
                 0..18,
             )]);
-            assert_preprocessed("#autorun {print \"Auto-run action\"}", vec![
-                new_pretoken(PreprocessedTokenKind::Autorun, 0..8),
-                new_pretoken(PreprocessedTokenKind::CommandOpen, 9..10),
-                new_pretoken(PreprocessedTokenKind::Symbol("print"), 10..15),
-                new_pretoken(PreprocessedTokenKind::String("Auto-run action"), 16..33),
-                new_pretoken(PreprocessedTokenKind::CommandClose, 33..34),
+            assert_tokens("#autorun {print \"Auto-run action\"}", vec![
+                new_pretoken(PreprocessedTokenValue::Autorun, 0..8),
+                new_pretoken(PreprocessedTokenValue::CommandOpen, 9..10),
+                new_pretoken(PreprocessedTokenValue::Symbol("print"), 10..15),
+                new_pretoken(PreprocessedTokenValue::String("Auto-run action"), 16..33),
+                new_pretoken(PreprocessedTokenValue::CommandClose, 33..34),
             ]);
 
             assert_directive_symbol_error("#define");
@@ -994,41 +1009,41 @@ mod tests {
 
         #[test]
         fn conditionals() {
-            assert_preprocessed("#ifdef kDefine (array1 10) #else (array2 5) #endif", vec![new_pretoken(
-                PreprocessedTokenKind::Conditional {
+            assert_tokens("#ifdef kDefine (array1 10) #else (array2 5) #endif", vec![new_pretoken(
+                PreprocessedTokenValue::Conditional {
                     is_positive: true,
                     symbol: StrExpression::new("kDefine", 7..14),
                     true_branch: (
                         vec![
-                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 15..16),
-                            new_pretoken(PreprocessedTokenKind::Symbol("array1"), 16..22),
-                            new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
-                            new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
+                            new_pretoken(PreprocessedTokenValue::ArrayOpen, 15..16),
+                            new_pretoken(PreprocessedTokenValue::Symbol("array1"), 16..22),
+                            new_pretoken(PreprocessedTokenValue::Integer(10), 23..25),
+                            new_pretoken(PreprocessedTokenValue::ArrayClose, 25..26),
                         ],
                         0..32,
                     ),
                     false_branch: Some((
                         vec![
-                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 33..34),
-                            new_pretoken(PreprocessedTokenKind::Symbol("array2"), 34..40),
-                            new_pretoken(PreprocessedTokenKind::Integer(5), 41..42),
-                            new_pretoken(PreprocessedTokenKind::ArrayClose, 42..43),
+                            new_pretoken(PreprocessedTokenValue::ArrayOpen, 33..34),
+                            new_pretoken(PreprocessedTokenValue::Symbol("array2"), 34..40),
+                            new_pretoken(PreprocessedTokenValue::Integer(5), 41..42),
+                            new_pretoken(PreprocessedTokenValue::ArrayClose, 42..43),
                         ],
                         27..50,
                     )),
                 },
                 0..50,
             )]);
-            assert_preprocessed("#ifndef kDefine (array 10) #endif", vec![new_pretoken(
-                PreprocessedTokenKind::Conditional {
+            assert_tokens("#ifndef kDefine (array 10) #endif", vec![new_pretoken(
+                PreprocessedTokenValue::Conditional {
                     is_positive: false,
                     symbol: StrExpression::new("kDefine", 8..15),
                     true_branch: (
                         vec![
-                            new_pretoken(PreprocessedTokenKind::ArrayOpen, 16..17),
-                            new_pretoken(PreprocessedTokenKind::Symbol("array"), 17..22),
-                            new_pretoken(PreprocessedTokenKind::Integer(10), 23..25),
-                            new_pretoken(PreprocessedTokenKind::ArrayClose, 25..26),
+                            new_pretoken(PreprocessedTokenValue::ArrayOpen, 16..17),
+                            new_pretoken(PreprocessedTokenValue::Symbol("array"), 17..22),
+                            new_pretoken(PreprocessedTokenValue::Integer(10), 23..25),
+                            new_pretoken(PreprocessedTokenValue::ArrayClose, 25..26),
                         ],
                         0..33,
                     ),
@@ -1195,8 +1210,9 @@ mod tests {
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
             assert_errors(&text, vec![ParseError::IncorrectToken {
+                location: name.len() + 1..name.len() + 2,
                 expected: TokenKind::Symbol,
-                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                actual: TokenKind::Integer,
             }]);
         }
 
@@ -1254,12 +1270,14 @@ mod tests {
             assert_directive_eof_error("#autorun");
 
             assert_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
+                location: 16..17,
                 expected: TokenKind::ArrayOpen,
-                actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
+                actual: TokenKind::Integer,
             }]);
             assert_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
+                location: 9..16,
                 expected: TokenKind::CommandOpen,
-                actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+                actual: TokenKind::Symbol,
             }]);
 
             assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);

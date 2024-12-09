@@ -288,7 +288,7 @@ mod tests {
     use logos::Span;
 
     use super::*;
-    use crate::{OwnedToken, OwnedTokenValue, TokenKind};
+    use crate::TokenKind;
 
     fn default_context() -> Context<FileSystem> {
         Context::new(FileSystem::new(MockFileSystemDriver::new()))
@@ -601,12 +601,14 @@ mod tests {
         // #region Directives
 
         assert_parse_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
+            location: 16..17,
             expected: TokenKind::ArrayOpen,
-            actual: OwnedToken::new(OwnedTokenValue::Integer(1), 16..17),
+            actual: TokenKind::Integer,
         }]);
         assert_parse_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
+            location: 9..16,
             expected: TokenKind::CommandOpen,
-            actual: OwnedToken::new(OwnedTokenValue::Symbol("kDefine".to_owned()), 9..16),
+            actual: TokenKind::Symbol,
         }]);
 
         assert_parse_errors("#bad", vec![ParseError::BadDirective(0..4)]);
@@ -614,8 +616,9 @@ mod tests {
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
             assert_parse_errors(&text, vec![ParseError::IncorrectToken {
+                location: name.len() + 1..name.len() + 2,
                 expected: TokenKind::Symbol,
-                actual: OwnedToken::new(OwnedTokenValue::Integer(1), name.len() + 1..name.len() + 2),
+                actual: TokenKind::Integer,
             }]);
         }
 
