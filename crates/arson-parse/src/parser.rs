@@ -166,6 +166,7 @@ impl Expression<'_> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
     UnmatchedBrace(Span, ArrayKind),
+    UnclosedBlockComment(Span),
 
     UnexpectedConditional(Span),
     UnmatchedConditional(Span),
@@ -217,6 +218,11 @@ impl ParseError {
                     expected, actual.kind
                 ))
                 .with_labels(vec![Label::primary(file_id, actual.location.clone())]),
+            ParseError::UnclosedBlockComment(range) => Diagnostic::error()
+                .with_code("DTA0008")
+                .with_message("unclosed block comment")
+                .with_notes(vec!["*/ required to close the comment".to_owned()])
+                .with_labels(vec![Label::primary(file_id, range.clone())]),
         }
     }
 }
@@ -416,11 +422,12 @@ impl<'src> Preprocessor<'src> {
             },
 
             TokenValue::Comment => return ProcessResult::SkipToken,
-            TokenValue::BlockCommentStart(_) => {
-                self.skip_block_comment(tokens);
-                return ProcessResult::SkipToken;
+            TokenValue::BlockCommentStart(_) => return self.skip_block_comment(token.location, tokens),
+            TokenValue::BlockCommentEnd(text) => {
+                // Block comment ends are handled by skip_block_comment,
+                // if we get here this is a stray block comment close which is handled as a symbol
+                PreprocessedTokenKind::Symbol(text)
             },
-            TokenValue::BlockCommentEnd(_) => return ProcessResult::SkipToken,
 
             TokenValue::Error(error) => PreprocessedTokenKind::Error(error),
         };
@@ -483,14 +490,21 @@ impl<'src> Preprocessor<'src> {
         }
     }
 
-    fn skip_block_comment<I: Iterator<Item = Token<'src>>>(&mut self, tokens: &mut Peekable<I>) {
-        while let Some(token) = tokens.peek() {
-            let TokenValue::BlockCommentEnd(_) = token.kind else {
-                tokens.next();
-                continue;
-            };
-            break;
+    fn skip_block_comment<T, I: Iterator<Item = Token<'src>>>(
+        &mut self,
+        start: Span,
+        tokens: &mut Peekable<I>,
+    ) -> ProcessResult<T> {
+        // Skip tokens until the end token is found
+        while let Some(token) = tokens.next() {
+            if let TokenValue::BlockCommentEnd(_) = token.kind {
+                return ProcessResult::SkipToken;
+            }
         }
+
+        // If we get here there was no end found, issue an error
+        self.errors.push(ParseError::UnclosedBlockComment(start));
+        self.unexpected_eof()
     }
 
     fn incorrect_token<T>(&mut self, expected: TokenKind, actual: OwnedToken) -> ProcessResult<T> {
@@ -819,7 +833,9 @@ mod tests {
             let tokens = lexer::lex_text(text);
             let preprocessed = match preprocess(tokens) {
                 Ok(preprocessed) => preprocessed,
-                Err(errors) => panic!("Errors encountered while preprocessing: {errors:?}"),
+                Err(errors) => {
+                    panic!("Errors encountered while preprocessing.\nText: {text}\nResult: {errors:?}")
+                },
             };
             assert_eq!(preprocessed, expected, "Unexpected result for '{text}'");
         }
@@ -827,7 +843,7 @@ mod tests {
         fn assert_errors(text: &str, expected: Vec<ParseError>) {
             let tokens = lexer::lex_text(text);
             let errors = match preprocess(tokens) {
-                Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead instead.\nText: {text}\nResult: {preprocessed:?}"),
+                Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead.\nText: {text}\nResult: {preprocessed:?}"),
                 Err(errors) => errors,
             };
             assert_eq!(errors, expected, "Unexpected result for '{text}'");
@@ -906,6 +922,15 @@ mod tests {
                 new_pretoken(PreprocessedTokenKind::Symbol("property"), 1..9),
                 new_pretoken(PreprocessedTokenKind::PropertyClose, 9..10),
             ]);
+        }
+
+        #[test]
+        fn comments() {
+            assert_preprocessed("; comment", vec![]);
+            assert_preprocessed("/* block comment */", vec![]);
+            assert_preprocessed("/*symbol*/", vec![new_pretoken(PreprocessedTokenKind::Symbol("/*symbol*/"), 0..10)]);
+            assert_preprocessed("*/", vec![new_pretoken(PreprocessedTokenKind::Symbol("*/"), 0..2)]);
+            assert_errors("/* a bunch of text", vec![ParseError::UnclosedBlockComment(0..18), ParseError::UnexpectedEof]);
         }
 
         fn assert_directive_symbol_error(name: &str) {
