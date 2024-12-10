@@ -2,12 +2,12 @@
 
 use std::iter::Peekable;
 use std::marker::PhantomData;
+use std::mem;
 
 use arson_core::{ArrayKind, FloatValue, IntegerValue};
-use codespan_reporting::diagnostic::{Diagnostic, Label};
 use logos::Span;
 
-use super::lexer::{self, LexError, Token, TokenKind, TokenValue};
+use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -161,72 +161,6 @@ impl Expression<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ParseError {
-    UnmatchedBrace(Span, ArrayKind),
-    UnclosedBlockComment(Span),
-
-    UnexpectedConditional(Span),
-    UnmatchedConditional(Span),
-    UnbalancedConditional(Span),
-    BadDirective(Span),
-
-    TokenError(Span, LexError),
-    IncorrectToken {
-        location: Span,
-        expected: TokenKind,
-        actual: TokenKind,
-    },
-
-    UnexpectedEof,
-}
-
-impl ParseError {
-    pub fn to_diagnostic(&self, file_id: usize) -> Diagnostic<usize> {
-        match self {
-            ParseError::UnexpectedEof => Diagnostic::error()
-                .with_code("DTA0000")
-                .with_message("unexpected end of file"),
-            ParseError::TokenError(location, error) => Diagnostic::error()
-                .with_code("DTA0001")
-                .with_message(format!("internal tokenizer error"))
-                .with_notes(vec![format!("error contents: {error}")])
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::BadDirective(location) => Diagnostic::error()
-                .with_code("DTA0002")
-                .with_message("unrecognized parser directive")
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::UnexpectedConditional(location) => Diagnostic::error()
-                .with_code("DTA0003")
-                .with_message("unexpected conditional directive")
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::UnmatchedConditional(location) => Diagnostic::error()
-                .with_code("DTA0004")
-                .with_message("unmatched conditional directive")
-                .with_notes(vec!["#else or #endif required to close the conditional block".to_owned()])
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::UnbalancedConditional(location) => Diagnostic::error()
-                .with_code("DTA0005")
-                .with_message("unbalanced conditional block")
-                .with_notes(vec!["all arrays in conditionals must be self-contained".to_owned()])
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::UnmatchedBrace(location, kind) => Diagnostic::error()
-                .with_code("DTA0006")
-                .with_message(format!("unmatched {kind} delimiter"))
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::IncorrectToken { location, expected, actual } => Diagnostic::error()
-                .with_code("DTA0007")
-                .with_message(format!("expected token of type {expected}, found {actual} instead"))
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-            ParseError::UnclosedBlockComment(location) => Diagnostic::error()
-                .with_code("DTA0008")
-                .with_message("unclosed block comment")
-                .with_notes(vec!["*/ required to close the comment".to_owned()])
-                .with_labels(vec![Label::primary(file_id, location.clone())]),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct ArrayMarker {
     kind: ArrayKind,
@@ -245,13 +179,13 @@ enum ProcessResult<T> {
     Result(T),
     BlockEnd(Span),
     SkipToken,
-    Error(ParseError),
+    Error(DiagnosticKind, Span),
     Eof,
 }
 
 struct Preprocessor<'src> {
     conditional_stack: Vec<ConditionalMarker<'src>>,
-    errors: Vec<ParseError>,
+    errors: Vec<Diagnostic>,
     unexpected_eof: bool,
 }
 
@@ -289,21 +223,24 @@ impl<'src> Preprocessor<'src> {
         }
     }
 
-    pub fn preprocess<I: Iterator<Item = Token<'src>>>(
+    pub fn preprocess(
         &mut self,
-        tokens: &mut Peekable<I>,
-    ) -> (Vec<PreprocessedToken<'src>>, Span) {
-        let result = self.preprocess_loop(tokens);
+        mut tokens: Tokenizer<'src>,
+        final_location: Span,
+    ) -> Result<Vec<PreprocessedToken<'src>>, Vec<Diagnostic>> {
+        let (preprocessed, _) = self.preprocess_loop(&mut tokens);
+
         if self.unexpected_eof {
-            self.errors.push(ParseError::UnexpectedEof);
+            self.push_error(DiagnosticKind::UnexpectedEof, final_location);
         }
-        result
+
+        match self.errors.is_empty() {
+            true => Ok(preprocessed),
+            false => Err(mem::take(&mut self.errors)),
+        }
     }
 
-    fn preprocess_loop<I: Iterator<Item = Token<'src>>>(
-        &mut self,
-        tokens: &mut Peekable<I>,
-    ) -> (Vec<PreprocessedToken<'src>>, Span) {
+    fn preprocess_loop(&mut self, tokens: &mut Tokenizer<'src>) -> (Vec<PreprocessedToken<'src>>, Span) {
         let mut processed = Vec::new();
 
         loop {
@@ -311,8 +248,8 @@ impl<'src> Preprocessor<'src> {
                 ProcessResult::Result(node) => processed.push(node),
                 ProcessResult::BlockEnd(end_location) => return (processed, end_location),
                 ProcessResult::SkipToken => continue,
-                ProcessResult::Error(err) => {
-                    self.errors.push(err);
+                ProcessResult::Error(kind, location) => {
+                    self.push_error(kind, location);
                     continue;
                 },
                 ProcessResult::Eof => {
@@ -326,9 +263,9 @@ impl<'src> Preprocessor<'src> {
         }
     }
 
-    fn symbol_directive<I: Iterator<Item = Token<'src>>>(
+    fn symbol_directive(
         &mut self,
-        tokens: &mut Peekable<I>,
+        tokens: &mut Tokenizer<'src>,
         location: Span,
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
@@ -338,13 +275,10 @@ impl<'src> Preprocessor<'src> {
         ProcessResult::Result(PreprocessedToken { value: kind(name), location })
     }
 
-    fn process_token<I: Iterator<Item = Token<'src>>>(
-        &mut self,
-        tokens: &mut Peekable<I>,
-    ) -> ProcessResult<PreprocessedToken<'src>> {
+    fn process_token(&mut self, tokens: &mut Tokenizer<'src>) -> ProcessResult<PreprocessedToken<'src>> {
         let token = match tokens.next() {
-            None => return ProcessResult::Eof,
             Some(token) => token,
+            None => return ProcessResult::Eof,
         };
 
         let kind = match token.value {
@@ -395,7 +329,7 @@ impl<'src> Preprocessor<'src> {
                         conditional.false_location = Some(token.location.clone());
                     },
                     None => {
-                        self.errors.push(ParseError::UnexpectedConditional(token.location.clone()));
+                        self.push_error(DiagnosticKind::UnexpectedConditional, token.location.clone());
                         self.conditional_stack.push(ConditionalMarker {
                             location: token.location.clone(),
                             is_positive: true,
@@ -415,31 +349,31 @@ impl<'src> Preprocessor<'src> {
             },
             TokenValue::Endif => match self.conditional_stack.last() {
                 Some(_) => return ProcessResult::BlockEnd(token.location),
-                None => return ProcessResult::Error(ParseError::UnexpectedConditional(token.location)),
+                None => return ProcessResult::Error(DiagnosticKind::UnexpectedConditional, token.location),
             },
 
             TokenValue::BadDirective(_) => {
-                return ProcessResult::Error(ParseError::BadDirective(token.location))
+                return ProcessResult::Error(DiagnosticKind::BadDirective, token.location)
             },
 
             TokenValue::Comment(_) => return ProcessResult::SkipToken,
             TokenValue::BlockComment(_) => return ProcessResult::SkipToken,
 
             TokenValue::Error(error) => match error {
-                LexError::UnclosedBlockComment => {
+                DiagnosticKind::UnclosedBlockComment => {
                     self.unexpected_eof = true;
-                    return ProcessResult::Error(ParseError::UnclosedBlockComment(token.location));
+                    return ProcessResult::Error(DiagnosticKind::UnclosedBlockComment, token.location);
                 },
-                unhandled => return ProcessResult::Error(ParseError::TokenError(token.location, unhandled)),
+                _ => return ProcessResult::Error(error, token.location),
             },
         };
 
         ProcessResult::Result(PreprocessedToken { value: kind, location: token.location })
     }
 
-    fn parse_conditional<I: Iterator<Item = Token<'src>>>(
+    fn parse_conditional(
         &mut self,
-        tokens: &mut Peekable<I>,
+        tokens: &mut Tokenizer<'src>,
         start: Span,
         positive: bool,
         symbol: StrExpression<'src>,
@@ -471,9 +405,9 @@ impl<'src> Preprocessor<'src> {
         })
     }
 
-    fn parse_conditional_block<I: Iterator<Item = Token<'src>>>(
+    fn parse_conditional_block(
         &mut self,
-        tokens: &mut Peekable<I>,
+        tokens: &mut Tokenizer<'src>,
         start: Span,
     ) -> (Vec<PreprocessedToken<'src>>, Span) {
         let (exprs, next_directive_location) = self.preprocess_loop(tokens);
@@ -487,9 +421,14 @@ impl<'src> Preprocessor<'src> {
                 Some(else_location) => else_location.clone(),
                 None => unmatched.location.clone(),
             };
-            self.errors.push(ParseError::UnmatchedConditional(location.clone()));
+            let error = Diagnostic::new(DiagnosticKind::UnmatchedConditional, location.clone());
+            self.errors.push(error);
             self.unexpected_eof = true;
         }
+    }
+
+    fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
+        self.errors.push(Diagnostic::new(kind, location));
     }
 
     fn incorrect_token<T>(
@@ -498,19 +437,19 @@ impl<'src> Preprocessor<'src> {
         actual: TokenKind,
         location: Span,
     ) -> ProcessResult<T> {
-        self.errors.push(ParseError::IncorrectToken { location, expected, actual });
+        self.push_error(DiagnosticKind::IncorrectToken { expected, actual }, location);
         ProcessResult::SkipToken
     }
 
     fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
-        self.errors.push(ParseError::UnexpectedEof);
+        self.unexpected_eof = true;
         ProcessResult::Eof
     }
 }
 
 struct Parser<'src> {
     array_stack: Vec<ArrayMarker>,
-    errors: Vec<ParseError>,
+    errors: Vec<Diagnostic>,
     unexpected_eof: bool,
     phantom: PhantomData<&'src ()>,
 }
@@ -528,12 +467,18 @@ impl<'src> Parser<'src> {
     pub fn parse<I: Iterator<Item = PreprocessedToken<'src>>>(
         &mut self,
         tokens: &mut Peekable<I>,
-    ) -> (Vec<Expression<'src>>, Span) {
-        let result = self.parse_exprs(tokens);
+        final_location: Span,
+    ) -> Result<Vec<Expression<'src>>, Vec<Diagnostic>> {
+        let (ast, _) = self.parse_exprs(tokens);
+
         if self.unexpected_eof {
-            self.errors.push(ParseError::UnexpectedEof);
+            self.push_error(DiagnosticKind::UnexpectedEof, final_location);
         }
-        result
+
+        match self.errors.is_empty() {
+            true => Ok(ast),
+            false => Err(mem::take(&mut self.errors)),
+        }
     }
 
     fn parse_exprs<I: Iterator<Item = PreprocessedToken<'src>>>(
@@ -547,8 +492,8 @@ impl<'src> Parser<'src> {
                 ProcessResult::Result(node) => exprs.push(node),
                 ProcessResult::BlockEnd(end_location) => return (exprs, end_location),
                 ProcessResult::SkipToken => continue,
-                ProcessResult::Error(err) => {
-                    self.errors.push(err);
+                ProcessResult::Error(kind, location) => {
+                    self.push_error(kind, location);
                     continue;
                 },
                 ProcessResult::Eof => {
@@ -594,13 +539,13 @@ impl<'src> Parser<'src> {
                     ProcessResult::BlockEnd(end)
                 }
             },
-            None => ProcessResult::Error(ParseError::UnmatchedBrace(end, kind)),
+            None => ProcessResult::Error(DiagnosticKind::UnmatchedBrace(kind), end),
         }
     }
 
     fn recover_mismatched_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
         if !self.array_stack.iter().any(|arr| arr.kind == kind) {
-            return ProcessResult::Error(ParseError::UnmatchedBrace(end, kind));
+            return ProcessResult::Error(DiagnosticKind::UnmatchedBrace(kind), end);
         }
 
         while let Some(array) = self.array_stack.last() {
@@ -608,8 +553,7 @@ impl<'src> Parser<'src> {
                 break;
             }
 
-            self.errors
-                .push(ParseError::UnmatchedBrace(array.location.clone(), array.kind));
+            self.push_error(DiagnosticKind::UnmatchedBrace(array.kind), array.location.clone());
             self.array_stack.pop();
         }
 
@@ -621,8 +565,8 @@ impl<'src> Parser<'src> {
         tokens: &mut Peekable<I>,
     ) -> ProcessResult<Expression<'src>> {
         let token = match tokens.next() {
-            None => return ProcessResult::Eof,
             Some(token) => token,
+            None => return ProcessResult::Eof,
         };
 
         let (kind, location) = match token.value {
@@ -715,19 +659,24 @@ impl<'src> Parser<'src> {
         if block_parser
             .errors
             .iter()
-            .any(|e| matches!(e, ParseError::UnmatchedBrace(_, _)))
+            .any(|e| matches!(e.kind, DiagnosticKind::UnmatchedBrace(_)))
         {
-            self.errors.push(ParseError::UnbalancedConditional(location.clone()))
+            self.push_error(DiagnosticKind::UnbalancedConditional, location.clone())
         }
         self.errors.append(&mut block_parser.errors);
 
         ArrayExpression::new(branch, location)
     }
 
+    fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
+        self.errors.push(Diagnostic::new(kind, location));
+    }
+
     fn verify_eof(&mut self) {
         for unmatched in &self.array_stack {
-            self.errors
-                .push(ParseError::UnmatchedBrace(unmatched.location.clone(), unmatched.kind));
+            let error =
+                Diagnostic::new(DiagnosticKind::UnmatchedBrace(unmatched.kind), unmatched.location.clone());
+            self.errors.push(error);
             self.unexpected_eof = true;
         }
     }
@@ -763,42 +712,36 @@ impl<'src> Parser<'src> {
             PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
         };
 
-        self.errors.push(ParseError::IncorrectToken { location, expected, actual });
+        self.push_error(DiagnosticKind::IncorrectToken { expected, actual }, location);
         ProcessResult::SkipToken
     }
 
-    fn unexpected_eof(&mut self) -> ProcessResult<Expression<'src>> {
-        self.errors.push(ParseError::UnexpectedEof);
+    fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
+        self.unexpected_eof = true;
         ProcessResult::Eof
     }
 }
 
 fn preprocess<'src>(
-    tokens: impl Iterator<Item = Token<'src>>,
-) -> Result<Vec<PreprocessedToken<'src>>, Vec<ParseError>> {
-    let mut preprocessor = Preprocessor::new();
-    let (preprocessed, _) = preprocessor.preprocess(&mut tokens.peekable());
-    match preprocessor.errors.is_empty() {
-        true => Ok(preprocessed),
-        false => Err(preprocessor.errors),
-    }
+    tokens: Tokenizer<'src>,
+    final_location: Span,
+) -> Result<Vec<PreprocessedToken<'src>>, Vec<Diagnostic>> {
+    Preprocessor::new().preprocess(tokens, final_location)
 }
 
-pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<ParseError>> {
-    parse_tokens(lexer::lex_text(text))
+pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
+    parse_tokens(Tokenizer::new(text))
 }
 
-pub fn parse_tokens<'src>(
-    tokens: impl Iterator<Item = Token<'src>>,
-) -> Result<Vec<Expression<'src>>, Vec<ParseError>> {
-    let preprocessed = preprocess(tokens)?;
+pub fn parse_tokens<'src>(tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src>>, Vec<Diagnostic>> {
+    // No items, Fox only, Final Destination.
+    let final_location = {
+        let text = tokens.source_text();
+        text.len().saturating_sub(1)..text.len()
+    };
 
-    let mut parser = Parser::new();
-    let (ast, _) = parser.parse(&mut preprocessed.into_iter().peekable());
-    match parser.errors.is_empty() {
-        true => Ok(ast),
-        false => Err(parser.errors),
-    }
+    let preprocessed = preprocess(tokens, final_location.clone())?;
+    Parser::new().parse(&mut preprocessed.into_iter().peekable(), final_location)
 }
 
 #[cfg(test)]
@@ -813,8 +756,8 @@ mod tests {
         }
 
         fn assert_tokens(text: &str, expected: Vec<PreprocessedToken>) {
-            let tokens = lexer::lex_text(text);
-            let preprocessed = match preprocess(tokens) {
+            let tokens = Tokenizer::new(text);
+            let preprocessed = match preprocess(tokens, text.len() - 1..text.len()) {
                 Ok(preprocessed) => preprocessed,
                 Err(errors) => {
                     panic!("Errors encountered while preprocessing.\nText: {text}\nResult: {errors:?}")
@@ -823,9 +766,10 @@ mod tests {
             assert_eq!(preprocessed, expected, "Unexpected result for '{text}'");
         }
 
-        fn assert_errors(text: &str, expected: Vec<ParseError>) {
-            let tokens = lexer::lex_text(text);
-            let errors = match preprocess(tokens) {
+        fn assert_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
+            let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
+            let tokens = Tokenizer::new(text);
+            let errors = match preprocess(tokens, text.len() - 1..text.len()) {
                 Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead.\nText: {text}\nResult: {preprocessed:?}"),
                 Err(errors) => errors,
             };
@@ -918,26 +862,31 @@ mod tests {
             assert_tokens("*/", vec![new_pretoken(PreprocessedTokenValue::Symbol("*/"), 0..2)]);
 
             assert_errors("/*", vec![
-                ParseError::UnclosedBlockComment(0..2),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnclosedBlockComment, 0..2),
+                (DiagnosticKind::UnexpectedEof, 1..2),
             ]);
             assert_errors("/*a bunch of\ntext", vec![
-                ParseError::UnclosedBlockComment(0..17),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnclosedBlockComment, 0..17),
+                (DiagnosticKind::UnexpectedEof, 16..17),
             ]);
         }
 
-        fn assert_directive_symbol_error(name: &str) {
-            let text = name.to_owned() + " 1";
-            assert_errors(&text, vec![ParseError::IncorrectToken {
-                location: name.len() + 1..name.len() + 2,
-                expected: TokenKind::Symbol,
-                actual: TokenKind::Integer,
-            }]);
+        fn assert_directive_symbol_error(directive: &str) {
+            let text = directive.to_owned() + " 1";
+            assert_errors(&text, vec![(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                text.len() - 1..text.len(),
+            )]);
         }
 
-        fn assert_directive_eof_error(name: &str) {
-            assert_errors(name, vec![ParseError::UnexpectedEof]);
+        fn assert_directive_eof_error(directive: &str) {
+            assert_errors(directive, vec![(
+                DiagnosticKind::UnexpectedEof,
+                directive.len() - 1..directive.len(),
+            )]);
         }
 
         #[test]
@@ -984,7 +933,7 @@ mod tests {
             assert_directive_eof_error("#include_opt");
             assert_directive_eof_error("#merge");
 
-            assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+            assert_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
         }
 
         #[test]
@@ -1039,15 +988,18 @@ mod tests {
             assert_directive_eof_error("#ifndef");
 
             assert_errors("#ifndef kDefine (array 10)", vec![
-                ParseError::UnmatchedConditional(0..7),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnmatchedConditional, 0..7),
+                (DiagnosticKind::UnexpectedEof, 25..26),
             ]);
             assert_errors("#ifdef kDefine (array1 10) #else", vec![
-                ParseError::UnmatchedConditional(27..32),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnmatchedConditional, 27..32),
+                (DiagnosticKind::UnexpectedEof, 31..32),
             ]);
-            assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
-            assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+            assert_errors("#else (array2 5) #endif", vec![(
+                DiagnosticKind::UnexpectedConditional,
+                0..5,
+            )]);
+            assert_errors("(array 10) #endif", vec![(DiagnosticKind::UnexpectedConditional, 11..17)]);
         }
     }
 
@@ -1061,14 +1013,17 @@ mod tests {
         fn assert_parsed(text: &str, expected: Vec<Expression>) {
             let ast = match parse_text(text) {
                 Ok(ast) => ast,
-                Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
+                Err(errs) => panic!("Errors encountered while parsing.\nText: {text}\nResult: {errs:?}"),
             };
             assert_eq!(ast, expected, "Unexpected result for '{text}'");
         }
 
-        fn assert_errors(text: &str, expected: Vec<ParseError>) {
+        fn assert_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
+            let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
             let errors = match parse_text(text) {
-                Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
+                Ok(ast) => {
+                    panic!("Expected parsing errors, got success instead.\nText: {text}\nResult:: {ast:?}")
+                },
                 Err(errors) => errors,
             };
             assert_eq!(errors, expected, "Unexpected result for '{text}'");
@@ -1147,9 +1102,9 @@ mod tests {
             )]);
 
             fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
-                let mut expected = vec![ParseError::UnmatchedBrace(location, kind)];
+                let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
                 if !eof_expected {
-                    expected.push(ParseError::UnexpectedEof);
+                    expected.push((DiagnosticKind::UnexpectedEof, text.len() - 1..text.len()));
                 }
 
                 assert_errors(text, expected);
@@ -1187,17 +1142,22 @@ mod tests {
             assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
         }
 
-        fn assert_directive_symbol_error(name: &str) {
-            let text = name.to_owned() + " 1";
-            assert_errors(&text, vec![ParseError::IncorrectToken {
-                location: name.len() + 1..name.len() + 2,
-                expected: TokenKind::Symbol,
-                actual: TokenKind::Integer,
-            }]);
+        fn assert_directive_symbol_error(directive: &str) {
+            let text = directive.to_owned() + " 1";
+            assert_errors(&text, vec![(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                directive.len() + 1..directive.len() + 2,
+            )]);
         }
 
-        fn assert_directive_eof_error(name: &str) {
-            assert_errors(name, vec![ParseError::UnexpectedEof]);
+        fn assert_directive_eof_error(directive: &str) {
+            assert_errors(directive, vec![(
+                DiagnosticKind::UnexpectedEof,
+                directive.len() - 1..directive.len(),
+            )]);
         }
 
         #[test]
@@ -1249,18 +1209,22 @@ mod tests {
             assert_directive_eof_error("#merge");
             assert_directive_eof_error("#autorun");
 
-            assert_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
-                location: 16..17,
-                expected: TokenKind::ArrayOpen,
-                actual: TokenKind::Integer,
-            }]);
-            assert_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
-                location: 9..16,
-                expected: TokenKind::CommandOpen,
-                actual: TokenKind::Symbol,
-            }]);
+            assert_errors("#define kDefine 1", vec![(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::ArrayOpen,
+                    actual: TokenKind::Integer,
+                },
+                16..17,
+            )]);
+            assert_errors("#autorun kDefine", vec![(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::CommandOpen,
+                    actual: TokenKind::Symbol,
+                },
+                9..16,
+            )]);
 
-            assert_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+            assert_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
         }
 
         #[test]
@@ -1318,21 +1282,24 @@ mod tests {
             assert_directive_eof_error("#ifndef");
 
             assert_errors("#ifndef kDefine (array 10)", vec![
-                ParseError::UnmatchedConditional(0..7),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnmatchedConditional, 0..7),
+                (DiagnosticKind::UnexpectedEof, 25..26),
             ]);
             assert_errors("#ifdef kDefine (array1 10) #else", vec![
-                ParseError::UnmatchedConditional(27..32),
-                ParseError::UnexpectedEof,
+                (DiagnosticKind::UnmatchedConditional, 27..32),
+                (DiagnosticKind::UnexpectedEof, 31..32),
             ]);
-            assert_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
-            assert_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+            assert_errors("#else (array2 5) #endif", vec![(
+                DiagnosticKind::UnexpectedConditional,
+                0..5,
+            )]);
+            assert_errors("(array 10) #endif", vec![(DiagnosticKind::UnexpectedConditional, 11..17)]);
 
             assert_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
-                ParseError::UnbalancedConditional(1..32),
-                ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
-                ParseError::UnbalancedConditional(27..49),
-                ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+                (DiagnosticKind::UnbalancedConditional, 1..32),
+                (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 25..26),
+                (DiagnosticKind::UnbalancedConditional, 27..49),
+                (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 41..42),
             ]);
 
             assert_errors(
@@ -1346,10 +1313,10 @@ mod tests {
                 #endif\
                 ",
                 vec![
-                    ParseError::UnbalancedConditional(0..25),
-                    ParseError::UnmatchedBrace(15..16, ArrayKind::Command),
-                    ParseError::UnbalancedConditional(38..61),
-                    ParseError::UnmatchedBrace(53..54, ArrayKind::Command),
+                    (DiagnosticKind::UnbalancedConditional, 0..25),
+                    (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 15..16),
+                    (DiagnosticKind::UnbalancedConditional, 38..61),
+                    (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 53..54),
                 ],
             );
         }

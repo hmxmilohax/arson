@@ -7,10 +7,12 @@ macro_rules! meta_morph {
     };
 }
 
+mod diagnostics;
 mod lexer;
 mod loader;
 mod parser;
 
+pub use diagnostics::*;
 pub use lexer::*;
 pub use loader::*;
 pub use parser::*;

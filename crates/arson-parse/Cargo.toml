@@ -12,7 +12,7 @@ publish = false
 arson-core = { version = "0.1.0", path = "../arson-core" }
 arson-fs = { version = "0.1.0", path = "../arson-fs" }
 
-codespan-reporting = "0.11.1"
+codespan-reporting = { version = "0.11.1", optional = true }
 lazy-regex = "3.3.0"
 logos = { version = "0.14.2", features = ["forbid_unsafe"] }
 thiserror = "1.0.65"

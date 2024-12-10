@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 use arson_fs::{FileSystemState, VirtualPath};
 
-use crate::{Expression, ExpressionValue, ParseError};
+use crate::{Diagnostic, Expression, ExpressionValue};
 
 #[derive(Clone)]
 pub struct LoadOptions {
@@ -20,7 +20,7 @@ pub enum LoadError {
     IO(#[from] io::Error),
 
     #[error("Failed to parse the given file")]
-    Parse(Vec<ParseError>),
+    Parse(Vec<Diagnostic>),
 
     #[error("A required macro definition was not found")]
     MacroNotFound,
@@ -288,7 +288,7 @@ mod tests {
     use logos::Span;
 
     use super::*;
-    use crate::TokenKind;
+    use crate::{DiagnosticKind, TokenKind};
 
     fn default_context() -> Context<FileSystem> {
         Context::new(FileSystem::new(MockFileSystemDriver::new()))
@@ -298,7 +298,7 @@ mod tests {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
-            Err(errs) => panic!("Errors encountered while parsing: {errs:?}"),
+            Err(errs) => panic!("Errors encountered while parsing.\nText: {text}\nResult: {errs:?}"),
         };
         assert_eq!(array, expected, "Unexpected result for '{text}'");
     }
@@ -307,7 +307,7 @@ mod tests {
         let mut context = default_context();
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let errors = match load_text(&mut context, options, text) {
-            Ok(ast) => panic!("Expected parsing errors, got AST instead: {ast:?}"),
+            Ok(ast) => panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}"),
             Err(errors) => errors,
         };
         assert_eq!(errors, expected, "Unexpected result for '{text}'");
@@ -550,16 +550,17 @@ mod tests {
 
     #[test]
     fn parse_errors() {
-        fn assert_parse_errors(text: &str, expected: Vec<ParseError>) {
+        fn assert_parse_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
+            let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
             assert_error(text, LoadError::Parse(expected))
         }
 
         // #region Arrays
 
         fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
-            let mut expected = vec![ParseError::UnmatchedBrace(location, kind)];
+            let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
             if !eof_expected {
-                expected.push(ParseError::UnexpectedEof);
+                expected.push((DiagnosticKind::UnexpectedEof, text.len() - 1..text.len()));
             }
 
             assert_parse_errors(text, expected);
@@ -600,30 +601,39 @@ mod tests {
 
         // #region Directives
 
-        assert_parse_errors("#define kDefine 1", vec![ParseError::IncorrectToken {
-            location: 16..17,
-            expected: TokenKind::ArrayOpen,
-            actual: TokenKind::Integer,
-        }]);
-        assert_parse_errors("#autorun kDefine", vec![ParseError::IncorrectToken {
-            location: 9..16,
-            expected: TokenKind::CommandOpen,
-            actual: TokenKind::Symbol,
-        }]);
+        assert_parse_errors("#define kDefine 1", vec![(
+            DiagnosticKind::IncorrectToken {
+                expected: TokenKind::ArrayOpen,
+                actual: TokenKind::Integer,
+            },
+            16..17,
+        )]);
+        assert_parse_errors("#autorun kDefine", vec![(
+            DiagnosticKind::IncorrectToken {
+                expected: TokenKind::CommandOpen,
+                actual: TokenKind::Symbol,
+            },
+            9..16,
+        )]);
 
-        assert_parse_errors("#bad", vec![ParseError::BadDirective(0..4)]);
+        assert_parse_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
 
         fn assert_directive_symbol_error(name: &str) {
             let text = name.to_owned() + " 1";
-            assert_parse_errors(&text, vec![ParseError::IncorrectToken {
-                location: name.len() + 1..name.len() + 2,
-                expected: TokenKind::Symbol,
-                actual: TokenKind::Integer,
-            }]);
+            assert_parse_errors(&text, vec![(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                name.len() + 1..name.len() + 2,
+            )]);
         }
 
-        fn assert_directive_eof_error(name: &str) {
-            assert_parse_errors(name, vec![ParseError::UnexpectedEof]);
+        fn assert_directive_eof_error(directive: &str) {
+            assert_parse_errors(directive, vec![(
+                DiagnosticKind::UnexpectedEof,
+                directive.len() - 1..directive.len(),
+            )]);
         }
 
         assert_directive_symbol_error("#ifdef");
@@ -648,21 +658,26 @@ mod tests {
         // #region Conditionals
 
         assert_parse_errors("#ifndef kDefine (array 10)", vec![
-            ParseError::UnmatchedConditional(0..7),
-            ParseError::UnexpectedEof,
+            (DiagnosticKind::UnmatchedConditional, 0..7),
+            (DiagnosticKind::UnexpectedEof, 25..26),
         ]);
         assert_parse_errors("#ifdef kDefine (array1 10) #else", vec![
-            ParseError::UnmatchedConditional(27..32),
-            ParseError::UnexpectedEof,
+            (DiagnosticKind::UnmatchedConditional, 27..32),
+            (DiagnosticKind::UnexpectedEof, 31..32),
         ]);
-        assert_parse_errors("#else (array2 5) #endif", vec![ParseError::UnexpectedConditional(0..5)]);
-        assert_parse_errors("(array 10) #endif", vec![ParseError::UnexpectedConditional(11..17)]);
+        assert_parse_errors("#else (array2 5) #endif", vec![(
+            DiagnosticKind::UnexpectedConditional,
+            0..5,
+        )]);
+        assert_parse_errors("(array 10) #endif", vec![(DiagnosticKind::UnexpectedConditional, 11..17)]);
 
-        assert_parse_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
-            ParseError::UnbalancedConditional(1..32),
-            ParseError::UnmatchedBrace(25..26, ArrayKind::Array),
-            ParseError::UnbalancedConditional(27..49),
-            ParseError::UnmatchedBrace(41..42, ArrayKind::Array),
+        assert_parse_errors("(#ifdef kDefine array1 10) #else array2 5) #endif", vec![
+            (DiagnosticKind::UnbalancedConditional, 1..32),
+            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 25..26),
+            (DiagnosticKind::UnbalancedConditional, 27..49),
+            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 41..42),
+            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 0..1),
+            (DiagnosticKind::UnexpectedEof, 48..49),
         ]);
 
         assert_parse_errors(
@@ -676,10 +691,10 @@ mod tests {
             #endif\
             ",
             vec![
-                ParseError::UnbalancedConditional(0..25),
-                ParseError::UnmatchedBrace(15..16, ArrayKind::Command),
-                ParseError::UnbalancedConditional(38..61),
-                ParseError::UnmatchedBrace(53..54, ArrayKind::Command),
+                (DiagnosticKind::UnbalancedConditional, 0..25),
+                (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 15..16),
+                (DiagnosticKind::UnbalancedConditional, 38..61),
+                (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 53..54),
             ],
         );
 

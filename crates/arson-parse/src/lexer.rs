@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::num::{ParseFloatError, ParseIntError};
-
 use arson_core::{FloatValue, IntegerValue};
 use lazy_regex::regex;
-use logos::{Logos, Span};
+use logos::{Logos, Span, SpannedIter};
+
+use crate::DiagnosticKind;
 
 type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 
@@ -33,7 +33,7 @@ macro_rules! make_tokens {
         )+
     ) => {
         #[derive(Logos, Debug, PartialEq)]
-        #[logos(error = LexError)]
+        #[logos(error = DiagnosticKind)]
         #[logos(skip r#"[ \v\t\r\n\f]+"#)]
         pub enum TokenValue<'src> {
             $($(#[$attr])* $variant$(($(&$life)? $value_type$(<$value_generics>)?))?,)+
@@ -143,40 +143,23 @@ make_tokens! {
     // #[regex(r#"\*+\/"#)]
     // BlockCommentEnd(&'src str) => ("block comment end"),
 
-    Error(LexError) => ("token error", ": {}"),
+    Error(DiagnosticKind) => ("token error", ": {}"),
 }
 
-#[derive(thiserror::Error, Debug, Clone, Default, PartialEq)]
-pub enum LexError {
-    #[default]
-    #[error("Invalid token")]
-    InvalidToken,
-
-    #[error("Integer parse error: {0}")]
-    IntegerError(#[from] ParseIntError),
-    #[error("Float parse error: {0}")]
-    FloatError(#[from] ParseFloatError),
-    #[error("Range of token contents {trim_range:?} is not within text length {actual_length}")]
-    TrimDelimiterError { trim_range: Span, actual_length: usize },
-
-    #[error("Block comment was not closed")]
-    UnclosedBlockComment,
-}
-
-fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexError> {
+fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, DiagnosticKind> {
     let trim_range = before..text.len() - after;
     text.get(trim_range.clone())
-        .ok_or(LexError::TrimDelimiterError { trim_range, actual_length: text.len() })
+        .ok_or(DiagnosticKind::TrimDelimiterError { trim_range, actual_length: text.len() })
 }
 
-fn parse_hex(lex: &mut Lexer<'_>) -> Result<IntegerValue, LexError> {
+fn parse_hex(lex: &mut Lexer<'_>) -> Result<IntegerValue, DiagnosticKind> {
     let trimmed = trim_delimiters(lex.slice(), 2, 0)?;
     u64::from_str_radix(trimmed, 16)
         .map(|v| v as IntegerValue)
-        .map_err(LexError::IntegerError)
+        .map_err(DiagnosticKind::IntegerParseError)
 }
 
-fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, ParseFloatError> {
+fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, std::num::ParseFloatError> {
     let text = lex.slice();
     match text.parse::<FloatValue>() {
         Ok(value) => Ok(value),
@@ -190,22 +173,53 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, ParseFloatError> {
     }
 }
 
-fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<&'src str, LexError> {
+fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<&'src str, DiagnosticKind> {
     let remainder = lex.remainder();
     let Some(found) = regex!(r#"\*+\/"#).find(remainder).map(|m| m.range()) else {
         lex.bump(remainder.len());
-        return Err(LexError::UnclosedBlockComment);
+        return Err(DiagnosticKind::UnclosedBlockComment);
     };
 
     lex.bump(found.end);
     Ok(lex.slice())
 }
 
-pub fn lex_text(text: &str) -> impl Iterator<Item = Token<'_>> {
-    TokenValue::lexer(text).spanned().map(|t| match t {
-        (Ok(kind), location) => Token { value: kind, location },
-        (Err(error), location) => Token { value: TokenValue::Error(error), location },
-    })
+pub struct Tokenizer<'src> {
+    text: &'src str,
+    lexer: SpannedIter<'src, TokenValue<'src>>,
+    current: Option<Token<'src>>,
+}
+
+impl<'src> Tokenizer<'src> {
+    pub fn new(text: &'src str) -> Self {
+        let mut lexer = TokenValue::lexer(text).spanned();
+        let current = lexer.next().map(Self::map_token);
+        Self { text, lexer, current }
+    }
+
+    pub fn source_text(&self) -> &'src str {
+        self.text
+    }
+
+    pub fn peek(&mut self) -> Option<&Token<'src>> {
+        self.current.as_ref()
+    }
+
+    fn map_token((value, location): (Result<TokenValue<'src>, DiagnosticKind>, Span)) -> Token<'src> {
+        match value {
+            Ok(value) => Token { value, location },
+            Err(error) => Token { value: TokenValue::Error(error), location },
+        }
+    }
+}
+
+impl<'src> Iterator for Tokenizer<'src> {
+    type Item = Token<'src>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.lexer.next().map(Self::map_token);
+        std::mem::replace(&mut self.current, next)
+    }
 }
 
 #[cfg(test)]
@@ -214,13 +228,13 @@ mod tests {
 
     fn assert_token(text: &str, kind: TokenValue<'_>, location: Span) {
         let expected = Token { value: kind, location };
-        let actual = lex_text(text).collect::<Vec<_>>();
+        let actual = Tokenizer::new(text).collect::<Vec<_>>();
         assert_eq!(actual, vec![expected], "Unexpected token result for '{text}'");
     }
 
     fn assert_tokens(text: &str, expected: Vec<(TokenValue<'_>, Span)>) {
         let expected = Vec::from_iter(expected.into_iter().map(|t| Token { value: t.0, location: t.1 }));
-        let actual = lex_text(text).collect::<Vec<_>>();
+        let actual = Tokenizer::new(text).collect::<Vec<_>>();
         assert_eq!(actual, expected);
     }
 
@@ -378,10 +392,10 @@ mod tests {
         assert_token("/*****/", TokenValue::Symbol("/*****/"), 0..7);
         assert_token("/*comment*/", TokenValue::Symbol("/*comment*/"), 0..11);
 
-        assert_token("/*", TokenValue::Error(LexError::UnclosedBlockComment), 0..2);
+        assert_token("/*", TokenValue::Error(DiagnosticKind::UnclosedBlockComment), 0..2);
         assert_token(
             "/*a bunch of\ntext",
-            TokenValue::Error(LexError::UnclosedBlockComment),
+            TokenValue::Error(DiagnosticKind::UnclosedBlockComment),
             0..17,
         );
     }
