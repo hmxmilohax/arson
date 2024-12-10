@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_core::ArrayKind;
 #[cfg(feature = "codespan-reporting")]
 use codespan_reporting::diagnostic::{Diagnostic as CodespanDiagnostic, Label};
 use logos::Span;
 
-use crate::TokenKind;
+use crate::{ArrayKind, TokenKind};
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub struct Diagnostic {

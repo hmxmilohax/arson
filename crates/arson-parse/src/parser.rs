@@ -4,10 +4,10 @@ use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::mem;
 
-use arson_core::{ArrayKind, FloatValue, IntegerValue};
 use logos::Span;
 
 use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
+use crate::{ArrayKind, FloatValue, IntegerValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {

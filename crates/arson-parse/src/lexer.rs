@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_core::{FloatValue, IntegerValue};
 use lazy_regex::regex;
 use logos::{Logos, Span, SpannedIter};
 
-use crate::DiagnosticKind;
+use crate::{DiagnosticKind, FloatValue, IntegerValue};
 
 type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 

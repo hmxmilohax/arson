@@ -8,9 +8,12 @@ rust-version.workspace = true
 
 publish = false
 
+[features]
+loading = ["dep:arson-core", "dep:arson-fs"]
+
 [dependencies]
-arson-core = { version = "0.1.0", path = "../arson-core" }
-arson-fs = { version = "0.1.0", path = "../arson-fs" }
+arson-core = { version = "0.1.0", path = "../arson-core", optional = true }
+arson-fs = { version = "0.1.0", path = "../arson-fs", optional = true }
 
 codespan-reporting = { version = "0.11.1", optional = true }
 lazy-regex = "3.3.0"
