@@ -127,3 +127,30 @@ impl Diagnostic {
         }
     }
 }
+
+impl DiagnosticKind {
+    pub(crate) fn sort_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        fn discriminant(value: &DiagnosticKind) -> u32 {
+            match value {
+                DiagnosticKind::UnexpectedEof => 0,
+                DiagnosticKind::InvalidToken => 1,
+                DiagnosticKind::IncorrectToken { .. } => 2,
+
+                DiagnosticKind::TrimDelimiterError { .. } => 3,
+                DiagnosticKind::IntegerParseError(_) => 4,
+                DiagnosticKind::FloatParseError(_) => 5,
+
+                DiagnosticKind::BadDirective => 6,
+                DiagnosticKind::UnexpectedConditional => 7,
+                DiagnosticKind::UnmatchedConditional => 8,
+                DiagnosticKind::UnbalancedConditional => 9,
+
+                DiagnosticKind::UnclosedBlockComment => 10,
+
+                DiagnosticKind::UnmatchedBrace(_) => 11,
+            }
+        }
+
+        discriminant(self).cmp(&discriminant(other))
+    }
+}

@@ -555,26 +555,26 @@ mod tests {
 
     fn assert_directive_symbol_error(directive: &str) {
         let text = directive.to_owned() + " 1";
-        assert_parse_errors(&text, vec![
-            (
-                DiagnosticKind::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: TokenKind::Integer,
-                },
-                text.len() - 1..text.len(),
-            ),
-        ]);
+        assert_parse_errors(&text, vec![(
+            DiagnosticKind::IncorrectToken {
+                expected: TokenKind::Symbol,
+                actual: TokenKind::Integer,
+            },
+            text.len() - 1..text.len(),
+        )]);
     }
 
     fn assert_directive_eof_error(directive: &str) {
-        assert_parse_errors(directive, vec![
-            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
-        ]);
+        assert_parse_errors(directive, vec![(
+            DiagnosticKind::UnexpectedEof,
+            directive.len()..directive.len(),
+        )]);
     }
 
     fn assert_conditional_symbol_error(directive: &str) {
         let text = directive.to_owned() + " 1";
         assert_parse_errors(&text, vec![
+            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
             (
                 DiagnosticKind::IncorrectToken {
                     expected: TokenKind::Symbol,
@@ -582,7 +582,6 @@ mod tests {
                 },
                 text.len() - 1..text.len(),
             ),
-            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
             (DiagnosticKind::UnexpectedEof, text.len()..text.len()),
         ]);
     }
