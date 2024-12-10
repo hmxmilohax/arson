@@ -3,7 +3,7 @@
 use std::borrow::Borrow;
 use std::cell::Cell;
 use std::cmp::Ordering;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::num::Wrapping;
 use std::rc::Rc;
 
@@ -326,8 +326,10 @@ impl NodeValue {
     }
 }
 
-impl Display for NodeValue {
+impl fmt::Display for NodeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::fmt::Display;
+
         match self {
             Self::Integer(value) => Display::fmt(value, f),
             Self::Float(value) => Display::fmt(value, f),
@@ -362,7 +364,7 @@ pub enum EvaluationError {
     NotBoolean(NodeKind),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Node {
     value: NodeValue,
 }
@@ -523,7 +525,13 @@ where
     }
 }
 
-impl Display for Node {
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.unevaluated().fmt(f)
     }

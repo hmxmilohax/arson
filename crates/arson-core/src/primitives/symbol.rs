@@ -8,7 +8,7 @@ use std::rc::Rc;
 pub type SymbolMap<T> = HashMap<Symbol, T>;
 
 /// A unique identifier for a scripting element, such as a type or method.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Symbol {
     name: Rc<String>,
 }
@@ -46,6 +46,12 @@ impl Ord for Symbol {
 impl Hash for Symbol {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         Rc::as_ptr(&self.name).hash(state);
+    }
+}
+
+impl std::fmt::Debug for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "'{}'", self.name)
     }
 }
 

@@ -66,7 +66,7 @@ pub enum ArrayError {
     BadMutBorrow(#[from] std::cell::BorrowMutError),
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(PartialEq, PartialOrd, Clone)]
 pub struct ArrayRef {
     inner: Rc<RefCell<NodeArray>>,
 }
@@ -85,9 +85,18 @@ impl ArrayRef {
     }
 }
 
+impl std::fmt::Debug for ArrayRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.inner.try_borrow() {
+            Ok(inner) => inner.fmt(f),
+            Err(_) => f.debug_tuple("NodeArray").field(&"<borrowed>").finish(),
+        }
+    }
+}
+
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd)]
 pub struct NodeSlice {
     nodes: [Node],
 }
@@ -483,6 +492,12 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     }
 }
 
+impl fmt::Debug for NodeSlice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.nodes.fmt(f)
+    }
+}
+
 impl fmt::Display for NodeSlice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
@@ -490,7 +505,7 @@ impl fmt::Display for NodeSlice {
 }
 
 /// A contiguous, growable collection of [`Node`]s.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
+#[derive(Clone, Default, PartialEq, PartialOrd)]
 pub struct NodeArray {
     nodes: Vec<Node>,
 }
@@ -662,6 +677,12 @@ impl<'nodes> IntoIterator for &'nodes NodeArray {
     }
 }
 
+impl fmt::Debug for NodeArray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.nodes.fmt(f)
+    }
+}
+
 impl fmt::Display for NodeArray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
@@ -677,7 +698,7 @@ macro_rules! define_array_wrapper {
     ) => {
         $(
             $(#[$attr])*
-            #[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
+            #[derive(Clone, Default, PartialEq, PartialOrd)]
             pub struct $name {
                 nodes: NodeArray,
             }
@@ -765,6 +786,12 @@ impl NodeCommand {
     }
 }
 
+impl fmt::Debug for NodeCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.nodes.fmt(f)
+    }
+}
+
 impl fmt::Display for NodeCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_nodes_unevaluated(&self.nodes, ArrayKind::Command, f)
@@ -774,6 +801,12 @@ impl fmt::Display for NodeCommand {
 impl NodeProperty {
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Property, context)
+    }
+}
+
+impl fmt::Debug for NodeProperty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.nodes.fmt(f)
     }
 }
 

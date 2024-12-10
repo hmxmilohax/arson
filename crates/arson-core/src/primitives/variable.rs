@@ -5,7 +5,7 @@ use std::rc::Rc;
 use super::{Node, Symbol};
 use crate::Context;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Variable {
     symbol: Symbol,
 }
@@ -30,6 +30,12 @@ impl Variable {
 
     pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) {
         context.set_variable(&self.symbol, value)
+    }
+}
+
+impl std::fmt::Debug for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${}", self.name())
     }
 }
 
