@@ -18,6 +18,9 @@ mod lexer;
 mod loader;
 mod parser;
 
+// Re-export so dependers don't have to sync versions
+#[cfg(feature = "reporting")]
+pub use codespan_reporting as reporting;
 #[cfg(not(feature = "loading"))]
 pub use core_shim::*;
 pub use diagnostics::*;
@@ -27,7 +30,7 @@ pub use loader::*;
 pub use parser::*;
 
 pub mod prolog {
-    pub use super::lexer::{Token, Tokenizer, TokenValue};
+    pub use super::lexer::{Token, TokenValue, Tokenizer};
     #[cfg(feature = "loading")]
     pub use super::loader::{LoadError, LoadOptions};
     pub use super::parser::{Expression, ExpressionValue};

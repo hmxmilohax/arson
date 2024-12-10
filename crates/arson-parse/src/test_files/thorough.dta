@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: LGPL-3.0-or-later
+
 ; integers
 1 +2 -3
 01 +02 -03

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#[cfg(feature = "codespan-reporting")]
+#[cfg(feature = "reporting")]
 use codespan_reporting::diagnostic::{Diagnostic as CodespanDiagnostic, Label};
 use logos::Span;
 
@@ -58,9 +58,9 @@ pub enum DiagnosticKind {
     UnmatchedBrace(ArrayKind),
 }
 
-#[cfg(feature = "codespan-reporting")]
+#[cfg(feature = "reporting")]
 impl Diagnostic {
-    pub fn to_codespan(&self, file_id: usize) -> CodespanDiagnostic<usize> {
+    pub fn to_codespan<FileId>(&self, file_id: FileId) -> CodespanDiagnostic<FileId> {
         let location = self.location.clone();
         let description = self.to_string();
         match &self.kind {

@@ -10,6 +10,7 @@ publish = false
 
 [features]
 loading = ["dep:arson-core", "dep:arson-fs"]
+reporting = ["dep:codespan-reporting"]
 
 [dependencies]
 arson-core = { version = "0.1.0", path = "../arson-core", optional = true }

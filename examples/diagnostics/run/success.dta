@@ -1,0 +1,12 @@
+; SPDX-License-Identifier: MIT OR Apache-2.0
+
+(message "Hello!")
+(value 25)
+(action {print "Ran the action"})
+
+#ifdef kDefine
+(conditional "kDefine was set!")
+(optional "I am optional")
+#else
+(conditional "kDefine was not set!")
+#endif

@@ -1,0 +1,28 @@
+; SPDX-License-Identifier: MIT OR Apache-2.0
+
+(message "Oh no" ; sneaky comment )
+(too_big 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+
+#define 1
+
+(action {print "This isn't how you autorun!"})
+#autorun action
+
+#bad_directive
+
+(unbalanced
+#ifdef kDefine
+    "This isn't supported, much more difficult to reason about.
+    The original parser doesn't even allow it deliberately,
+    and this example will handily cause problems there."
+)
+#else
+    "It's also just a pretty weird way of doing things."
+)
+#endif
+
+(unmatched
+    #ifdef kDefine
+)
+
+/* Someone forgot to write the rest of this file...

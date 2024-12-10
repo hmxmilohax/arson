@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+reporting = ["arson-parse/reporting"]
+
 [dependencies]
 arson-core = { version = "0.1.0", path = "../arson-core" }
 arson-fs = { version = "0.1.0", path = "../arson-fs" }
