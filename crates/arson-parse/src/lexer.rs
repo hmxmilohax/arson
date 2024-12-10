@@ -3,6 +3,7 @@
 use std::num::{ParseFloatError, ParseIntError};
 
 use arson_core::{FloatValue, IntegerValue};
+use lazy_regex::regex;
 use logos::{Logos, Span};
 
 type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
@@ -136,10 +137,11 @@ make_tokens! {
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
     Comment(&'src str) => ("comment"),
     // These block comment regexes are very particular, for compatibility reasons
-    #[regex(r#"(\/\*)+[^\n*]*"#)]
-    BlockCommentStart(&'src str) => ("block comment start"),
-    #[regex(r#"\*+\/"#)]
-    BlockCommentEnd(&'src str) => ("block comment end"),
+    #[regex(r#"(\/\*)+[^\n*]*"#, parse_block_comment)]
+    BlockComment(&'src str) => ("block comment"),
+    // Handled in parse_block_comment
+    // #[regex(r#"\*+\/"#)]
+    // BlockCommentEnd(&'src str) => ("block comment end"),
 
     Error(LexError) => ("token error", ": {}"),
 }
@@ -156,6 +158,9 @@ pub enum LexError {
     FloatError(#[from] ParseFloatError),
     #[error("Range of token contents {trim_range:?} is not within text length {actual_length}")]
     TrimDelimiterError { trim_range: Span, actual_length: usize },
+
+    #[error("Block comment was not closed")]
+    UnclosedBlockComment,
 }
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, LexError> {
@@ -185,6 +190,17 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, ParseFloatError> {
     }
 }
 
+fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<&'src str, LexError> {
+    let remainder = lex.remainder();
+    let Some(found) = regex!(r#"\*+\/"#).find(remainder).map(|m| m.range()) else {
+        lex.bump(remainder.len());
+        return Err(LexError::UnclosedBlockComment);
+    };
+
+    lex.bump(found.end);
+    Ok(lex.slice())
+}
+
 pub fn lex_text(text: &str) -> impl Iterator<Item = Token<'_>> {
     TokenValue::lexer(text).spanned().map(|t| match t {
         (Ok(kind), location) => Token { value: kind, location },
@@ -198,13 +214,13 @@ mod tests {
 
     fn assert_token(text: &str, kind: TokenValue<'_>, location: Span) {
         let expected = Token { value: kind, location };
-        let tokens = lex_text(text).collect::<Vec<_>>();
-        assert_eq!(tokens, vec![expected], "Unexpected token result for '{text}'");
+        let actual = lex_text(text).collect::<Vec<_>>();
+        assert_eq!(actual, vec![expected], "Unexpected token result for '{text}'");
     }
 
     fn assert_tokens(text: &str, expected: Vec<(TokenValue<'_>, Span)>) {
-        let expected = Vec::from_iter(expected.into_iter().map(|t| (Ok(t.0), t.1)));
-        let actual = Vec::from_iter(TokenValue::lexer(text).spanned());
+        let expected = Vec::from_iter(expected.into_iter().map(|t| Token { value: t.0, location: t.1 }));
+        let actual = lex_text(text).collect::<Vec<_>>();
         assert_eq!(actual, expected);
     }
 
@@ -339,16 +355,35 @@ mod tests {
     fn comments() {
         assert_token("; comment", TokenValue::Comment(" comment"), 0..9);
         assert_token(";comment", TokenValue::Comment("comment"), 0..8);
-        assert_tokens("/* comment */", vec![
-            (TokenValue::BlockCommentStart("/* comment "), 0..11),
-            (TokenValue::BlockCommentEnd("*/"), 11..13),
-        ]);
+        assert_token("/* comment */", TokenValue::BlockComment("/* comment */"), 0..13);
+        assert_token(
+            "/*\n\
+            multi\n\
+            line\n\
+            comment\n\
+            */",
+            TokenValue::BlockComment(
+                "/*\n\
+                multi\n\
+                line\n\
+                comment\n\
+                */",
+            ),
+            0..24,
+        );
 
         // These get parsed as symbols in the original lexer
         assert_token("a;symbol", TokenValue::Symbol("a;symbol"), 0..8);
         assert_token("/**/", TokenValue::Symbol("/**/"), 0..4);
         assert_token("/*****/", TokenValue::Symbol("/*****/"), 0..7);
         assert_token("/*comment*/", TokenValue::Symbol("/*comment*/"), 0..11);
+
+        assert_token("/*", TokenValue::Error(LexError::UnclosedBlockComment), 0..2);
+        assert_token(
+            "/*a bunch of\ntext",
+            TokenValue::Error(LexError::UnclosedBlockComment),
+            0..17,
+        );
     }
 
     #[test]
@@ -486,27 +521,32 @@ mod tests {
             (112, vec![(Comment("nospace"), 0..8)]),
             (113, vec![(Symbol("asdf;jkl"), 0..8), (Comment(" invalid, lexed as part of the symbol"), 9..47)]),
 
-            (115, vec![(BlockCommentStart("/*"), 0..2)]),
-            (116, vec![(Symbol("block"), 0..5), (Symbol("comment"), 6..13)]),
-            (117, vec![(BlockCommentEnd("*/"), 0..2)]),
+            (115, vec![(BlockComment(
+                "/*\n\
+                block comment\n\
+                */"
+            ), 0..19)]),
 
             (119, vec![(Symbol("/*asdf*/"), 0..8), (Comment(" invalid, lexed as a symbol"), 9..37)]),
-            (120, vec![(BlockCommentStart("/*jkl "), 0..6), (BlockCommentEnd("*/"), 6..8)]),
+            (120, vec![(BlockComment("/*jkl */"), 0..8)]),
 
             (122, vec![(Symbol("/**/"), 0..4), (Comment(" invalid, lexed as a symbol"), 5..33)]),
-            (123, vec![(BlockCommentStart("/* "), 0..3), (BlockCommentEnd("*/"), 3..5)]),
-            (124, vec![(BlockCommentStart("/*\t"), 0..3), (BlockCommentEnd("*/"), 3..5)]),
+            (123, vec![(BlockComment("/* */"), 0..5)]),
+            (124, vec![(BlockComment("/*\t*/"), 0..5)]),
 
-            // note: the behavior described here is handled by the parser for simplicity
             (126, vec![(Comment(" stray block-comment close, lexed as a symbol"), 0..46)]),
-            (127, vec![(BlockCommentEnd("*/"), 0..2)]),
+            (127, vec![(Symbol("*/"), 0..2)]),
 
             (129, vec![(Symbol("/*****/"), 0..7), (Comment(" invalid, lexed as a symbol"), 8..36)]),
 
             (131, vec![(Symbol("/*****"), 0..6), (Comment(" invalid, lexed as a symbol"), 7..35)]),
-            (133, vec![(BlockCommentStart("/*"), 4..6)]),
-            (135, vec![(Symbol("*****"), 4..9)]),
-            (137, vec![(BlockCommentEnd("***/"), 0..4)]),
+            (133, vec![(BlockComment(
+                "/*\
+                \n\
+                \n    *****\n\
+                \n\
+                ***/"
+            ), 4..23)]),
         ];
 
         // Apply proper locations to tokens

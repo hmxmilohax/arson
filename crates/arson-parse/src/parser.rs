@@ -62,8 +62,6 @@ enum PreprocessedTokenValue<'src> {
         true_branch: (Vec<PreprocessedToken<'src>>, Span),
         false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
     },
-
-    Error(LexError),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -425,14 +423,15 @@ impl<'src> Preprocessor<'src> {
             },
 
             TokenValue::Comment(_) => return ProcessResult::SkipToken,
-            TokenValue::BlockCommentStart(_) => return self.skip_block_comment(token.location, tokens),
-            TokenValue::BlockCommentEnd(text) => {
-                // Block comment ends are handled by skip_block_comment,
-                // if we get here this is a stray block comment close which is handled as a symbol
-                PreprocessedTokenValue::Symbol(text)
-            },
+            TokenValue::BlockComment(_) => return ProcessResult::SkipToken,
 
-            TokenValue::Error(error) => PreprocessedTokenValue::Error(error),
+            TokenValue::Error(error) => match error {
+                LexError::UnclosedBlockComment => {
+                    self.unexpected_eof = true;
+                    return ProcessResult::Error(ParseError::UnclosedBlockComment(token.location));
+                },
+                unhandled => return ProcessResult::Error(ParseError::TokenError(token.location, unhandled)),
+            },
         };
 
         ProcessResult::Result(PreprocessedToken { value: kind, location: token.location })
@@ -491,23 +490,6 @@ impl<'src> Preprocessor<'src> {
             self.errors.push(ParseError::UnmatchedConditional(location.clone()));
             self.unexpected_eof = true;
         }
-    }
-
-    fn skip_block_comment<T, I: Iterator<Item = Token<'src>>>(
-        &mut self,
-        start: Span,
-        tokens: &mut Peekable<I>,
-    ) -> ProcessResult<T> {
-        // Skip tokens until the end token is found
-        while let Some(token) = tokens.next() {
-            if let TokenValue::BlockCommentEnd(_) = token.value {
-                return ProcessResult::SkipToken;
-            }
-        }
-
-        // If we get here there was no end found, issue an error
-        self.errors.push(ParseError::UnclosedBlockComment(start));
-        self.unexpected_eof()
     }
 
     fn incorrect_token<T>(
@@ -719,11 +701,6 @@ impl<'src> Parser<'src> {
                 let body = ArrayExpression::new(body, body_location.clone());
                 (ExpressionValue::Autorun(body), token.location.start..body_location.end)
             },
-
-            PreprocessedTokenValue::Error(error) => {
-                self.errors.push(ParseError::TokenError(token.location, error));
-                return ProcessResult::SkipToken;
-            },
         };
 
         ProcessResult::Result(Expression { value: kind, location })
@@ -784,8 +761,6 @@ impl<'src> Parser<'src> {
             PreprocessedTokenValue::Autorun => TokenKind::Autorun,
 
             PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
-
-            PreprocessedTokenValue::Error(_) => TokenKind::Error,
         };
 
         self.errors.push(ParseError::IncorrectToken { location, expected, actual });
@@ -941,8 +916,13 @@ mod tests {
                 0..10,
             )]);
             assert_tokens("*/", vec![new_pretoken(PreprocessedTokenValue::Symbol("*/"), 0..2)]);
-            assert_errors("/* a bunch of text", vec![
-                ParseError::UnclosedBlockComment(0..18),
+
+            assert_errors("/*", vec![
+                ParseError::UnclosedBlockComment(0..2),
+                ParseError::UnexpectedEof,
+            ]);
+            assert_errors("/*a bunch of\ntext", vec![
+                ParseError::UnclosedBlockComment(0..17),
                 ParseError::UnexpectedEof,
             ]);
         }
