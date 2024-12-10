@@ -477,7 +477,11 @@ impl<'src> Parser<'src> {
 
         match self.errors.is_empty() {
             true => Ok(ast),
-            false => Err(mem::take(&mut self.errors)),
+            false => {
+                let mut errors = mem::take(&mut self.errors);
+                errors.sort_by(|left, right| std::cmp::Ord::cmp(&left.location.start, &right.location.start));
+                Err(errors)
+            },
         }
     }
 
@@ -737,7 +741,7 @@ pub fn parse_tokens<'src>(tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src
     // No items, Fox only, Final Destination.
     let final_location = {
         let text = tokens.source_text();
-        text.len().saturating_sub(1)..text.len()
+        text.len()..text.len()
     };
 
     let preprocessed = preprocess(tokens, final_location.clone())?;
@@ -757,7 +761,7 @@ mod tests {
 
         fn assert_tokens(text: &str, expected: Vec<PreprocessedToken>) {
             let tokens = Tokenizer::new(text);
-            let preprocessed = match preprocess(tokens, text.len() - 1..text.len()) {
+            let preprocessed = match preprocess(tokens, text.len()..text.len()) {
                 Ok(preprocessed) => preprocessed,
                 Err(errors) => {
                     panic!("Errors encountered while preprocessing.\nText: {text}\nResult: {errors:?}")
@@ -769,7 +773,7 @@ mod tests {
         fn assert_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
             let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
             let tokens = Tokenizer::new(text);
-            let errors = match preprocess(tokens, text.len() - 1..text.len()) {
+            let errors = match preprocess(tokens, text.len()..text.len()) {
                 Ok(preprocessed) => panic!("Expected preprocessing errors, got success instead.\nText: {text}\nResult: {preprocessed:?}"),
                 Err(errors) => errors,
             };
@@ -863,11 +867,11 @@ mod tests {
 
             assert_errors("/*", vec![
                 (DiagnosticKind::UnclosedBlockComment, 0..2),
-                (DiagnosticKind::UnexpectedEof, 1..2),
+                (DiagnosticKind::UnexpectedEof, 2..2),
             ]);
             assert_errors("/*a bunch of\ntext", vec![
                 (DiagnosticKind::UnclosedBlockComment, 0..17),
-                (DiagnosticKind::UnexpectedEof, 16..17),
+                (DiagnosticKind::UnexpectedEof, 17..17),
             ]);
         }
 
@@ -885,7 +889,7 @@ mod tests {
         fn assert_directive_eof_error(directive: &str) {
             assert_errors(directive, vec![(
                 DiagnosticKind::UnexpectedEof,
-                directive.len() - 1..directive.len(),
+                directive.len()..directive.len(),
             )]);
         }
 
@@ -989,11 +993,11 @@ mod tests {
 
             assert_errors("#ifndef kDefine (array 10)", vec![
                 (DiagnosticKind::UnmatchedConditional, 0..7),
-                (DiagnosticKind::UnexpectedEof, 25..26),
+                (DiagnosticKind::UnexpectedEof, 26..26),
             ]);
             assert_errors("#ifdef kDefine (array1 10) #else", vec![
                 (DiagnosticKind::UnmatchedConditional, 27..32),
-                (DiagnosticKind::UnexpectedEof, 31..32),
+                (DiagnosticKind::UnexpectedEof, 32..32),
             ]);
             assert_errors("#else (array2 5) #endif", vec![(
                 DiagnosticKind::UnexpectedConditional,
@@ -1104,7 +1108,7 @@ mod tests {
             fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
                 let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
                 if !eof_expected {
-                    expected.push((DiagnosticKind::UnexpectedEof, text.len() - 1..text.len()));
+                    expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
                 }
 
                 assert_errors(text, expected);
@@ -1156,7 +1160,7 @@ mod tests {
         fn assert_directive_eof_error(directive: &str) {
             assert_errors(directive, vec![(
                 DiagnosticKind::UnexpectedEof,
-                directive.len() - 1..directive.len(),
+                directive.len()..directive.len(),
             )]);
         }
 
@@ -1283,11 +1287,11 @@ mod tests {
 
             assert_errors("#ifndef kDefine (array 10)", vec![
                 (DiagnosticKind::UnmatchedConditional, 0..7),
-                (DiagnosticKind::UnexpectedEof, 25..26),
+                (DiagnosticKind::UnexpectedEof, 26..26),
             ]);
             assert_errors("#ifdef kDefine (array1 10) #else", vec![
                 (DiagnosticKind::UnmatchedConditional, 27..32),
-                (DiagnosticKind::UnexpectedEof, 31..32),
+                (DiagnosticKind::UnexpectedEof, 32..32),
             ]);
             assert_errors("#else (array2 5) #endif", vec![(
                 DiagnosticKind::UnexpectedConditional,

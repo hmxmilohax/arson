@@ -37,9 +37,9 @@ pub enum DiagnosticKind {
 
     #[error("internal error: failed to trim token delimiters")]
     TrimDelimiterError { trim_range: Span, actual_length: usize },
-    #[error("internal error: integer parse error")]
+    #[error("integer parse error")]
     IntegerParseError(#[from] std::num::ParseIntError),
-    #[error("internal error: float parse error")]
+    #[error("float parse error")]
     FloatParseError(#[from] std::num::ParseFloatError),
 
     #[error("unrecognized parser directive")]
@@ -73,7 +73,7 @@ impl Diagnostic {
                 .with_message(description)
                 .with_labels(vec![Label::primary(file_id, location)]),
             DiagnosticKind::IncorrectToken { .. } => CodespanDiagnostic::error()
-                .with_code("DTA002")
+                .with_code("DTA0002")
                 .with_message(description)
                 .with_labels(vec![Label::primary(file_id, location.clone())]),
 
@@ -84,15 +84,15 @@ impl Diagnostic {
                     "tried to extract ({trim_range:?}) from text with length ({actual_length})"
                 )])
                 .with_labels(vec![Label::primary(file_id, location)]),
-            DiagnosticKind::IntegerParseError(error) => CodespanDiagnostic::bug()
+            DiagnosticKind::IntegerParseError(error) => CodespanDiagnostic::error()
                 .with_code("DTA0004")
                 .with_message(description)
-                .with_notes(vec![format!("error contents: {error}")])
+                .with_notes(vec![error.to_string()])
                 .with_labels(vec![Label::primary(file_id, location)]),
-            DiagnosticKind::FloatParseError(error) => CodespanDiagnostic::bug()
+            DiagnosticKind::FloatParseError(error) => CodespanDiagnostic::error()
                 .with_code("DTA0005")
                 .with_message(description)
-                .with_notes(vec![format!("error contents: {error}")])
+                .with_notes(vec![error.to_string()])
                 .with_labels(vec![Label::primary(file_id, location)]),
 
             DiagnosticKind::BadDirective => CodespanDiagnostic::error()

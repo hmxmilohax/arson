@@ -560,7 +560,7 @@ mod tests {
         fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
             let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
             if !eof_expected {
-                expected.push((DiagnosticKind::UnexpectedEof, text.len() - 1..text.len()));
+                expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
             }
 
             assert_parse_errors(text, expected);
@@ -632,7 +632,7 @@ mod tests {
         fn assert_directive_eof_error(directive: &str) {
             assert_parse_errors(directive, vec![(
                 DiagnosticKind::UnexpectedEof,
-                directive.len() - 1..directive.len(),
+                directive.len()..directive.len(),
             )]);
         }
 
@@ -659,11 +659,11 @@ mod tests {
 
         assert_parse_errors("#ifndef kDefine (array 10)", vec![
             (DiagnosticKind::UnmatchedConditional, 0..7),
-            (DiagnosticKind::UnexpectedEof, 25..26),
+            (DiagnosticKind::UnexpectedEof, 26..26),
         ]);
         assert_parse_errors("#ifdef kDefine (array1 10) #else", vec![
             (DiagnosticKind::UnmatchedConditional, 27..32),
-            (DiagnosticKind::UnexpectedEof, 31..32),
+            (DiagnosticKind::UnexpectedEof, 32..32),
         ]);
         assert_parse_errors("#else (array2 5) #endif", vec![(
             DiagnosticKind::UnexpectedConditional,
@@ -672,12 +672,12 @@ mod tests {
         assert_parse_errors("(array 10) #endif", vec![(DiagnosticKind::UnexpectedConditional, 11..17)]);
 
         assert_parse_errors("(#ifdef kDefine array1 10) #else array2 5) #endif", vec![
+            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 0..1),
             (DiagnosticKind::UnbalancedConditional, 1..32),
             (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 25..26),
             (DiagnosticKind::UnbalancedConditional, 27..49),
             (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 41..42),
-            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 0..1),
-            (DiagnosticKind::UnexpectedEof, 48..49),
+            (DiagnosticKind::UnexpectedEof, 49..49),
         ]);
 
         assert_parse_errors(
