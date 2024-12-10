@@ -189,31 +189,6 @@ struct Preprocessor<'src> {
     unexpected_eof: bool,
 }
 
-macro_rules! next_token {
-    ($self:expr, $tokens:expr, $expected:ident) => {{
-        let Some(next) = $tokens.peek() else {
-            return $self.unexpected_eof();
-        };
-        let TokenKind::$expected = next.kind else {
-            return $self.incorrect_token(TokenKind::$expected, next.to_owned());
-        };
-        let location = next.location.clone();
-        $tokens.next();
-        location
-    }};
-    ($self:expr, $tokens:expr, $expected:ident()) => {{
-        let Some(next) = $tokens.peek() else {
-            return $self.unexpected_eof();
-        };
-        let TokenValue::$expected(value) = next.value else {
-            return $self.incorrect_token(TokenKind::$expected, next.get_kind(), next.location.clone());
-        };
-        let result = (value, next.location.clone());
-        $tokens.next();
-        result
-    }};
-}
-
 impl<'src> Preprocessor<'src> {
     pub fn new() -> Self {
         Self {
@@ -269,7 +244,23 @@ impl<'src> Preprocessor<'src> {
         location: Span,
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
-        let (name, name_location) = next_token!(self, tokens, Symbol());
+        let Some(name_token) = tokens.peek() else {
+            return self.unexpected_eof();
+        };
+
+        let name_location = name_token.location.clone();
+        let TokenValue::Symbol(name) = name_token.value else {
+            self.push_error(
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: name_token.get_kind()
+                },
+                name_location.clone()
+            );
+            return ProcessResult::SkipToken;
+        };
+        tokens.next();
+
         let name = StrExpression::new(name, name_location.clone());
         let location = location.start..name_location.end;
         ProcessResult::Result(PreprocessedToken { value: kind(name), location })
@@ -314,14 +305,10 @@ impl<'src> Preprocessor<'src> {
             TokenValue::Autorun => PreprocessedTokenValue::Autorun,
 
             TokenValue::Ifdef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol());
-                let name = StrExpression::new(name, name_location);
-                return self.parse_conditional(tokens, token.location, true, name);
+                return self.parse_conditional(tokens, token.location, true);
             },
             TokenValue::Ifndef => {
-                let (name, name_location) = next_token!(self, tokens, Symbol());
-                let name = StrExpression::new(name, name_location);
-                return self.parse_conditional(tokens, token.location, false, name);
+                return self.parse_conditional(tokens, token.location, false);
             },
             TokenValue::Else => {
                 match self.conditional_stack.last_mut() {
@@ -376,12 +363,34 @@ impl<'src> Preprocessor<'src> {
         tokens: &mut Tokenizer<'src>,
         start: Span,
         positive: bool,
-        symbol: StrExpression<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
+        let Some(define_token) = tokens.peek() else {
+            return self.unexpected_eof();
+        };
+
+        let define_location = define_token.location.clone();
+        let define_name = match define_token.value {
+            TokenValue::Symbol(value) => {
+                tokens.next();
+                value
+            },
+            _ => {
+                self.push_error(
+                    DiagnosticKind::IncorrectToken {
+                        expected: TokenKind::Symbol,
+                        actual: define_token.get_kind()
+                    },
+                    define_location.clone()
+                );
+                // Recover with a dummy name instead of bailing
+                "<invalid>"
+            }
+        };
+
         self.conditional_stack.push(ConditionalMarker {
             location: start.clone(),
             is_positive: positive,
-            symbol,
+            symbol: StrExpression::new(define_name, define_location),
             false_location: None,
             false_branch: None,
         });
@@ -429,16 +438,6 @@ impl<'src> Preprocessor<'src> {
 
     fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
         self.errors.push(Diagnostic::new(kind, location));
-    }
-
-    fn incorrect_token<T>(
-        &mut self,
-        expected: TokenKind,
-        actual: TokenKind,
-        location: Span,
-    ) -> ProcessResult<T> {
-        self.push_error(DiagnosticKind::IncorrectToken { expected, actual }, location);
-        ProcessResult::SkipToken
     }
 
     fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
@@ -752,6 +751,47 @@ pub fn parse_tokens<'src>(tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src
 mod tests {
     use super::*;
 
+    fn assert_directive_symbol_error(directive: &str, assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>)) {
+        let text = directive.to_owned() + " 1";
+        assert_errors(&text, vec![
+            (
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                text.len() - 1..text.len(),
+            ),
+        ]);
+    }
+
+    fn assert_directive_eof_error(directive: &str, assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>)) {
+        assert_errors(directive, vec![
+            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+        ]);
+    }
+
+    fn assert_conditional_symbol_error(directive: &str, assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>)) {
+        let text = directive.to_owned() + " 1";
+        assert_errors(&text, vec![
+            (
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                text.len() - 1..text.len(),
+            ),
+            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
+            (DiagnosticKind::UnexpectedEof, text.len()..text.len()),
+        ]);
+    }
+
+    fn assert_conditional_eof_error(directive: &str, assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>)) {
+        assert_errors(directive, vec![
+            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+            // (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
+        ]);
+    }
+
     mod preprocessor {
         use super::*;
 
@@ -875,24 +915,6 @@ mod tests {
             ]);
         }
 
-        fn assert_directive_symbol_error(directive: &str) {
-            let text = directive.to_owned() + " 1";
-            assert_errors(&text, vec![(
-                DiagnosticKind::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: TokenKind::Integer,
-                },
-                text.len() - 1..text.len(),
-            )]);
-        }
-
-        fn assert_directive_eof_error(directive: &str) {
-            assert_errors(directive, vec![(
-                DiagnosticKind::UnexpectedEof,
-                directive.len()..directive.len(),
-            )]);
-        }
-
         #[test]
         fn directives() {
             assert_tokens("#define kDefine (1)", vec![
@@ -925,17 +947,17 @@ mod tests {
                 new_pretoken(PreprocessedTokenValue::CommandClose, 33..34),
             ]);
 
-            assert_directive_symbol_error("#define");
-            assert_directive_symbol_error("#undef");
-            assert_directive_symbol_error("#include");
-            assert_directive_symbol_error("#include_opt");
-            assert_directive_symbol_error("#merge");
+            assert_directive_symbol_error("#define", assert_errors);
+            assert_directive_symbol_error("#undef", assert_errors);
+            assert_directive_symbol_error("#include", assert_errors);
+            assert_directive_symbol_error("#include_opt", assert_errors);
+            assert_directive_symbol_error("#merge", assert_errors);
 
-            assert_directive_eof_error("#define");
-            assert_directive_eof_error("#undef");
-            assert_directive_eof_error("#include");
-            assert_directive_eof_error("#include_opt");
-            assert_directive_eof_error("#merge");
+            assert_directive_eof_error("#define", assert_errors);
+            assert_directive_eof_error("#undef", assert_errors);
+            assert_directive_eof_error("#include", assert_errors);
+            assert_directive_eof_error("#include_opt", assert_errors);
+            assert_directive_eof_error("#merge", assert_errors);
 
             assert_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
         }
@@ -985,11 +1007,11 @@ mod tests {
                 0..33,
             )]);
 
-            assert_directive_symbol_error("#ifdef");
-            assert_directive_symbol_error("#ifndef");
+            assert_conditional_symbol_error("#ifdef", assert_errors);
+            assert_conditional_symbol_error("#ifndef", assert_errors);
 
-            assert_directive_eof_error("#ifdef");
-            assert_directive_eof_error("#ifndef");
+            assert_conditional_eof_error("#ifdef", assert_errors);
+            assert_conditional_eof_error("#ifndef", assert_errors);
 
             assert_errors("#ifndef kDefine (array 10)", vec![
                 (DiagnosticKind::UnmatchedConditional, 0..7),
@@ -1146,24 +1168,6 @@ mod tests {
             assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
         }
 
-        fn assert_directive_symbol_error(directive: &str) {
-            let text = directive.to_owned() + " 1";
-            assert_errors(&text, vec![(
-                DiagnosticKind::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: TokenKind::Integer,
-                },
-                directive.len() + 1..directive.len() + 2,
-            )]);
-        }
-
-        fn assert_directive_eof_error(directive: &str) {
-            assert_errors(directive, vec![(
-                DiagnosticKind::UnexpectedEof,
-                directive.len()..directive.len(),
-            )]);
-        }
-
         #[test]
         fn directives() {
             assert_parsed("#define kDefine (1)", vec![new_expression(
@@ -1200,18 +1204,18 @@ mod tests {
                 0..34,
             )]);
 
-            assert_directive_symbol_error("#define");
-            assert_directive_symbol_error("#undef");
-            assert_directive_symbol_error("#include");
-            assert_directive_symbol_error("#include_opt");
-            assert_directive_symbol_error("#merge");
+            assert_directive_symbol_error("#define", assert_errors);
+            assert_directive_symbol_error("#undef", assert_errors);
+            assert_directive_symbol_error("#include", assert_errors);
+            assert_directive_symbol_error("#include_opt", assert_errors);
+            assert_directive_symbol_error("#merge", assert_errors);
 
-            assert_directive_eof_error("#define");
-            assert_directive_eof_error("#undef");
-            assert_directive_eof_error("#include");
-            assert_directive_eof_error("#include_opt");
-            assert_directive_eof_error("#merge");
-            assert_directive_eof_error("#autorun");
+            assert_directive_eof_error("#define", assert_errors);
+            assert_directive_eof_error("#undef", assert_errors);
+            assert_directive_eof_error("#include", assert_errors);
+            assert_directive_eof_error("#include_opt", assert_errors);
+            assert_directive_eof_error("#merge", assert_errors);
+            assert_directive_eof_error("#autorun", assert_errors);
 
             assert_errors("#define kDefine 1", vec![(
                 DiagnosticKind::IncorrectToken {
@@ -1279,11 +1283,11 @@ mod tests {
                 0..33,
             )]);
 
-            assert_directive_symbol_error("#ifdef");
-            assert_directive_symbol_error("#ifndef");
+            assert_conditional_symbol_error("#ifdef", assert_errors);
+            assert_conditional_symbol_error("#ifndef", assert_errors);
 
-            assert_directive_eof_error("#ifdef");
-            assert_directive_eof_error("#ifndef");
+            assert_conditional_eof_error("#ifdef", assert_errors);
+            assert_conditional_eof_error("#ifndef", assert_errors);
 
             assert_errors("#ifndef kDefine (array 10)", vec![
                 (DiagnosticKind::UnmatchedConditional, 0..7),

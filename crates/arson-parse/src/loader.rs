@@ -548,13 +548,54 @@ mod tests {
         ]);
     }
 
+    fn assert_parse_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
+        let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
+        assert_error(text, LoadError::Parse(expected))
+    }
+
+    fn assert_directive_symbol_error(directive: &str) {
+        let text = directive.to_owned() + " 1";
+        assert_parse_errors(&text, vec![
+            (
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                text.len() - 1..text.len(),
+            ),
+        ]);
+    }
+
+    fn assert_directive_eof_error(directive: &str) {
+        assert_parse_errors(directive, vec![
+            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+        ]);
+    }
+
+    fn assert_conditional_symbol_error(directive: &str) {
+        let text = directive.to_owned() + " 1";
+        assert_parse_errors(&text, vec![
+            (
+                DiagnosticKind::IncorrectToken {
+                    expected: TokenKind::Symbol,
+                    actual: TokenKind::Integer,
+                },
+                text.len() - 1..text.len(),
+            ),
+            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
+            (DiagnosticKind::UnexpectedEof, text.len()..text.len()),
+        ]);
+    }
+
+    fn assert_conditional_eof_error(directive: &str) {
+        assert_parse_errors(directive, vec![
+            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+            // (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
+        ]);
+    }
+
     #[test]
     fn parse_errors() {
-        fn assert_parse_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
-            let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-            assert_error(text, LoadError::Parse(expected))
-        }
-
         // #region Arrays
 
         fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
@@ -618,34 +659,16 @@ mod tests {
 
         assert_parse_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
 
-        fn assert_directive_symbol_error(name: &str) {
-            let text = name.to_owned() + " 1";
-            assert_parse_errors(&text, vec![(
-                DiagnosticKind::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: TokenKind::Integer,
-                },
-                name.len() + 1..name.len() + 2,
-            )]);
-        }
-
-        fn assert_directive_eof_error(directive: &str) {
-            assert_parse_errors(directive, vec![(
-                DiagnosticKind::UnexpectedEof,
-                directive.len()..directive.len(),
-            )]);
-        }
-
-        assert_directive_symbol_error("#ifdef");
-        assert_directive_symbol_error("#ifndef");
+        assert_conditional_symbol_error("#ifdef");
+        assert_conditional_symbol_error("#ifndef");
         assert_directive_symbol_error("#define");
         assert_directive_symbol_error("#undef");
         assert_directive_symbol_error("#include");
         assert_directive_symbol_error("#include_opt");
         assert_directive_symbol_error("#merge");
 
-        assert_directive_eof_error("#ifdef");
-        assert_directive_eof_error("#ifndef");
+        assert_conditional_eof_error("#ifdef");
+        assert_conditional_eof_error("#ifndef");
         assert_directive_eof_error("#define");
         assert_directive_eof_error("#undef");
         assert_directive_eof_error("#include");
