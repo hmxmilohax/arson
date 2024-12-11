@@ -78,8 +78,8 @@ pub enum DiagnosticKind {
     #[error("unbalanced conditional block")]
     UnbalancedConditional,
 
-    #[error("unmatched {0} delimiter")]
-    UnmatchedBrace(ArrayKind),
+    #[error("unmatched {kind} delimiter")]
+    UnmatchedBrace { kind: ArrayKind, open: bool },
 
     #[error("block comment was not closed")]
     UnclosedBlockComment,
@@ -145,7 +145,7 @@ impl Diagnostic {
                         .with_message(format!("expected {missing} ({arg_description})"))
                 ]),
             DiagnosticKind::IncorrectDirectiveArgument {
-                expected,
+                expected: _,
                 expected_description,
                 actual,
                 expecting_location,
@@ -153,7 +153,7 @@ impl Diagnostic {
                 .with_code("DTA0012")
                 .with_labels(vec![Label::secondary(file_id, expecting_location.clone())
                 .with_message(format!(
-                    "directive here was expecting {expected} ({expected_description}), found {actual} instead"
+                    "directive here was expecting {expected_description}, found {actual} instead"
                 ))]),
 
             DiagnosticKind::UnexpectedConditional => diagnostic
@@ -165,9 +165,11 @@ impl Diagnostic {
                 .with_code("DTA0017")
                 .with_notes(vec!["all arrays in conditionals must be self-contained".to_owned()]),
 
-            DiagnosticKind::UnmatchedBrace(kind) => diagnostic
+            DiagnosticKind::UnmatchedBrace { kind, open } => diagnostic
                 .with_code("DTA0020")
-                .with_notes(vec![format!("'{}' required to close the {kind}", kind.delimiters().1)]),
+                .with_notes(vec![
+                    format!("'{}' required to close the {kind}", kind.delimiter(*open))
+                ]),
 
             DiagnosticKind::UnclosedBlockComment => diagnostic
                 .with_code("DTA0025")
@@ -195,7 +197,7 @@ impl DiagnosticKind {
                 DiagnosticKind::UnmatchedConditional => 16,
                 DiagnosticKind::UnbalancedConditional => 17,
 
-                DiagnosticKind::UnmatchedBrace(_) => 20,
+                DiagnosticKind::UnmatchedBrace { .. } => 20,
 
                 DiagnosticKind::UnclosedBlockComment => 25,
             }

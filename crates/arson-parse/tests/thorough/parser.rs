@@ -15,9 +15,9 @@ fn thorough_errors() {
 
     #[rustfmt::skip] // spacing matches the test file
     let errors = vec![
-        (3, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 0..1)]),
-        (4, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 0..1)]),
-        (5, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Property), 0..1)]),
+        (3, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 0..1)]),
+        (4, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: true }, 0..1)]),
+        (5, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Property, open: true }, 0..1)]),
 
         (7, vec![(
             DiagnosticKind::IntegerParseError(
@@ -113,11 +113,11 @@ fn thorough_errors() {
         )]),
 
         (26, vec![(DiagnosticKind::UnbalancedConditional, 4..48)]),
-        (28, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 4..5)]),
+        (28, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 4..5)]),
         (29, vec![(DiagnosticKind::UnbalancedConditional, 4..40)]),
-        (31, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 4..5)]),
+        (31, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 4..5)]),
         (34, vec![(DiagnosticKind::UnbalancedConditional, 4..50)]),
-        (36, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 4..5)]),
+        (36, vec![(DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 4..5)]),
 
         (41, vec![(DiagnosticKind::UnexpectedConditional, 4..10)]),
         (42, vec![(DiagnosticKind::UnexpectedConditional, 4..9)]),

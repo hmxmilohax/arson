@@ -619,13 +619,13 @@ impl<'src> Parser<'src> {
                     ProcessResult::BlockEnd(end)
                 }
             },
-            None => ProcessResult::Error(DiagnosticKind::UnmatchedBrace(kind), end),
+            None => ProcessResult::Error(DiagnosticKind::UnmatchedBrace { kind, open: false }, end),
         }
     }
 
     fn recover_mismatched_array<T>(&mut self, kind: ArrayKind, end: Span) -> ProcessResult<T> {
         if !self.array_stack.iter().any(|arr| arr.kind == kind) {
-            return ProcessResult::Error(DiagnosticKind::UnmatchedBrace(kind), end);
+            return ProcessResult::Error(DiagnosticKind::UnmatchedBrace { kind, open: false }, end);
         }
 
         while let Some(array) = self.array_stack.last() {
@@ -633,7 +633,7 @@ impl<'src> Parser<'src> {
                 break;
             }
 
-            self.push_error(DiagnosticKind::UnmatchedBrace(array.kind), array.location.clone());
+            self.push_error(DiagnosticKind::UnmatchedBrace { kind: array.kind, open: true }, array.location.clone());
             self.array_stack.pop();
         }
 
@@ -772,7 +772,7 @@ impl<'src> Parser<'src> {
         if block_parser
             .errors
             .iter()
-            .any(|e| matches!(e.kind(), DiagnosticKind::UnmatchedBrace(_)))
+            .any(|e| matches!(e.kind(), DiagnosticKind::UnmatchedBrace { .. }))
         {
             self.push_error(DiagnosticKind::UnbalancedConditional, location.clone())
         }
@@ -794,7 +794,7 @@ impl<'src> Parser<'src> {
 
         for unmatched in &self.array_stack {
             let error =
-                Diagnostic::new(DiagnosticKind::UnmatchedBrace(unmatched.kind), unmatched.location.clone());
+                Diagnostic::new(DiagnosticKind::UnmatchedBrace { kind: unmatched.kind, open: true }, unmatched.location.clone());
             self.errors.push(error);
             self.unexpected_eof = true;
         }
@@ -1209,8 +1209,8 @@ mod tests {
                 0..10,
             )]);
 
-            fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
-                let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
+            fn assert_array_mismatch(text: &str, kind: ArrayKind, open: bool, location: Span, eof_expected: bool) {
+                let mut expected = vec![(DiagnosticKind::UnmatchedBrace { kind, open }, location)];
                 if !eof_expected {
                     expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
                 }
@@ -1220,22 +1220,22 @@ mod tests {
 
             fn assert_array_mismatches(kind: ArrayKind) {
                 let (l, r) = kind.delimiters();
-                assert_array_mismatch(&format!("{l} {l} {r}"), kind, 0..1, false);
-                assert_array_mismatch(&format!("{r} {l} {r}"), kind, 0..1, true);
-                assert_array_mismatch(&format!("{l} {r} {l}"), kind, 4..5, false);
-                assert_array_mismatch(&format!("{l} {r} {r}"), kind, 4..5, true);
+                assert_array_mismatch(&format!("{l} {l} {r}"), kind, true, 0..1, false);
+                assert_array_mismatch(&format!("{r} {l} {r}"), kind, false, 0..1, true);
+                assert_array_mismatch(&format!("{l} {r} {l}"), kind, true, 4..5, false);
+                assert_array_mismatch(&format!("{l} {r} {r}"), kind, false, 4..5, true);
             }
 
             fn assert_multi_array_mismatches(matched_kind: ArrayKind, unmatched_kind: ArrayKind) {
                 let (ml, mr) = matched_kind.delimiters();
                 let (ul, ur) = unmatched_kind.delimiters();
 
-                assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, 0..1, false);
-                assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, 0..1, true);
-                assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, 2..3, true);
-                assert_array_mismatch(&format!("{ml} {ur} {mr}"), unmatched_kind, 2..3, true);
-                assert_array_mismatch(&format!("{ml} {mr} {ul}"), unmatched_kind, 4..5, false);
-                assert_array_mismatch(&format!("{ml} {mr} {ur}"), unmatched_kind, 4..5, true);
+                assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, true, 0..1, false);
+                assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, false, 0..1, true);
+                assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, true, 2..3, true);
+                assert_array_mismatch(&format!("{ml} {ur} {mr}"), unmatched_kind, false, 2..3, true);
+                assert_array_mismatch(&format!("{ml} {mr} {ul}"), unmatched_kind, true, 4..5, false);
+                assert_array_mismatch(&format!("{ml} {mr} {ur}"), unmatched_kind, false, 4..5, true);
             }
 
             assert_array_mismatches(ArrayKind::Array);
@@ -1467,9 +1467,9 @@ mod tests {
 
             assert_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
                 (DiagnosticKind::UnbalancedConditional, 1..32),
-                (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 25..26),
+                (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 25..26),
                 (DiagnosticKind::UnbalancedConditional, 27..49),
-                (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 41..42),
+                (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 41..42),
             ]);
 
             assert_errors(
@@ -1484,9 +1484,9 @@ mod tests {
                 ",
                 vec![
                     (DiagnosticKind::UnbalancedConditional, 0..25),
-                    (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 15..16),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: true }, 15..16),
                     (DiagnosticKind::UnbalancedConditional, 38..61),
-                    (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 53..54),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: false }, 53..54),
                 ],
             );
         }
