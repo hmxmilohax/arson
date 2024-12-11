@@ -807,7 +807,7 @@ pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
     parse_tokens(Tokenizer::new(text))
 }
 
-pub fn parse_tokens<'src>(tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src>>, Vec<Diagnostic>> {
+pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
     let mut parser = Parser::new();
     let ast = parser.parse(tokens);
     match parser.errors.is_empty() {

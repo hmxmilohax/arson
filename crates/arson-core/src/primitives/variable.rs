@@ -21,7 +21,7 @@ impl Variable {
     }
 
     pub fn name(&self) -> &Rc<String> {
-        &self.symbol.name()
+        self.symbol.name()
     }
 
     pub fn get<S>(&self, context: &mut Context<S>) -> Node {
