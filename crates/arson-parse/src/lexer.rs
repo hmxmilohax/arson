@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use lazy_regex::regex;
+use std::fmt::Write;
+
+use lazy_regex::{regex, regex_is_match};
 use logos::{Logos, Span, SpannedIter};
 
 use crate::{DiagnosticKind, FloatValue, IntegerValue};
@@ -26,8 +28,10 @@ macro_rules! make_tokens {
     (
         $(
             $(#[$attr:meta])*
-            $variant:ident$(($(&$life:lifetime)? $value_type:ident$(<$value_generics:tt>)?))?
-                => ($display:literal $(, $format:literal)?)
+            $variant:ident$(($(&$life:lifetime)? $value_type:ident$(<$value_generics:tt>)?))? {
+                kind_display: $kind_display:literal,
+                value_display: |$display_f:ident $(, $display_value:ident)?| $display_expr:expr,
+            }
             $(,)?
         )+
     ) => {
@@ -49,9 +53,10 @@ macro_rules! make_tokens {
         impl<'src> std::fmt::Display for TokenValue<'src> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(TokenValue::$variant$((meta_morph!($value_type => _value)))?
-                        => write!(f, concat!($display, $($format)?) $(,meta_morph!($format => _value))?),
-                    )+
+                    $(TokenValue::$variant$(($display_value))? => {
+                        let $display_f = f;
+                        $display_expr
+                    },)+
                 }
             }
         }
@@ -64,7 +69,7 @@ macro_rules! make_tokens {
         impl<'src> std::fmt::Display for TokenKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(TokenKind::$variant => write!(f, $display),)+
+                    $(TokenKind::$variant => write!(f, $kind_display),)+
                 }
             }
         }
@@ -78,69 +83,151 @@ macro_rules! make_tokens {
 make_tokens! {
     #[regex(r#"[+-]?[0-9]+"#, |lex| lex.slice().parse::<IntegerValue>(), priority = 2)]
     #[regex(r#"0x[A-Fa-f0-9]+"#, parse_hex, priority = 2)]
-    Integer(IntegerValue) => ("integer", "{}"),
+    Integer(IntegerValue) {
+        kind_display: "integer",
+        value_display: |f, value| value.fmt(f),
+    },
     // This one allows some weird things, such as ".", "+.", and "-.E1"
     #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, parse_float, priority = 2)]
-    Float(FloatValue) => ("float", "{}"),
+    Float(FloatValue) {
+        kind_display: "float",
+        value_display: |f, value| value.fmt(f),
+    },
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    String(&'src str) => ("string", "\"{}\""),
+    String(&'src str) {
+        kind_display: "string",
+        value_display: |f, value| write!(f, "\"{}\"", value),
+    },
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
     #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, priority = 0)]
     #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    Symbol(&'src str) => ("symbol", "'{}'"),
+    Symbol(&'src str) {
+        kind_display: "symbol",
+        value_display: |f, value| {
+            // Write without quotes where possible
+            if regex_is_match!(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, value) {
+                f.write_str(value)
+            } else {
+                write!(f, "'{}'", value)
+            }
+        },
+    },
     #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    Variable(&'src str) => ("variable", "${}"),
+    Variable(&'src str) {
+        kind_display: "variable",
+        value_display: |f, value| write!(f, "${}", value),
+    },
     #[token("kDataUnhandled")]
-    Unhandled => ("kDataUnhandled"),
+    Unhandled {
+        kind_display: "kDataUnhandled",
+        value_display: |f| f.write_str("kDataUnhandled"),
+    },
 
     #[token("(")]
-    ArrayOpen => ("array open"),
+    ArrayOpen {
+        kind_display: "array open",
+        value_display: |f| f.write_char('('),
+    },
     #[token(")")]
-    ArrayClose => ("array close"),
+    ArrayClose {
+        kind_display: "array close",
+        value_display: |f| f.write_char(')'),
+    },
     #[token("{")]
-    CommandOpen => ("command open"),
+    CommandOpen {
+        kind_display: "command open",
+        value_display: |f| f.write_char('{'),
+    },
     #[token("}")]
-    CommandClose => ("command close"),
+    CommandClose {
+        kind_display: "command close",
+        value_display: |f| f.write_char('}'),
+    },
     #[token("[")]
-    PropertyOpen => ("property open"),
+    PropertyOpen {
+        kind_display: "property open",
+        value_display: |f| f.write_char('['),
+    },
     #[token("]")]
-    PropertyClose => ("property close"),
+    PropertyClose {
+        kind_display: "property close",
+        value_display: |f| f.write_char(']'),
+    },
 
     #[token("#define")]
-    Define => ("#define directive"),
+    Define {
+        kind_display: "#define directive",
+        value_display: |f| f.write_str("#define"),
+    },
     #[token("#undef")]
-    Undefine => ("#undef directive"),
+    Undefine {
+        kind_display: "#undef directive",
+        value_display: |f| f.write_str("#undef"),
+    },
     #[token("#include")]
-    Include => ("#include directive"),
+    Include {
+        kind_display: "#include directive",
+        value_display: |f| f.write_str("#include"),
+    },
     #[token("#include_opt")]
-    IncludeOptional => ("#include_opt directive"),
+    IncludeOptional {
+        kind_display: "#include_opt directive",
+        value_display: |f| f.write_str("#include_opt"),
+    },
     #[token("#merge")]
-    Merge => ("#merge directive"),
+    Merge {
+        kind_display: "#merge directive",
+        value_display: |f| f.write_str("#merge"),
+    },
     #[token("#autorun")]
-    Autorun => ("#autorun directive"),
+    Autorun {
+        kind_display: "#autorun directive",
+        value_display: |f| f.write_str("#autorun"),
+    },
 
     #[token("#ifdef")]
-    Ifdef => ("#ifdef directive"),
+    Ifdef {
+        kind_display: "#ifdef directive",
+        value_display: |f| f.write_str("#ifdef"),
+    },
     #[token("#ifndef")]
-    Ifndef => ("#ifndef directive"),
+    Ifndef {
+        kind_display: "#ifndef directive",
+        value_display: |f| f.write_str("#ifndef"),
+    },
     #[token("#else")]
-    Else => ("#else directive"),
+    Else {
+        kind_display: "#else directive",
+        value_display: |f| f.write_str("#else"),
+    },
     #[token("#endif")]
-    Endif => ("#endif directive"),
+    Endif {
+        kind_display: "#endif directive",
+        value_display: |f| f.write_str("#endif"),
+    },
 
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
-    Comment(&'src str) => ("comment"),
+    Comment(&'src str) {
+        kind_display: "comment",
+        value_display: |f, value| write!(f, ";{}", value),
+    },
     // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#, parse_block_comment)]
-    BlockComment(&'src str) => ("block comment"),
+    BlockComment(&'src str) {
+        kind_display: "block comment",
+        value_display: |f, value| f.write_str(value),
+    },
     // Handled in parse_block_comment
     // #[regex(r#"\*+\/"#)]
     // BlockCommentEnd(&'src str) => ("block comment end"),
 
     #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |_lex| DiagnosticKind::BadDirective)]
-    Error(DiagnosticKind) => ("token error", ": {}"),
+    Error(DiagnosticKind) {
+        kind_display: "token error",
+        value_display: |f, value| value.fmt(f),
+    },
 }
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, DiagnosticKind> {
