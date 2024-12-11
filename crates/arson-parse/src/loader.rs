@@ -564,11 +564,11 @@ mod tests {
         )]);
     }
 
-    fn assert_directive_eof_error(directive: &str) {
-        assert_parse_errors(directive, vec![(
-            DiagnosticKind::UnexpectedEof,
-            directive.len()..directive.len(),
-        )]);
+    fn assert_directive_incomplete_error(directive: &str, expected_token: TokenKind) {
+        assert_parse_errors(directive, vec![
+            (DiagnosticKind::IncompleteDirective(expected_token), 0..directive.len()),
+            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+        ]);
     }
 
     fn assert_conditional_symbol_error(directive: &str) {
@@ -586,8 +586,9 @@ mod tests {
         ]);
     }
 
-    fn assert_conditional_eof_error(directive: &str) {
+    fn assert_conditional_incomplete_error(directive: &str) {
         assert_parse_errors(directive, vec![
+            (DiagnosticKind::IncompleteDirective(TokenKind::Symbol), 0..directive.len()),
             (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
             (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
         ]);
@@ -666,14 +667,14 @@ mod tests {
         assert_directive_symbol_error("#include_opt");
         assert_directive_symbol_error("#merge");
 
-        assert_conditional_eof_error("#ifdef");
-        assert_conditional_eof_error("#ifndef");
-        assert_directive_eof_error("#define");
-        assert_directive_eof_error("#undef");
-        assert_directive_eof_error("#include");
-        assert_directive_eof_error("#include_opt");
-        assert_directive_eof_error("#merge");
-        assert_directive_eof_error("#autorun");
+        assert_conditional_incomplete_error("#ifdef");
+        assert_conditional_incomplete_error("#ifndef");
+        assert_directive_incomplete_error("#define", TokenKind::Symbol);
+        assert_directive_incomplete_error("#undef", TokenKind::Symbol);
+        assert_directive_incomplete_error("#include", TokenKind::Symbol);
+        assert_directive_incomplete_error("#include_opt", TokenKind::Symbol);
+        assert_directive_incomplete_error("#merge", TokenKind::Symbol);
+        assert_directive_incomplete_error("#autorun", TokenKind::CommandOpen);
 
         // #endregion Directives
 

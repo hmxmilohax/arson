@@ -236,6 +236,7 @@ impl<'src> Preprocessor<'src> {
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let Some(name_token) = tokens.peek() else {
+            self.push_error(DiagnosticKind::IncompleteDirective(TokenKind::Symbol), location);
             return self.unexpected_eof();
         };
 
@@ -352,7 +353,8 @@ impl<'src> Preprocessor<'src> {
         positive: bool,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let Some(define_token) = tokens.peek() else {
-            self.push_error(DiagnosticKind::UnmatchedConditional, start);
+            self.push_error(DiagnosticKind::UnmatchedConditional, start.clone());
+            self.push_error(DiagnosticKind::IncompleteDirective(TokenKind::Symbol), start);
             return self.unexpected_eof();
         };
 
@@ -623,6 +625,10 @@ impl<'src> Parser<'src> {
             PreprocessedTokenValue::Define(name) => {
                 let start_location = {
                     let Some(next) = tokens.peek() else {
+                        self.push_error(
+                            DiagnosticKind::IncompleteDirective(TokenKind::Symbol),
+                            token.location,
+                        );
                         return self.unexpected_eof();
                     };
                     let PreprocessedTokenValue::ArrayOpen = next.value else {
@@ -648,6 +654,10 @@ impl<'src> Parser<'src> {
             PreprocessedTokenValue::Autorun => {
                 let start_location = {
                     let Some(next) = tokens.peek() else {
+                        self.push_error(
+                            DiagnosticKind::IncompleteDirective(TokenKind::CommandOpen),
+                            token.location,
+                        );
                         return self.unexpected_eof();
                     };
                     let PreprocessedTokenValue::CommandOpen = next.value else {
@@ -1237,14 +1247,11 @@ mod tests {
                 0..34,
             )]);
 
-            fn assert_directive_eof_error(
-                directive: &str,
-                assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
-            ) {
-                assert_errors(directive, vec![(
-                    DiagnosticKind::UnexpectedEof,
-                    directive.len()..directive.len(),
-                )]);
+            fn assert_directive_incomplete_error(directive: &str, expected_token: TokenKind) {
+                assert_errors(directive, vec![
+                    (DiagnosticKind::IncompleteDirective(expected_token), 0..directive.len()),
+                    (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
+                ]);
             }
 
             assert_directive_symbol_error("#define", assert_errors);
@@ -1253,12 +1260,12 @@ mod tests {
             assert_directive_symbol_error("#include_opt", assert_errors);
             assert_directive_symbol_error("#merge", assert_errors);
 
-            assert_directive_eof_error("#define", assert_errors);
-            assert_directive_eof_error("#undef", assert_errors);
-            assert_directive_eof_error("#include", assert_errors);
-            assert_directive_eof_error("#include_opt", assert_errors);
-            assert_directive_eof_error("#merge", assert_errors);
-            assert_directive_eof_error("#autorun", assert_errors);
+            assert_directive_incomplete_error("#define", TokenKind::Symbol);
+            assert_directive_incomplete_error("#undef", TokenKind::Symbol);
+            assert_directive_incomplete_error("#include", TokenKind::Symbol);
+            assert_directive_incomplete_error("#include_opt", TokenKind::Symbol);
+            assert_directive_incomplete_error("#merge", TokenKind::Symbol);
+            assert_directive_incomplete_error("#autorun", TokenKind::CommandOpen);
 
             assert_errors("#define kDefine 1", vec![(
                 DiagnosticKind::IncorrectToken {
@@ -1326,11 +1333,9 @@ mod tests {
                 0..33,
             )]);
 
-            fn assert_conditional_eof_error(
-                directive: &str,
-                assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
-            ) {
+            fn assert_conditional_incomplete_error(directive: &str) {
                 assert_errors(directive, vec![
+                    (DiagnosticKind::IncompleteDirective(TokenKind::Symbol), 0..directive.len()),
                     (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
                     (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
                 ]);
@@ -1339,8 +1344,8 @@ mod tests {
             assert_conditional_symbol_error("#ifdef", true, assert_errors);
             assert_conditional_symbol_error("#ifndef", true, assert_errors);
 
-            assert_conditional_eof_error("#ifdef", assert_errors);
-            assert_conditional_eof_error("#ifndef", assert_errors);
+            assert_conditional_incomplete_error("#ifdef");
+            assert_conditional_incomplete_error("#ifndef");
 
             assert_errors("#ifndef kDefine (array 10)", vec![
                 (DiagnosticKind::UnmatchedConditional, 0..7),
