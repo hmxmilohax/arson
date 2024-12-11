@@ -352,6 +352,7 @@ impl<'src> Preprocessor<'src> {
         positive: bool,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let Some(define_token) = tokens.peek() else {
+            self.push_error(DiagnosticKind::UnmatchedConditional, start);
             return self.unexpected_eof();
         };
 
@@ -1330,8 +1331,8 @@ mod tests {
                 assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
             ) {
                 assert_errors(directive, vec![
+                    (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
                     (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
-                    // (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
                 ]);
             }
 
