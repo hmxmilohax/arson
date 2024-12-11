@@ -285,10 +285,8 @@ mod tests {
     use arson_core::*;
     use arson_fs::drivers::MockFileSystemDriver;
     use arson_fs::*;
-    use logos::Span;
 
     use super::*;
-    use crate::{DiagnosticKind, TokenKind};
 
     fn default_context() -> Context<FileSystem> {
         Context::new(FileSystem::new(MockFileSystemDriver::new()))
@@ -303,6 +301,10 @@ mod tests {
         assert_eq!(array, expected, "Unexpected result for '{text}'");
     }
 
+    #[expect(
+        dead_code,
+        reason = "Currently unused, left for future use (remove this message when used)"
+    )]
     fn assert_error(text: &str, expected: LoadError) {
         let mut context = default_context();
         let options = LoadOptions { allow_include: true, allow_autorun: true };
@@ -546,181 +548,5 @@ mod tests {
         assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![
             arson_array![sym_array, 10]
         ]);
-    }
-
-    fn assert_parse_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
-        let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-        assert_error(text, LoadError::Parse(expected))
-    }
-
-    fn assert_directive_symbol_error(directive: &str) {
-        let text = directive.to_owned() + " 1";
-        assert_parse_errors(&text, vec![(
-            DiagnosticKind::IncorrectToken {
-                expected: TokenKind::Symbol,
-                actual: TokenKind::Integer,
-            },
-            text.len() - 1..text.len(),
-        )]);
-    }
-
-    fn assert_directive_incomplete_error(directive: &str, expected_token: TokenKind) {
-        assert_parse_errors(directive, vec![
-            (DiagnosticKind::IncompleteDirective(expected_token), 0..directive.len()),
-            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
-        ]);
-    }
-
-    fn assert_conditional_symbol_error(directive: &str) {
-        let text = directive.to_owned() + " 1";
-        assert_parse_errors(&text, vec![
-            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
-            (
-                DiagnosticKind::IncorrectToken {
-                    expected: TokenKind::Symbol,
-                    actual: TokenKind::Integer,
-                },
-                text.len() - 1..text.len(),
-            ),
-            (DiagnosticKind::UnexpectedEof, text.len()..text.len()),
-        ]);
-    }
-
-    fn assert_conditional_incomplete_error(directive: &str) {
-        assert_parse_errors(directive, vec![
-            (DiagnosticKind::IncompleteDirective(TokenKind::Symbol), 0..directive.len()),
-            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
-            (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
-        ]);
-    }
-
-    #[test]
-    fn parse_errors() {
-        // #region Arrays
-
-        fn assert_array_mismatch(text: &str, kind: ArrayKind, location: Span, eof_expected: bool) {
-            let mut expected = vec![(DiagnosticKind::UnmatchedBrace(kind), location)];
-            if !eof_expected {
-                expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
-            }
-
-            assert_parse_errors(text, expected);
-        }
-
-        fn assert_array_mismatches(kind: ArrayKind) {
-            let (l, r) = kind.delimiters();
-            assert_array_mismatch(&format!("{l} {l} {r}"), kind, 0..1, false);
-            assert_array_mismatch(&format!("{r} {l} {r}"), kind, 0..1, true);
-            assert_array_mismatch(&format!("{l} {r} {l}"), kind, 4..5, false);
-            assert_array_mismatch(&format!("{l} {r} {r}"), kind, 4..5, true);
-        }
-
-        fn assert_multi_array_mismatches(matched_kind: ArrayKind, unmatched_kind: ArrayKind) {
-            let (ml, mr) = matched_kind.delimiters();
-            let (ul, ur) = unmatched_kind.delimiters();
-
-            assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, 0..1, false);
-            assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, 0..1, true);
-            assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, 2..3, true);
-            assert_array_mismatch(&format!("{ml} {ur} {mr}"), unmatched_kind, 2..3, true);
-            assert_array_mismatch(&format!("{ml} {mr} {ul}"), unmatched_kind, 4..5, false);
-            assert_array_mismatch(&format!("{ml} {mr} {ur}"), unmatched_kind, 4..5, true);
-        }
-
-        assert_array_mismatches(ArrayKind::Array);
-        assert_array_mismatches(ArrayKind::Command);
-        assert_array_mismatches(ArrayKind::Property);
-
-        assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Command);
-        assert_multi_array_mismatches(ArrayKind::Array, ArrayKind::Property);
-        assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Array);
-        assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Property);
-        assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Array);
-        assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
-
-        // #endregion Arrays
-
-        // #region Directives
-
-        assert_parse_errors("#define kDefine 1", vec![(
-            DiagnosticKind::IncorrectToken {
-                expected: TokenKind::ArrayOpen,
-                actual: TokenKind::Integer,
-            },
-            16..17,
-        )]);
-        assert_parse_errors("#autorun kDefine", vec![(
-            DiagnosticKind::IncorrectToken {
-                expected: TokenKind::CommandOpen,
-                actual: TokenKind::Symbol,
-            },
-            9..16,
-        )]);
-
-        assert_parse_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
-
-        assert_conditional_symbol_error("#ifdef");
-        assert_conditional_symbol_error("#ifndef");
-        assert_directive_symbol_error("#define");
-        assert_directive_symbol_error("#undef");
-        assert_directive_symbol_error("#include");
-        assert_directive_symbol_error("#include_opt");
-        assert_directive_symbol_error("#merge");
-
-        assert_conditional_incomplete_error("#ifdef");
-        assert_conditional_incomplete_error("#ifndef");
-        assert_directive_incomplete_error("#define", TokenKind::Symbol);
-        assert_directive_incomplete_error("#undef", TokenKind::Symbol);
-        assert_directive_incomplete_error("#include", TokenKind::Symbol);
-        assert_directive_incomplete_error("#include_opt", TokenKind::Symbol);
-        assert_directive_incomplete_error("#merge", TokenKind::Symbol);
-        assert_directive_incomplete_error("#autorun", TokenKind::CommandOpen);
-
-        // #endregion Directives
-
-        // #region Conditionals
-
-        assert_parse_errors("#ifndef kDefine (array 10)", vec![
-            (DiagnosticKind::UnmatchedConditional, 0..7),
-            (DiagnosticKind::UnexpectedEof, 26..26),
-        ]);
-        assert_parse_errors("#ifdef kDefine (array1 10) #else", vec![
-            (DiagnosticKind::UnmatchedConditional, 27..32),
-            (DiagnosticKind::UnexpectedEof, 32..32),
-        ]);
-        assert_parse_errors("#else (array2 5) #endif", vec![(
-            DiagnosticKind::UnexpectedConditional,
-            0..5,
-        )]);
-        assert_parse_errors("(array 10) #endif", vec![(DiagnosticKind::UnexpectedConditional, 11..17)]);
-
-        assert_parse_errors("(#ifdef kDefine array1 10) #else array2 5) #endif", vec![
-            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 0..1),
-            (DiagnosticKind::UnbalancedConditional, 1..32),
-            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 25..26),
-            (DiagnosticKind::UnbalancedConditional, 27..49),
-            (DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 41..42),
-            (DiagnosticKind::UnexpectedEof, 49..49),
-        ]);
-
-        assert_parse_errors(
-            "\
-            #ifdef kDefine\n\
-            {do\n\
-            #endif\
-            \n    {+ 1 2}\n\
-            #ifdef kDefine\n\
-            }\n\
-            #endif\
-            ",
-            vec![
-                (DiagnosticKind::UnbalancedConditional, 0..25),
-                (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 15..16),
-                (DiagnosticKind::UnbalancedConditional, 38..61),
-                (DiagnosticKind::UnmatchedBrace(ArrayKind::Command), 53..54),
-            ],
-        );
-
-        // #endregion Conditionals
     }
 }

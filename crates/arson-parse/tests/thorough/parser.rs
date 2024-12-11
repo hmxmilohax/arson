@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_parse::{ArrayKind, Diagnostic, DiagnosticKind, IntegerValue, TokenKind};
-use logos::Span;
+use arson_parse::{
+    ArrayKind,
+    Diagnostic,
+    DiagnosticKind,
+    DirectiveArgumentDescription,
+    IntegerValue,
+    TokenKind,
+};
 
 #[test]
 fn thorough_errors() {
     let text = include_str!("../test_files/thorough_errors.dta").replace("\r\n", "\n");
-
-    fn incorrect_symbol(location: Span) -> (DiagnosticKind, Span) {
-        (
-            DiagnosticKind::IncorrectToken {
-                expected: TokenKind::Symbol,
-                actual: TokenKind::Integer,
-            },
-            location,
-        )
-    }
 
     #[rustfmt::skip] // spacing matches the test file
     let errors = vec![
@@ -32,21 +28,89 @@ fn thorough_errors() {
 
         (9, vec![(DiagnosticKind::BadDirective, 15..19)]),
 
-        (12, vec![incorrect_symbol(12..13)]),
-        (13, vec![incorrect_symbol(11..12)]),
-        (14, vec![incorrect_symbol(13..14)]),
-        (15, vec![incorrect_symbol(17..18)]),
-        (16, vec![incorrect_symbol(11..12)]),
-        (17, vec![(
-            DiagnosticKind::IncorrectToken {
+        (12, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::MacroName,
+                actual: TokenKind::Integer,
+                expecting_location: 4..11
+            },
+            12..13,
+        )]),
+        (13, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::MacroName,
+                actual: TokenKind::Integer,
+                expecting_location: 4..10
+            },
+            11..12,
+        )]),
+        (14, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::FilePath,
+                actual: TokenKind::Integer,
+                expecting_location: 4..12
+            },
+            13..14,
+        )]),
+        (15, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::FilePath,
+                actual: TokenKind::Integer,
+                expecting_location: 4..16
+            },
+            17..18,
+        )]),
+        (16, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::FilePath,
+                actual: TokenKind::Integer,
+                expecting_location: 4..10
+            },
+            11..12,
+        )]),
+
+        (18, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::ArrayOpen,
+                expected_description: DirectiveArgumentDescription::MacroBody,
+                actual: TokenKind::Integer,
+                expecting_location: 4..19,
+            },
+            20..21,
+        )]),
+        (19, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
                 expected: TokenKind::CommandOpen,
+                expected_description: DirectiveArgumentDescription::CommandBody,
                 actual: TokenKind::Symbol,
+                expecting_location: 4..12,
             },
             13..19,
         )]),
 
-        (21, vec![incorrect_symbol(11..12)]),
-        (22, vec![incorrect_symbol(12..13)]),
+        (21, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::MacroName,
+                actual: TokenKind::Integer,
+                expecting_location: 4..10
+            },
+            11..12,
+        )]),
+        (22, vec![(
+            DiagnosticKind::IncorrectDirectiveArgument {
+                expected: TokenKind::Symbol,
+                expected_description: DirectiveArgumentDescription::MacroName,
+                actual: TokenKind::Integer,
+                expecting_location: 4..11
+            },
+            12..13,
+        )]),
 
         (26, vec![(DiagnosticKind::UnbalancedConditional, 4..48)]),
         (28, vec![(DiagnosticKind::UnmatchedBrace(ArrayKind::Array), 4..5)]),
@@ -79,12 +143,32 @@ fn thorough_errors() {
         };
 
         let mut adjusted_errors = vec![];
-        for (line_number, token_line) in errors {
-            let location = line_locations[line_number - 1];
-            for token in token_line {
-                let new_start = location + token.1.start;
-                let new_end = location + token.1.end;
-                adjusted_errors.push((token.0, new_start..new_end))
+        for (line_number, error_line) in errors {
+            let line_location = line_locations[line_number - 1];
+            for (kind, location) in error_line {
+                let new_start = line_location + location.start;
+                let new_end = line_location + location.end;
+
+                let kind = match kind {
+                    DiagnosticKind::IncorrectDirectiveArgument {
+                        expected,
+                        expected_description,
+                        actual,
+                        expecting_location,
+                    } => {
+                        let new_start = line_location + expecting_location.start;
+                        let new_end = line_location + expecting_location.end;
+                        DiagnosticKind::IncorrectDirectiveArgument {
+                            expected,
+                            expected_description,
+                            actual,
+                            expecting_location: new_start..new_end,
+                        }
+                    },
+                    _ => kind,
+                };
+
+                adjusted_errors.push((kind, new_start..new_end))
             }
         }
 

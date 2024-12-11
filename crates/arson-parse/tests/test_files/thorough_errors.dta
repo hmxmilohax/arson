@@ -14,10 +14,10 @@
     #include 1
     #include_opt 1
     #merge 1
-    #autorun action
-)
 
-(incorrect_ifdef
+    #define kDefine 1
+    #autorun action
+
     #ifdef 1 "..." #else "..." #endif
     #ifndef 1 "..." #endif
 )

@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use logos::Span;
 
 use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
-use crate::{ArrayKind, FloatValue, IntegerValue};
+use crate::{ArrayKind, DirectiveArgumentDescription, FloatValue, IntegerValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -61,6 +61,35 @@ enum PreprocessedTokenValue<'src> {
         true_branch: (Vec<PreprocessedToken<'src>>, Span),
         false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
     },
+}
+
+impl PreprocessedTokenValue<'_> {
+    fn get_kind(&self) -> TokenKind {
+        match self {
+            PreprocessedTokenValue::Integer(_) => TokenKind::Integer,
+            PreprocessedTokenValue::Float(_) => TokenKind::Float,
+            PreprocessedTokenValue::String(_) => TokenKind::String,
+            PreprocessedTokenValue::Symbol(_) => TokenKind::Symbol,
+            PreprocessedTokenValue::Variable(_) => TokenKind::Variable,
+            PreprocessedTokenValue::Unhandled => TokenKind::Unhandled,
+
+            PreprocessedTokenValue::ArrayOpen => TokenKind::ArrayOpen,
+            PreprocessedTokenValue::ArrayClose => TokenKind::ArrayClose,
+            PreprocessedTokenValue::CommandOpen => TokenKind::CommandOpen,
+            PreprocessedTokenValue::CommandClose => TokenKind::CommandClose,
+            PreprocessedTokenValue::PropertyOpen => TokenKind::PropertyOpen,
+            PreprocessedTokenValue::PropertyClose => TokenKind::PropertyClose,
+
+            PreprocessedTokenValue::Define(_) => TokenKind::Define,
+            PreprocessedTokenValue::Undefine(_) => TokenKind::Undefine,
+            PreprocessedTokenValue::Include(_) => TokenKind::Include,
+            PreprocessedTokenValue::IncludeOptional(_) => TokenKind::IncludeOptional,
+            PreprocessedTokenValue::Merge(_) => TokenKind::Merge,
+            PreprocessedTokenValue::Autorun => TokenKind::Autorun,
+
+            PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -234,22 +263,27 @@ impl<'src> Preprocessor<'src> {
         tokens: &mut Tokenizer<'src>,
         location: Span,
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
+        description: DirectiveArgumentDescription,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let Some(name_token) = tokens.peek() else {
-            self.push_error(DiagnosticKind::IncompleteDirective(TokenKind::Symbol), location);
-            return self.unexpected_eof();
+            self.unexpected_eof = true;
+            return ProcessResult::Error(
+                DiagnosticKind::MissingDirectiveArgument { missing: TokenKind::Symbol, description },
+                location,
+            );
         };
 
         let name_location = name_token.location.clone();
         let TokenValue::Symbol(name) = name_token.value else {
-            self.push_error(
-                DiagnosticKind::IncorrectToken {
+            return ProcessResult::Error(
+                DiagnosticKind::IncorrectDirectiveArgument {
                     expected: TokenKind::Symbol,
+                    expected_description: description,
                     actual: name_token.get_kind(),
+                    expecting_location: location,
                 },
                 name_location.clone(),
             );
-            return ProcessResult::SkipToken;
         };
         tokens.next();
 
@@ -280,19 +314,44 @@ impl<'src> Preprocessor<'src> {
             TokenValue::PropertyClose => PreprocessedTokenValue::PropertyClose,
 
             TokenValue::Define => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Define)
+                return self.symbol_directive(
+                    tokens,
+                    token.location,
+                    PreprocessedTokenValue::Define,
+                    DirectiveArgumentDescription::MacroName,
+                )
             },
             TokenValue::Undefine => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Undefine)
+                return self.symbol_directive(
+                    tokens,
+                    token.location,
+                    PreprocessedTokenValue::Undefine,
+                    DirectiveArgumentDescription::MacroName,
+                )
             },
             TokenValue::Include => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Include)
+                return self.symbol_directive(
+                    tokens,
+                    token.location,
+                    PreprocessedTokenValue::Include,
+                    DirectiveArgumentDescription::FilePath,
+                )
             },
             TokenValue::IncludeOptional => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::IncludeOptional)
+                return self.symbol_directive(
+                    tokens,
+                    token.location,
+                    PreprocessedTokenValue::IncludeOptional,
+                    DirectiveArgumentDescription::FilePath,
+                )
             },
             TokenValue::Merge => {
-                return self.symbol_directive(tokens, token.location, PreprocessedTokenValue::Merge)
+                return self.symbol_directive(
+                    tokens,
+                    token.location,
+                    PreprocessedTokenValue::Merge,
+                    DirectiveArgumentDescription::FilePath,
+                )
             },
             TokenValue::Autorun => PreprocessedTokenValue::Autorun,
 
@@ -353,9 +412,15 @@ impl<'src> Preprocessor<'src> {
         positive: bool,
     ) -> ProcessResult<PreprocessedToken<'src>> {
         let Some(define_token) = tokens.peek() else {
+            self.unexpected_eof = true;
             self.push_error(DiagnosticKind::UnmatchedConditional, start.clone());
-            self.push_error(DiagnosticKind::IncompleteDirective(TokenKind::Symbol), start);
-            return self.unexpected_eof();
+            return ProcessResult::Error(
+                DiagnosticKind::MissingDirectiveArgument {
+                    missing: TokenKind::Symbol,
+                    description: DirectiveArgumentDescription::MacroName,
+                },
+                start,
+            );
         };
 
         let define_location = define_token.location.clone();
@@ -366,9 +431,11 @@ impl<'src> Preprocessor<'src> {
             },
             _ => {
                 self.push_error(
-                    DiagnosticKind::IncorrectToken {
+                    DiagnosticKind::IncorrectDirectiveArgument {
                         expected: TokenKind::Symbol,
+                        expected_description: DirectiveArgumentDescription::MacroName,
                         actual: define_token.get_kind(),
+                        expecting_location: start.clone(),
                     },
                     define_location.clone(),
                 );
@@ -445,11 +512,6 @@ impl<'src> Preprocessor<'src> {
 
     fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
         self.errors.push(Diagnostic::new(kind, location));
-    }
-
-    fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
-        self.unexpected_eof = true;
-        ProcessResult::Eof
     }
 }
 
@@ -623,27 +685,16 @@ impl<'src> Parser<'src> {
             },
 
             PreprocessedTokenValue::Define(name) => {
-                let start_location = {
-                    let Some(next) = tokens.peek() else {
-                        self.push_error(
-                            DiagnosticKind::IncompleteDirective(TokenKind::Symbol),
-                            token.location,
-                        );
-                        return self.unexpected_eof();
-                    };
-                    let PreprocessedTokenValue::ArrayOpen = next.value else {
-                        return self.incorrect_token(TokenKind::ArrayOpen, next.clone());
-                    };
-                    let location = next.location.clone();
-                    tokens.next();
-                    location
-                };
-
-                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Array);
-                let body = ArrayExpression::new(body, body_location.clone());
-                let location = token.location.start..body_location.end;
-
-                (ExpressionValue::Define(name, body), location)
+                let result = self.array_directive(
+                    tokens,
+                    token.location.clone(),
+                    ArrayKind::Array,
+                    DirectiveArgumentDescription::MacroBody,
+                );
+                match result {
+                    Ok((body, location)) => (ExpressionValue::Define(name, body), location),
+                    Err((kind, location)) => return ProcessResult::Error(kind, location),
+                }
             },
             PreprocessedTokenValue::Undefine(name) => (ExpressionValue::Undefine(name), token.location),
             PreprocessedTokenValue::Include(path) => (ExpressionValue::Include(path), token.location),
@@ -652,28 +703,64 @@ impl<'src> Parser<'src> {
             },
             PreprocessedTokenValue::Merge(name) => (ExpressionValue::Merge(name), token.location),
             PreprocessedTokenValue::Autorun => {
-                let start_location = {
-                    let Some(next) = tokens.peek() else {
-                        self.push_error(
-                            DiagnosticKind::IncompleteDirective(TokenKind::CommandOpen),
-                            token.location,
-                        );
-                        return self.unexpected_eof();
-                    };
-                    let PreprocessedTokenValue::CommandOpen = next.value else {
-                        return self.incorrect_token(TokenKind::CommandOpen, next.clone());
-                    };
-                    let location = next.location.clone();
-                    tokens.next();
-                    location
-                };
-                let (body, body_location) = self.open_array(tokens, &start_location, ArrayKind::Command);
-                let body = ArrayExpression::new(body, body_location.clone());
-                (ExpressionValue::Autorun(body), token.location.start..body_location.end)
+                let result = self.array_directive(
+                    tokens,
+                    token.location.clone(),
+                    ArrayKind::Command,
+                    DirectiveArgumentDescription::CommandBody,
+                );
+                match result {
+                    Ok((body, location)) => (ExpressionValue::Autorun(body), location),
+                    Err((kind, location)) => return ProcessResult::Error(kind, location),
+                }
             },
         };
 
         ProcessResult::Result(Expression { value: kind, location })
+    }
+
+    fn array_directive<I: Iterator<Item = PreprocessedToken<'src>>>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        location: Span,
+        kind: ArrayKind,
+        description: DirectiveArgumentDescription,
+    ) -> Result<(ArrayExpression<'src>, Span), (DiagnosticKind, Span)> {
+        let start_location = {
+            let token_kind = match kind {
+                ArrayKind::Array => TokenKind::ArrayOpen,
+                ArrayKind::Command => TokenKind::CommandOpen,
+                ArrayKind::Property => TokenKind::PropertyOpen,
+            };
+
+            let Some(next) = tokens.peek() else {
+                self.unexpected_eof = true;
+                return Err((
+                    DiagnosticKind::MissingDirectiveArgument { missing: token_kind, description },
+                    location,
+                ));
+            };
+
+            if next.value.get_kind() != token_kind {
+                return Err((
+                    DiagnosticKind::IncorrectDirectiveArgument {
+                        expected: token_kind,
+                        expected_description: description,
+                        actual: next.value.get_kind(),
+                        expecting_location: location,
+                    },
+                    next.location.clone(),
+                ));
+            };
+
+            let location = next.location.clone();
+            tokens.next();
+            location
+        };
+
+        let (body, body_location) = self.open_array(tokens, &start_location, kind);
+        let full_location = location.start..body_location.end;
+        Ok((ArrayExpression::new(body, body_location), full_location))
     }
 
     fn parse_conditional_block(
@@ -714,46 +801,6 @@ impl<'src> Parser<'src> {
 
         self.eof_checked = true;
     }
-
-    fn incorrect_token(
-        &mut self,
-        expected: TokenKind,
-        actual: PreprocessedToken<'src>,
-    ) -> ProcessResult<Expression<'src>> {
-        let location = actual.location;
-        let actual = match actual.value {
-            PreprocessedTokenValue::Integer(_) => TokenKind::Integer,
-            PreprocessedTokenValue::Float(_) => TokenKind::Float,
-            PreprocessedTokenValue::String(_) => TokenKind::String,
-            PreprocessedTokenValue::Symbol(_) => TokenKind::Symbol,
-            PreprocessedTokenValue::Variable(_) => TokenKind::Variable,
-            PreprocessedTokenValue::Unhandled => TokenKind::Unhandled,
-
-            PreprocessedTokenValue::ArrayOpen => TokenKind::ArrayOpen,
-            PreprocessedTokenValue::ArrayClose => TokenKind::ArrayClose,
-            PreprocessedTokenValue::CommandOpen => TokenKind::CommandOpen,
-            PreprocessedTokenValue::CommandClose => TokenKind::CommandClose,
-            PreprocessedTokenValue::PropertyOpen => TokenKind::PropertyOpen,
-            PreprocessedTokenValue::PropertyClose => TokenKind::PropertyClose,
-
-            PreprocessedTokenValue::Define(_) => TokenKind::Define,
-            PreprocessedTokenValue::Undefine(_) => TokenKind::Undefine,
-            PreprocessedTokenValue::Include(_) => TokenKind::Include,
-            PreprocessedTokenValue::IncludeOptional(_) => TokenKind::IncludeOptional,
-            PreprocessedTokenValue::Merge(_) => TokenKind::Merge,
-            PreprocessedTokenValue::Autorun => TokenKind::Autorun,
-
-            PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
-        };
-
-        self.push_error(DiagnosticKind::IncorrectToken { expected, actual }, location);
-        ProcessResult::SkipToken
-    }
-
-    fn unexpected_eof<T>(&mut self) -> ProcessResult<T> {
-        self.unexpected_eof = true;
-        ProcessResult::Eof
-    }
 }
 
 pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
@@ -773,12 +820,18 @@ pub fn parse_tokens<'src>(tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src
 mod tests {
     use super::*;
 
-    fn assert_directive_symbol_error(directive: &str, assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>)) {
+    fn assert_directive_symbol_error(
+        directive: &str,
+        description: DirectiveArgumentDescription,
+        assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
+    ) {
         let text = directive.to_owned() + " 1";
         assert_errors(&text, vec![(
-            DiagnosticKind::IncorrectToken {
+            DiagnosticKind::IncorrectDirectiveArgument {
                 expected: TokenKind::Symbol,
+                expected_description: description,
                 actual: TokenKind::Integer,
+                expecting_location: 0..directive.len(),
             },
             text.len() - 1..text.len(),
         )]);
@@ -793,9 +846,11 @@ mod tests {
         let mut errors = vec![
             (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
             (
-                DiagnosticKind::IncorrectToken {
+                DiagnosticKind::IncorrectDirectiveArgument {
                     expected: TokenKind::Symbol,
+                    expected_description: DirectiveArgumentDescription::MacroName,
                     actual: TokenKind::Integer,
+                    expecting_location: 0..directive.len(),
                 },
                 text.len() - 1..text.len(),
             ),
@@ -968,11 +1023,15 @@ mod tests {
                 new_pretoken(PreprocessedTokenValue::CommandClose, 33..34),
             ]);
 
-            assert_directive_symbol_error("#define", assert_errors);
-            assert_directive_symbol_error("#undef", assert_errors);
-            assert_directive_symbol_error("#include", assert_errors);
-            assert_directive_symbol_error("#include_opt", assert_errors);
-            assert_directive_symbol_error("#merge", assert_errors);
+            assert_directive_symbol_error("#define", DirectiveArgumentDescription::MacroName, assert_errors);
+            assert_directive_symbol_error("#undef", DirectiveArgumentDescription::MacroName, assert_errors);
+            assert_directive_symbol_error("#include", DirectiveArgumentDescription::FilePath, assert_errors);
+            assert_directive_symbol_error(
+                "#include_opt",
+                DirectiveArgumentDescription::FilePath,
+                assert_errors,
+            );
+            assert_directive_symbol_error("#merge", DirectiveArgumentDescription::FilePath, assert_errors);
 
             // tested in super::parser
             // assert_directive_eof_error("#define", assert_errors);
@@ -1247,37 +1306,76 @@ mod tests {
                 0..34,
             )]);
 
-            fn assert_directive_incomplete_error(directive: &str, expected_token: TokenKind) {
+            fn assert_directive_incomplete_error(
+                directive: &str,
+                expected_token: TokenKind,
+                description: DirectiveArgumentDescription,
+            ) {
                 assert_errors(directive, vec![
-                    (DiagnosticKind::IncompleteDirective(expected_token), 0..directive.len()),
+                    (
+                        DiagnosticKind::MissingDirectiveArgument { missing: expected_token, description },
+                        0..directive.len(),
+                    ),
                     (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
                 ]);
             }
 
-            assert_directive_symbol_error("#define", assert_errors);
-            assert_directive_symbol_error("#undef", assert_errors);
-            assert_directive_symbol_error("#include", assert_errors);
-            assert_directive_symbol_error("#include_opt", assert_errors);
-            assert_directive_symbol_error("#merge", assert_errors);
+            assert_directive_symbol_error("#define", DirectiveArgumentDescription::MacroName, assert_errors);
+            assert_directive_symbol_error("#undef", DirectiveArgumentDescription::MacroName, assert_errors);
+            assert_directive_symbol_error("#include", DirectiveArgumentDescription::FilePath, assert_errors);
+            assert_directive_symbol_error(
+                "#include_opt",
+                DirectiveArgumentDescription::FilePath,
+                assert_errors,
+            );
+            assert_directive_symbol_error("#merge", DirectiveArgumentDescription::FilePath, assert_errors);
 
-            assert_directive_incomplete_error("#define", TokenKind::Symbol);
-            assert_directive_incomplete_error("#undef", TokenKind::Symbol);
-            assert_directive_incomplete_error("#include", TokenKind::Symbol);
-            assert_directive_incomplete_error("#include_opt", TokenKind::Symbol);
-            assert_directive_incomplete_error("#merge", TokenKind::Symbol);
-            assert_directive_incomplete_error("#autorun", TokenKind::CommandOpen);
+            assert_directive_incomplete_error(
+                "#define",
+                TokenKind::Symbol,
+                DirectiveArgumentDescription::MacroName,
+            );
+            assert_directive_incomplete_error(
+                "#undef",
+                TokenKind::Symbol,
+                DirectiveArgumentDescription::MacroName,
+            );
+            assert_directive_incomplete_error(
+                "#include",
+                TokenKind::Symbol,
+                DirectiveArgumentDescription::FilePath,
+            );
+            assert_directive_incomplete_error(
+                "#include_opt",
+                TokenKind::Symbol,
+                DirectiveArgumentDescription::FilePath,
+            );
+            assert_directive_incomplete_error(
+                "#merge",
+                TokenKind::Symbol,
+                DirectiveArgumentDescription::FilePath,
+            );
+            assert_directive_incomplete_error(
+                "#autorun",
+                TokenKind::CommandOpen,
+                DirectiveArgumentDescription::CommandBody,
+            );
 
             assert_errors("#define kDefine 1", vec![(
-                DiagnosticKind::IncorrectToken {
+                DiagnosticKind::IncorrectDirectiveArgument {
                     expected: TokenKind::ArrayOpen,
+                    expected_description: DirectiveArgumentDescription::MacroBody,
                     actual: TokenKind::Integer,
+                    expecting_location: 0..15,
                 },
                 16..17,
             )]);
             assert_errors("#autorun kDefine", vec![(
-                DiagnosticKind::IncorrectToken {
+                DiagnosticKind::IncorrectDirectiveArgument {
                     expected: TokenKind::CommandOpen,
+                    expected_description: DirectiveArgumentDescription::CommandBody,
                     actual: TokenKind::Symbol,
+                    expecting_location: 0..8,
                 },
                 9..16,
             )]);
@@ -1335,7 +1433,13 @@ mod tests {
 
             fn assert_conditional_incomplete_error(directive: &str) {
                 assert_errors(directive, vec![
-                    (DiagnosticKind::IncompleteDirective(TokenKind::Symbol), 0..directive.len()),
+                    (
+                        DiagnosticKind::MissingDirectiveArgument {
+                            missing: TokenKind::Symbol,
+                            description: DirectiveArgumentDescription::MacroName,
+                        },
+                        0..directive.len(),
+                    ),
                     (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
                     (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
                 ]);
