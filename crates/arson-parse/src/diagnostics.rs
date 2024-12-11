@@ -9,13 +9,29 @@ use crate::{ArrayKind, TokenKind};
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub struct Diagnostic {
     #[source]
-    pub(crate) kind: DiagnosticKind,
-    pub(crate) location: Span,
+    kind: DiagnosticKind,
+    location: Span,
 }
 
 impl Diagnostic {
-    pub(crate) fn new(kind: DiagnosticKind, location: Span) -> Self {
+    pub fn new(kind: DiagnosticKind, location: Span) -> Self {
         Self { kind, location }
+    }
+
+    pub fn kind(&self) -> &DiagnosticKind {
+        &self.kind
+    }
+
+    pub fn location(&self) -> Span {
+        self.location.clone()
+    }
+
+    pub(crate) fn sort_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let ord = std::cmp::Ord::cmp(&self.location.start, &other.location.start);
+        if !matches!(ord, std::cmp::Ordering::Equal) {
+            return ord;
+        }
+        self.kind.sort_cmp(&other.kind)
     }
 }
 

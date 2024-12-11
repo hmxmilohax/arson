@@ -182,17 +182,10 @@ enum ProcessResult<T> {
     Eof,
 }
 
-fn sort_errors(left: &Diagnostic, right: &Diagnostic) -> std::cmp::Ordering {
-    let ord = std::cmp::Ord::cmp(&left.location.start, &right.location.start);
-    if !matches!(ord, std::cmp::Ordering::Equal) {
-        return ord;
-    }
-    left.kind.sort_cmp(&right.kind)
-}
-
 struct Preprocessor<'src> {
     conditional_stack: Vec<ConditionalMarker<'src>>,
     errors: Vec<Diagnostic>,
+    eof_checked: bool,
     unexpected_eof: bool,
 }
 
@@ -201,6 +194,7 @@ impl<'src> Preprocessor<'src> {
         Self {
             conditional_stack: Vec::new(),
             errors: Vec::new(),
+            eof_checked: false,
             unexpected_eof: false,
         }
     }
@@ -224,7 +218,10 @@ impl<'src> Preprocessor<'src> {
                 ProcessResult::Eof => {
                     self.verify_eof();
                     match processed.last().cloned() {
-                        Some(last) => return (processed, last.location.clone()),
+                        Some(last) => {
+                            let last_location = last.location.clone();
+                            return (processed, last_location);
+                        },
                         None => return (processed, 0..0),
                     }
                 },
@@ -299,10 +296,10 @@ impl<'src> Preprocessor<'src> {
             TokenValue::Autorun => PreprocessedTokenValue::Autorun,
 
             TokenValue::Ifdef => {
-                return self.parse_conditional(tokens, token.location, true);
+                return self.parse_conditional_start(tokens, token.location, true);
             },
             TokenValue::Ifndef => {
-                return self.parse_conditional(tokens, token.location, false);
+                return self.parse_conditional_start(tokens, token.location, false);
             },
             TokenValue::Else => {
                 match self.conditional_stack.last_mut() {
@@ -311,11 +308,11 @@ impl<'src> Preprocessor<'src> {
                     },
                     None => {
                         self.push_error(DiagnosticKind::UnexpectedConditional, token.location.clone());
-                        self.conditional_stack.push(ConditionalMarker {
+                        return self.handle_conditional(tokens, token.location.clone(), ConditionalMarker {
                             location: token.location.clone(),
                             is_positive: true,
                             symbol: StrExpression::new("<invalid>", token.location.clone()),
-                            false_location: Some(token.location.clone()),
+                            false_location: Some(token.location),
                             false_branch: None,
                         });
                     },
@@ -333,10 +330,6 @@ impl<'src> Preprocessor<'src> {
                 None => return ProcessResult::Error(DiagnosticKind::UnexpectedConditional, token.location),
             },
 
-            TokenValue::BadDirective(_) => {
-                return ProcessResult::Error(DiagnosticKind::BadDirective, token.location)
-            },
-
             TokenValue::Comment(_) => return ProcessResult::SkipToken,
             TokenValue::BlockComment(_) => return ProcessResult::SkipToken,
 
@@ -352,7 +345,7 @@ impl<'src> Preprocessor<'src> {
         ProcessResult::Result(PreprocessedToken { value: kind, location: token.location })
     }
 
-    fn parse_conditional(
+    fn parse_conditional_start(
         &mut self,
         tokens: &mut Tokenizer<'src>,
         start: Span,
@@ -381,13 +374,22 @@ impl<'src> Preprocessor<'src> {
             },
         };
 
-        self.conditional_stack.push(ConditionalMarker {
-            location: start.clone(),
+        self.handle_conditional(tokens, start.clone(), ConditionalMarker {
+            location: start,
             is_positive: positive,
             symbol: StrExpression::new(define_name, define_location),
             false_location: None,
             false_branch: None,
-        });
+        })
+    }
+
+    fn handle_conditional(
+        &mut self,
+        tokens: &mut Tokenizer<'src>,
+        start: Span,
+        marker: ConditionalMarker<'src>,
+    ) -> ProcessResult<PreprocessedToken<'src>> {
+        self.conditional_stack.push(marker);
 
         let (true_exprs, true_location) = self.parse_conditional_block(tokens, start);
         let conditional = self.conditional_stack.pop().expect("conditional was added just above");
@@ -419,6 +421,12 @@ impl<'src> Preprocessor<'src> {
     }
 
     fn verify_eof(&mut self) {
+        // Without this check, end-of-file will be checked repeatedly
+        // if we end while still nested inside arrays
+        if self.eof_checked {
+            return;
+        }
+
         for unmatched in &self.conditional_stack {
             let location = match &unmatched.false_location {
                 Some(else_location) => else_location.clone(),
@@ -428,6 +436,8 @@ impl<'src> Preprocessor<'src> {
             self.errors.push(error);
             self.unexpected_eof = true;
         }
+
+        self.eof_checked = true;
     }
 
     fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
@@ -443,6 +453,7 @@ impl<'src> Preprocessor<'src> {
 struct Parser<'src> {
     array_stack: Vec<ArrayMarker>,
     errors: Vec<Diagnostic>,
+    eof_checked: bool,
     unexpected_eof: bool,
     phantom: PhantomData<&'src ()>,
 }
@@ -452,6 +463,7 @@ impl<'src> Parser<'src> {
         Self {
             array_stack: Vec::new(),
             errors: Vec::new(),
+            eof_checked: false,
             unexpected_eof: false,
             phantom: PhantomData,
         }
@@ -476,7 +488,7 @@ impl<'src> Parser<'src> {
             self.push_error(DiagnosticKind::UnexpectedEof, final_location);
         }
 
-        self.errors.sort_by(sort_errors);
+        self.errors.sort_by(|left, right| left.sort_cmp(right));
 
         ast
     }
@@ -498,8 +510,11 @@ impl<'src> Parser<'src> {
                 },
                 ProcessResult::Eof => {
                     self.verify_eof();
-                    match exprs.last().cloned() {
-                        Some(last) => return (exprs, last.location.clone()),
+                    match exprs.last() {
+                        Some(last) => {
+                            let last_location = last.location.clone();
+                            return (exprs, last_location);
+                        },
                         None => return (exprs, 0..0),
                     }
                 },
@@ -659,7 +674,7 @@ impl<'src> Parser<'src> {
         if block_parser
             .errors
             .iter()
-            .any(|e| matches!(e.kind, DiagnosticKind::UnmatchedBrace(_)))
+            .any(|e| matches!(e.kind(), DiagnosticKind::UnmatchedBrace(_)))
         {
             self.push_error(DiagnosticKind::UnbalancedConditional, location.clone())
         }
@@ -673,12 +688,20 @@ impl<'src> Parser<'src> {
     }
 
     fn verify_eof(&mut self) {
+        // Without this check, end-of-file will be checked repeatedly
+        // if we end while still nested inside arrays
+        if self.eof_checked {
+            return;
+        }
+
         for unmatched in &self.array_stack {
             let error =
                 Diagnostic::new(DiagnosticKind::UnmatchedBrace(unmatched.kind), unmatched.location.clone());
             self.errors.push(error);
             self.unexpected_eof = true;
         }
+
+        self.eof_checked = true;
     }
 
     fn incorrect_token(
@@ -803,7 +826,7 @@ mod tests {
             if errors.is_empty() {
                 panic!("Expected preprocessing errors, got success instead.\nText: {text}\nResult: {preprocessed:?}")
             }
-            errors.sort_by(sort_errors);
+            errors.sort_by(|left, right| left.sort_cmp(right));
             assert_eq!(errors, expected, "Unexpected result for '{text}'");
         }
 
@@ -1037,7 +1060,7 @@ mod tests {
             let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
             let errors = match parse_text(text) {
                 Ok(ast) => {
-                    panic!("Expected parsing errors, got success instead.\nText: {text}\nResult:: {ast:?}")
+                    panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}")
                 },
                 Err(errors) => errors,
             };

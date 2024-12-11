@@ -1,0 +1,48 @@
+; SPDX-License-Identifier: LGPL-3.0-or-later
+
+(unmatched_array ;)
+{unmatched_command ;}
+[unmatched_property ;]
+
+(too_big 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+
+(bad_directive #bad)
+
+(incorrect_directives
+    #define 1
+    #undef 1
+    #include 1
+    #include_opt 1
+    #merge 1
+    #autorun action
+)
+
+(incorrect_ifdef
+    #ifdef 1 "..." #else "..." #endif
+    #ifndef 1 "..." #endif
+)
+
+(unbalanced
+    #ifdef kDefine
+        "..."
+    )
+    #else
+        "..."
+    )
+    #endif
+
+    #ifndef kDefine
+        "..."
+    )
+    #endif
+)
+
+unexpected
+    #endif
+    #else #endif
+
+unmatched
+    #ifndef kDefine
+    #ifdef kDefine #else
+
+/* Unclosed block comment

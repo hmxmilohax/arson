@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_parse::{IntegerValue, Token, TokenValue, Tokenizer};
+use arson_parse::{DiagnosticKind, IntegerValue, Token, TokenValue, Tokenizer};
 
 #[test]
 fn thorough() {
@@ -24,42 +24,49 @@ fn thorough() {
         (8, vec![(Integer(0x1), 0..3), (Integer(0xA), 4..7), (Integer(0xa), 8..11)]),
         (9, vec![(Integer(0xFFFFFFFF), 0..10)]),
         (10, vec![(Integer(0xFFFFFFFFFFFFFFFFu64 as IntegerValue), 0..18)]),
-        (11, vec![(Comment(" invalid (lexed as symbols)"), 0..28)]),
-        (12, vec![(Symbol("0x"), 0..2), (Symbol("x1"), 5..7)]),
-        (13, vec![(Symbol("+0x2"), 0..4), (Symbol("-0x3"), 5..9)]),
-        (14, vec![(Symbol("+0xB"), 0..4), (Symbol("-0xC"), 5..9)]),
-        (15, vec![(Symbol("+0xb"), 0..4), (Symbol("-0xc"), 5..9)]),
+        (11, vec![(Comment(" invalid (too big for 64 bits)"), 0..31)]),
+        (12, vec![(
+            TokenValue::Error(DiagnosticKind::IntegerParseError(
+                IntegerValue::from_str_radix("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap_err(),
+            )),
+            0..34,
+        )]),
+        (13, vec![(Comment(" invalid (lexed as symbols)"), 0..28)]),
+        (14, vec![(Symbol("0x"), 0..2), (Symbol("x1"), 5..7)]),
+        (15, vec![(Symbol("+0x2"), 0..4), (Symbol("-0x3"), 5..9)]),
+        (16, vec![(Symbol("+0xB"), 0..4), (Symbol("-0xC"), 5..9)]),
+        (17, vec![(Symbol("+0xb"), 0..4), (Symbol("-0xc"), 5..9)]),
 
-        (17, vec![(Comment(" floats"), 0..8)]),
-        (18, vec![(Float(1.0), 0..3), (Float(2.0), 7..11), (Float(-3.0), 15..19)]),
-        (19, vec![(Float(1.0), 0..2), (Float(2.0), 7..10), (Float(-3.0), 15..18)]),
-        (20, vec![(Float(0.1), 0..2), (Float(0.2), 7..10), (Float(-0.3), 15..18)]),
-        (21, vec![(Comment(" these are valid"), 0..17)]),
-        (22, vec![(Float(0.0), 0..1), (Float(0.0), 7..9), (Float(-0.0), 15..17)]),
+        (19, vec![(Comment(" floats"), 0..8)]),
+        (20, vec![(Float(1.0), 0..3), (Float(2.0), 7..11), (Float(-3.0), 15..19)]),
+        (21, vec![(Float(1.0), 0..2), (Float(2.0), 7..10), (Float(-3.0), 15..18)]),
+        (22, vec![(Float(0.1), 0..2), (Float(0.2), 7..10), (Float(-0.3), 15..18)]),
+        (23, vec![(Comment(" these are valid"), 0..17)]),
+        (24, vec![(Float(0.0), 0..1), (Float(0.0), 7..9), (Float(-0.0), 15..17)]),
 
-        (24, vec![(Comment(" floats with exponents"), 0..23)]),
-        (25, vec![(Comment(" valid                 -  invalid"), 0..34)]),
-        (26, vec![(Float(1.0E1), 0..5),  (Float(2.0E1), 7..13),  (Float(-3.0E1), 15..21),      (Symbol("1.0-E1"), 27..33),  (Symbol("+2.0-E1"), 35..42),  (Symbol("-3.0-E1"), 44..51)]),
-        (27, vec![(Float(1.0E+1), 0..6), (Float(2.0E+1), 7..14), (Float(-3.0E+1), 15..22),     (Symbol("1.0-E+1"), 27..34), (Symbol("+2.0-E+1"), 35..43), (Symbol("-3.0-E+1"), 44..52)]),
-        (28, vec![(Float(1.0E-1), 0..6), (Float(2.0E-1), 7..14), (Float(-3.0E-1), 15..22),     (Symbol("1.0-E-1"), 27..34), (Symbol("+2.0-E-1"), 35..43), (Symbol("-3.0-E-1"), 44..52)]),
+        (26, vec![(Comment(" floats with exponents"), 0..23)]),
+        (27, vec![(Comment(" valid                 -  invalid"), 0..34)]),
+        (28, vec![(Float(1.0E1), 0..5),  (Float(2.0E1), 7..13),  (Float(-3.0E1), 15..21),      (Symbol("1.0-E1"), 27..33),  (Symbol("+2.0-E1"), 35..42),  (Symbol("-3.0-E1"), 44..51)]),
+        (29, vec![(Float(1.0E+1), 0..6), (Float(2.0E+1), 7..14), (Float(-3.0E+1), 15..22),     (Symbol("1.0-E+1"), 27..34), (Symbol("+2.0-E+1"), 35..43), (Symbol("-3.0-E+1"), 44..52)]),
+        (30, vec![(Float(1.0E-1), 0..6), (Float(2.0E-1), 7..14), (Float(-3.0E-1), 15..22),     (Symbol("1.0-E-1"), 27..34), (Symbol("+2.0-E-1"), 35..43), (Symbol("-3.0-E-1"), 44..52)]),
 
-        (30, vec![(Float(1.0E1), 0..4),  (Float(2.0E1), 7..12),  (Float(-3.0E1), 15..20),      (Symbol("1.-E1"), 27..32),   (Symbol("+2.-E1"), 35..41),   (Symbol("-3.-E1"), 44..50)]),
-        (31, vec![(Float(1.0E+1), 0..5), (Float(2.0E+1), 7..13), (Float(-3.0E+1), 15..21),     (Symbol("1.-E+1"), 27..33),  (Symbol("+2.-E+1"), 35..42),  (Symbol("-3.-E+1"), 44..51)]),
-        (32, vec![(Float(1.0E-1), 0..5), (Float(2.0E-1), 7..13), (Float(-3.0E-1), 15..21),     (Symbol("1.-E-1"), 27..33),  (Symbol("+2.-E-1"), 35..42),  (Symbol("-3.-E-1"), 44..51)]),
+        (32, vec![(Float(1.0E1), 0..4),  (Float(2.0E1), 7..12),  (Float(-3.0E1), 15..20),      (Symbol("1.-E1"), 27..32),   (Symbol("+2.-E1"), 35..41),   (Symbol("-3.-E1"), 44..50)]),
+        (33, vec![(Float(1.0E+1), 0..5), (Float(2.0E+1), 7..13), (Float(-3.0E+1), 15..21),     (Symbol("1.-E+1"), 27..33),  (Symbol("+2.-E+1"), 35..42),  (Symbol("-3.-E+1"), 44..51)]),
+        (34, vec![(Float(1.0E-1), 0..5), (Float(2.0E-1), 7..13), (Float(-3.0E-1), 15..21),     (Symbol("1.-E-1"), 27..33),  (Symbol("+2.-E-1"), 35..42),  (Symbol("-3.-E-1"), 44..51)]),
 
-        (34, vec![(Float(0.1E1), 0..4),  (Float(0.2E1), 7..12),  (Float(-0.3E1), 15..20),      (Symbol(".1-E1"), 27..32),   (Symbol("+.2-E1"), 35..41),   (Symbol("-.3-E1"), 44..50)]),
-        (35, vec![(Float(0.1E+1), 0..5), (Float(0.2E+1), 7..13), (Float(-0.3E+1), 15..21),     (Symbol(".1-E+1"), 27..33),  (Symbol("+.2-E+1"), 35..42),  (Symbol("-.3-E+1"), 44..51)]),
-        (36, vec![(Float(0.1E-1), 0..5), (Float(0.2E-1), 7..13), (Float(-0.3E-1), 15..21),     (Symbol(".1-E-1"), 27..33),  (Symbol("+.2-E-1"), 35..42),  (Symbol("-.3-E-1"), 44..51)]),
+        (36, vec![(Float(0.1E1), 0..4),  (Float(0.2E1), 7..12),  (Float(-0.3E1), 15..20),      (Symbol(".1-E1"), 27..32),   (Symbol("+.2-E1"), 35..41),   (Symbol("-.3-E1"), 44..50)]),
+        (37, vec![(Float(0.1E+1), 0..5), (Float(0.2E+1), 7..13), (Float(-0.3E+1), 15..21),     (Symbol(".1-E+1"), 27..33),  (Symbol("+.2-E+1"), 35..42),  (Symbol("-.3-E+1"), 44..51)]),
+        (38, vec![(Float(0.1E-1), 0..5), (Float(0.2E-1), 7..13), (Float(-0.3E-1), 15..21),     (Symbol(".1-E-1"), 27..33),  (Symbol("+.2-E-1"), 35..42),  (Symbol("-.3-E-1"), 44..51)]),
 
-        (38, vec![(Float(0.0E1), 0..3),  (Float(0.0E1), 7..11),  (Float(-0.0E1), 15..19),      (Symbol(".-E1"), 27..31),    (Symbol("+.-E1"), 35..40),    (Symbol("-.-E1"), 44..49)]),
-        (39, vec![(Float(0.0E+1), 0..4), (Float(0.0E+1), 7..12), (Float(-0.0E+1), 15..20),     (Symbol(".-E+1"), 27..32),   (Symbol("+.-E+1"), 35..41),   (Symbol("-.-E+1"), 44..50)]),
-        (40, vec![(Float(0.0E-1), 0..4), (Float(0.0E-1), 7..12), (Float(-0.0E-1), 15..20),     (Symbol(".-E-1"), 27..32),   (Symbol("+.-E-1"), 35..41),   (Symbol("-.-E-1"), 44..50)]),
+        (40, vec![(Float(0.0E1), 0..3),  (Float(0.0E1), 7..11),  (Float(-0.0E1), 15..19),      (Symbol(".-E1"), 27..31),    (Symbol("+.-E1"), 35..40),    (Symbol("-.-E1"), 44..49)]),
+        (41, vec![(Float(0.0E+1), 0..4), (Float(0.0E+1), 7..12), (Float(-0.0E+1), 15..20),     (Symbol(".-E+1"), 27..32),   (Symbol("+.-E+1"), 35..41),   (Symbol("-.-E+1"), 44..50)]),
+        (42, vec![(Float(0.0E-1), 0..4), (Float(0.0E-1), 7..12), (Float(-0.0E-1), 15..20),     (Symbol(".-E-1"), 27..32),   (Symbol("+.-E-1"), 35..41),   (Symbol("-.-E-1"), 44..50)]),
 
-        (42, vec![(Comment(" strings"), 0..9)]),
-        (43, vec![(String("asdf"), 0..6)]),
-        (44, vec![(String(""), 0..2), (String(""), 3..5)]),
+        (44, vec![(Comment(" strings"), 0..9)]),
+        (45, vec![(String("asdf"), 0..6)]),
+        (46, vec![(String(""), 0..2), (String(""), 3..5)]),
 
-        (46, vec![(String(
+        (48, vec![(String(
             "\n\
             asdf\n\
             jkl\n\
@@ -68,16 +75,16 @@ fn thorough() {
         ), 0..19)]),
 
 
-        (53, vec![(Comment(" symbols"), 0..9)]),
-        (54, vec![(Symbol("asdf"), 0..4)]),
-        (55, vec![(Symbol("jkl"), 0..3)]),
-        (56, vec![(Symbol("qwerty"), 0..6)]),
+        (55, vec![(Comment(" symbols"), 0..9)]),
+        (56, vec![(Symbol("asdf"), 0..4)]),
+        (57, vec![(Symbol("jkl"), 0..3)]),
+        (58, vec![(Symbol("qwerty"), 0..6)]),
 
-        (58, vec![(Comment(" quoted symbols"), 0..16)]),
-        (59, vec![(Symbol("asdf"), 0..6)]),
-        (60, vec![(Symbol(""), 0..2), (Symbol(""), 3..5)]),
+        (60, vec![(Comment(" quoted symbols"), 0..16)]),
+        (61, vec![(Symbol("asdf"), 0..6)]),
+        (62, vec![(Symbol(""), 0..2), (Symbol(""), 3..5)]),
 
-        (62, vec![(Symbol(
+        (64, vec![(Symbol(
             "\n\
             asdf\n\
             jkl\n\
@@ -85,72 +92,72 @@ fn thorough() {
             \n"
         ), 0..19)]),
 
-        (68, vec![(Comment(" variables"), 0..11)]),
-        (69, vec![(Variable("asdf"), 0..5)]),
-        (70, vec![(Variable("jkl"), 0..4)]),
-        (71, vec![(Variable("qwerty"), 0..7)]),
+        (70, vec![(Comment(" variables"), 0..11)]),
+        (71, vec![(Variable("asdf"), 0..5)]),
+        (72, vec![(Variable("jkl"), 0..4)]),
+        (73, vec![(Variable("qwerty"), 0..7)]),
 
-        (73, vec![(Comment(" kDataUnhandled is its own token"), 0..33)]),
-        (74, vec![(Unhandled, 0..14)]),
+        (75, vec![(Comment(" kDataUnhandled is its own token"), 0..33)]),
+        (76, vec![(Unhandled, 0..14)]),
 
-        (77, vec![(Comment(" arrays"), 0..8)]),
-        (78, vec![(ArrayOpen, 0..1), (Symbol("array"), 1..6), (Integer(1), 7..8), (Integer(2), 9..10), (ArrayClose, 10..11), (Comment(" array"), 13..20)]),
-        (79, vec![(CommandOpen, 0..1), (Symbol("+"), 1..2), (Integer(1), 3..4), (Integer(2), 5..6), (CommandClose, 6..7), (Comment(" command"), 13..22)]),
-        (80, vec![(PropertyOpen, 0..1), (Symbol("property"), 1..9), (PropertyClose, 9..10), (Comment(" property"), 13..23)]),
+        (79, vec![(Comment(" arrays"), 0..8)]),
+        (80, vec![(ArrayOpen, 0..1), (Symbol("array"), 1..6), (Integer(1), 7..8), (Integer(2), 9..10), (ArrayClose, 10..11), (Comment(" array"), 13..20)]),
+        (81, vec![(CommandOpen, 0..1), (Symbol("+"), 1..2), (Integer(1), 3..4), (Integer(2), 5..6), (CommandClose, 6..7), (Comment(" command"), 13..22)]),
+        (82, vec![(PropertyOpen, 0..1), (Symbol("property"), 1..9), (PropertyClose, 9..10), (Comment(" property"), 13..23)]),
 
-        (83, vec![(Comment(" directives"), 0..12)]),
-        (84, vec![(IncludeOptional, 0..12), (Symbol("../file.dta"), 13..24)]),
-        (85, vec![(Include, 0..8), (Symbol("../file.dta"), 9..20)]),
-        (86, vec![(Merge, 0..6), (Symbol("../file.dta"), 7..18)]),
-        (87, vec![(Ifdef, 0..6), (Symbol("kDefine"), 7..14)]),
-        (88, vec![(Undefine, 0..6), (Symbol("kDefine"), 7..14)]),
-        (89, vec![(Endif, 0..6)]),
-        (90, vec![(Ifndef, 0..7), (Symbol("kDefine"), 8..15)]),
-        (91, vec![(Define, 0..7), (Symbol("kDefine"), 8..15)]),
-        (92, vec![(Else, 0..5)]),
-        (93, vec![(Autorun, 0..8), (CommandOpen, 9..10), (Symbol("action"), 10..16), (CommandClose, 16..17)]),
-        (94, vec![(Endif, 0..6)]),
-        (95, vec![(Comment(" invalid"), 0..9)]),
-        (96, vec![(BadDirective("bad"), 0..4)]),
-        (97, vec![(BadDirective("#"), 0..2)]),
+        (85, vec![(Comment(" directives"), 0..12)]),
+        (86, vec![(IncludeOptional, 0..12), (Symbol("../file.dta"), 13..24)]),
+        (87, vec![(Include, 0..8), (Symbol("../file.dta"), 9..20)]),
+        (88, vec![(Merge, 0..6), (Symbol("../file.dta"), 7..18)]),
+        (89, vec![(Ifdef, 0..6), (Symbol("kDefine"), 7..14)]),
+        (90, vec![(Undefine, 0..6), (Symbol("kDefine"), 7..14)]),
+        (91, vec![(Endif, 0..6)]),
+        (92, vec![(Ifndef, 0..7), (Symbol("kDefine"), 8..15)]),
+        (93, vec![(Define, 0..7), (Symbol("kDefine"), 8..15)]),
+        (94, vec![(Else, 0..5)]),
+        (95, vec![(Autorun, 0..8), (CommandOpen, 9..10), (Symbol("action"), 10..16), (CommandClose, 16..17)]),
+        (96, vec![(Endif, 0..6)]),
+        (97, vec![(Comment(" invalid"), 0..9)]),
+        (98, vec![(Error(DiagnosticKind::BadDirective), 0..4)]),
+        (99, vec![(Error(DiagnosticKind::BadDirective), 0..2)]),
 
-        (99, vec![(Comment(" *not* directives, these are lexed as symbols"), 0..46)]),
-        (100, vec![(Symbol("#"), 0..1)]),
-        (101, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" space-separated"), 4..21)]),
-        (102, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" tab-separated"), 4..19)]),
-        (103, vec![(Comment(" lexed as symbols and arrays"), 0..29)]),
-        (104, vec![(Symbol("#"), 0..1), (ArrayOpen, 1..2), (Symbol("#"), 2..3), (ArrayClose, 3..4), (Comment(" '#', '(', '#', ')'"), 5..25)]),
-        (105, vec![(Symbol("#"), 0..1), (CommandOpen, 1..2), (Symbol("#"), 2..3), (CommandClose, 3..4), (Comment(" '#', '{', '#', '}'"), 5..25)]),
-        (106, vec![(Symbol("#"), 0..1), (PropertyOpen, 1..2), (Symbol("#"), 2..3), (PropertyClose, 3..4), (Comment(" '#', '[', '#', ']'"), 5..25)]),
+        (101, vec![(Comment(" *not* directives, these are lexed as symbols"), 0..46)]),
+        (102, vec![(Symbol("#"), 0..1)]),
+        (103, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" space-separated"), 4..21)]),
+        (104, vec![(Symbol("#"), 0..1), (Symbol("#"), 2..3), (Comment(" tab-separated"), 4..19)]),
+        (105, vec![(Comment(" lexed as symbols and arrays"), 0..29)]),
+        (106, vec![(Symbol("#"), 0..1), (ArrayOpen, 1..2), (Symbol("#"), 2..3), (ArrayClose, 3..4), (Comment(" '#', '(', '#', ')'"), 5..25)]),
+        (107, vec![(Symbol("#"), 0..1), (CommandOpen, 1..2), (Symbol("#"), 2..3), (CommandClose, 3..4), (Comment(" '#', '{', '#', '}'"), 5..25)]),
+        (108, vec![(Symbol("#"), 0..1), (PropertyOpen, 1..2), (Symbol("#"), 2..3), (PropertyClose, 3..4), (Comment(" '#', '[', '#', ']'"), 5..25)]),
 
-        (109, vec![(Comment(" line comment"), 0..14)]),
-        (110, vec![(Comment(";"), 0..2)]),
-        (111, vec![(Comment(" ;"), 0..3)]),
-        (112, vec![(Comment("	;"), 0..3)]),
-        (113, vec![(Comment(";;;;;;;"), 0..8)]),
-        (114, vec![(Comment("nospace"), 0..8)]),
-        (115, vec![(Symbol("asdf;jkl"), 0..8), (Comment(" invalid, lexed as part of the symbol"), 9..47)]),
+        (111, vec![(Comment(" line comment"), 0..14)]),
+        (112, vec![(Comment(";"), 0..2)]),
+        (113, vec![(Comment(" ;"), 0..3)]),
+        (114, vec![(Comment("	;"), 0..3)]),
+        (115, vec![(Comment(";;;;;;;"), 0..8)]),
+        (116, vec![(Comment("nospace"), 0..8)]),
+        (117, vec![(Symbol("asdf;jkl"), 0..8), (Comment(" invalid, lexed as part of the symbol"), 9..47)]),
 
-        (117, vec![(BlockComment(
+        (119, vec![(BlockComment(
             "/*\n\
             block comment\n\
             */"
         ), 0..19)]),
 
-        (121, vec![(Symbol("/*asdf*/"), 0..8), (Comment(" invalid, lexed as a symbol"), 9..37)]),
-        (122, vec![(BlockComment("/*jkl */"), 0..8)]),
+        (123, vec![(Symbol("/*asdf*/"), 0..8), (Comment(" invalid, lexed as a symbol"), 9..37)]),
+        (124, vec![(BlockComment("/*jkl */"), 0..8)]),
 
-        (124, vec![(Symbol("/**/"), 0..4), (Comment(" invalid, lexed as a symbol"), 5..33)]),
-        (125, vec![(BlockComment("/* */"), 0..5)]),
-        (126, vec![(BlockComment("/*\t*/"), 0..5)]),
+        (126, vec![(Symbol("/**/"), 0..4), (Comment(" invalid, lexed as a symbol"), 5..33)]),
+        (127, vec![(BlockComment("/* */"), 0..5)]),
+        (128, vec![(BlockComment("/*\t*/"), 0..5)]),
 
-        (128, vec![(Comment(" stray block-comment close, lexed as a symbol"), 0..46)]),
-        (129, vec![(Symbol("*/"), 0..2)]),
+        (130, vec![(Comment(" stray block-comment close, lexed as a symbol"), 0..46)]),
+        (131, vec![(Symbol("*/"), 0..2)]),
 
-        (131, vec![(Symbol("/*****/"), 0..7), (Comment(" invalid, lexed as a symbol"), 8..36)]),
+        (133, vec![(Symbol("/*****/"), 0..7), (Comment(" invalid, lexed as a symbol"), 8..36)]),
 
-        (133, vec![(Symbol("/*****"), 0..6), (Comment(" invalid, lexed as a symbol"), 7..35)]),
-        (135, vec![(BlockComment(
+        (135, vec![(Symbol("/*****"), 0..6), (Comment(" invalid, lexed as a symbol"), 7..35)]),
+        (137, vec![(BlockComment(
             "/*\
             \n\
             \n    *****\n\

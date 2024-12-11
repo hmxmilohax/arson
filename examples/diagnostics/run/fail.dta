@@ -21,6 +21,15 @@
 )
 #endif
 
+(incorrect_ifdef
+    #ifdef 1
+        "These conditionals will still be parsed correctly."
+    #else
+        "The 1 in front of ifndef will be treated as part of the conditional's contents,
+        instead of taking up the slot for the symbol name."
+    #endif
+)
+
 (unmatched
     #ifdef kDefine
 )

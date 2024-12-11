@@ -130,9 +130,6 @@ make_tokens! {
     #[token("#endif")]
     Endif => ("#endif directive"),
 
-    #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    BadDirective(&'src str) => ("invalid directive", "#{}"),
-
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
     Comment(&'src str) => ("comment"),
     // These block comment regexes are very particular, for compatibility reasons
@@ -142,6 +139,7 @@ make_tokens! {
     // #[regex(r#"\*+\/"#)]
     // BlockCommentEnd(&'src str) => ("block comment end"),
 
+    #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |_lex| DiagnosticKind::BadDirective)]
     Error(DiagnosticKind) => ("token error", ": {}"),
 }
 
@@ -242,6 +240,14 @@ mod tests {
         assert_token("64", TokenValue::Integer(64), 0..2);
         assert_token("1234567890", TokenValue::Integer(1234567890), 0..10);
         assert_token("0xABCD", TokenValue::Integer(0xABCD), 0..6);
+
+        assert_token(
+            "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+            TokenValue::Error(DiagnosticKind::IntegerParseError(
+                IntegerValue::from_str_radix("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap_err(),
+            )),
+            0..34,
+        );
     }
 
     #[test]
@@ -361,7 +367,7 @@ mod tests {
         assert_token("#ifndef", TokenValue::Ifndef, 0..7);
         assert_token("#else", TokenValue::Else, 0..5);
         assert_token("#endif", TokenValue::Endif, 0..6);
-        assert_token("#bad", TokenValue::BadDirective("bad"), 0..4);
+        assert_token("#bad", TokenValue::Error(DiagnosticKind::BadDirective), 0..4);
     }
 
     #[test]

@@ -8,6 +8,8 @@
 0x1 0xA 0xa
 0xFFFFFFFF
 0xFFFFFFFFFFFFFFFF
+; invalid (too big for 64 bits)
+0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 ; invalid (lexed as symbols)
 0x   x1
 +0x2 -0x3
