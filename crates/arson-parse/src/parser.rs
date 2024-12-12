@@ -633,7 +633,10 @@ impl<'src> Parser<'src> {
                 break;
             }
 
-            self.push_error(DiagnosticKind::UnmatchedBrace { kind: array.kind, open: true }, array.location.clone());
+            self.push_error(
+                DiagnosticKind::UnmatchedBrace { kind: array.kind, open: true },
+                array.location.clone(),
+            );
             self.array_stack.pop();
         }
 
@@ -793,8 +796,10 @@ impl<'src> Parser<'src> {
         }
 
         for unmatched in &self.array_stack {
-            let error =
-                Diagnostic::new(DiagnosticKind::UnmatchedBrace { kind: unmatched.kind, open: true }, unmatched.location.clone());
+            let error = Diagnostic::new(
+                DiagnosticKind::UnmatchedBrace { kind: unmatched.kind, open: true },
+                unmatched.location.clone(),
+            );
             self.errors.push(error);
             self.unexpected_eof = true;
         }
@@ -1209,7 +1214,13 @@ mod tests {
                 0..10,
             )]);
 
-            fn assert_array_mismatch(text: &str, kind: ArrayKind, open: bool, location: Span, eof_expected: bool) {
+            fn assert_array_mismatch(
+                text: &str,
+                kind: ArrayKind,
+                open: bool,
+                location: Span,
+                eof_expected: bool,
+            ) {
                 let mut expected = vec![(DiagnosticKind::UnmatchedBrace { kind, open }, location)];
                 if !eof_expected {
                     expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
@@ -1467,9 +1478,15 @@ mod tests {
 
             assert_errors("(#ifdef kDefine array1 10) #else array2 5) #endif)", vec![
                 (DiagnosticKind::UnbalancedConditional, 1..32),
-                (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 25..26),
+                (
+                    DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false },
+                    25..26,
+                ),
                 (DiagnosticKind::UnbalancedConditional, 27..49),
-                (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false }, 41..42),
+                (
+                    DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: false },
+                    41..42,
+                ),
             ]);
 
             assert_errors(
@@ -1484,9 +1501,15 @@ mod tests {
                 ",
                 vec![
                     (DiagnosticKind::UnbalancedConditional, 0..25),
-                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: true }, 15..16),
+                    (
+                        DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: true },
+                        15..16,
+                    ),
                     (DiagnosticKind::UnbalancedConditional, 38..61),
-                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: false }, 53..54),
+                    (
+                        DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Command, open: false },
+                        53..54,
+                    ),
                 ],
             );
         }

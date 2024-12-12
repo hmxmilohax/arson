@@ -127,7 +127,10 @@ impl NodeSlice {
         }
     }
 
-    pub fn slice_mut<I: SliceIndex<[Node], Output = [Node]>>(&mut self, index: I) -> crate::Result<&mut NodeSlice> {
+    pub fn slice_mut<I: SliceIndex<[Node], Output = [Node]>>(
+        &mut self,
+        index: I,
+    ) -> crate::Result<&mut NodeSlice> {
         let len = self.nodes.len(); // borrow checker workaround
         match self.nodes.get_mut(index) {
             Some(value) => Ok(Self::from_mut(value)),
