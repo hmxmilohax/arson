@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use super::{Node, Symbol};
-use crate::Context;
+use super::{Node, NodeSlice, NodeValue, Symbol};
+use crate::{arson_assert_len, Context};
 
 #[derive(Clone)]
 pub struct Variable {
@@ -51,37 +51,78 @@ struct VariableEntry {
     value: Node,
 }
 
-#[derive(Debug, Default)]
-pub struct VariableStack {
+pub struct VariableStack<'ctx, S> {
+    context: &'ctx mut Context<S>,
     stack: Vec<VariableEntry>,
 }
 
-impl VariableStack {
-    pub fn new() -> Self {
-        Self { stack: Vec::new() }
+impl<'ctx, S> VariableStack<'ctx, S> {
+    pub fn new(context: &'ctx mut Context<S>) -> Self {
+        Self { context, stack: Vec::new() }
     }
 
-    pub fn save<S>(&mut self, context: &mut Context<S>, variable: &Variable) {
+    pub fn context(&mut self) -> &mut Context<S> {
+        self.context
+    }
+
+    pub fn push(&mut self, variable: &Variable) {
         self.stack.push(VariableEntry {
             variable: variable.clone(),
-            value: variable.get(context),
+            value: variable.get(self.context),
         })
     }
 
-    // Would have liked if there were a way to do this implicitly,
-    // but the borrow checker said no, so this will have to do...
-    pub fn restore<S>(&mut self, context: &mut Context<S>) {
-        for entry in self.stack.iter() {
-            entry.variable.set(context, entry.value.clone());
+    pub fn pop(&mut self) -> Option<Variable> {
+        let entry = self.stack.pop()?;
+        entry.variable.set(self.context, entry.value);
+        Some(entry.variable)
+    }
+
+    pub fn push_args(&mut self, script: &mut &NodeSlice, args: &NodeSlice) -> crate::Result {
+        if let NodeValue::Array(parameters) = script.unevaluated(0)? {
+            *script = script.slice(1..)?;
+
+            let parameters = parameters.borrow()?;
+            arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");
+
+            for i in 0..parameters.len() {
+                let variable = parameters.variable(i)?;
+                self.push(variable);
+
+                let value = args.evaluate(self.context, i)?;
+                variable.set(self.context, value);
+            }
         }
 
-        self.stack.clear();
+        Ok(())
+    }
+
+    pub fn push_initializers(&mut self, args: &mut &NodeSlice) -> crate::Result {
+        while let NodeValue::Array(var_decl) = args.unevaluated(0)? {
+            *args = args.slice(1..)?;
+
+            let var_decl = var_decl.borrow()?;
+            let variable = var_decl.variable(0)?;
+            self.push(variable);
+
+            let initializer = var_decl.slice(1..)?;
+            if let Some(value) = initializer.get_opt(0) {
+                arson_assert_len!(initializer, 1, "too many values in initializer for {variable}");
+                let value = value.evaluate(self.context)?;
+                variable.set(self.context, value);
+            }
+        }
+
+        Ok(())
     }
 }
 
-impl Drop for VariableStack {
+impl<S> Drop for VariableStack<'_, S> {
     fn drop(&mut self) {
-        // Ensure no unbalanced stacks are left behind
-        assert_eq!(self.stack.len(), 0);
+        for entry in self.stack.iter() {
+            entry.variable.set(self.context, entry.value.clone());
+        }
+
+        self.stack.clear();
     }
 }

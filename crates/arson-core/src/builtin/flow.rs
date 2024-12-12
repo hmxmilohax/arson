@@ -111,7 +111,6 @@ pub mod loops {
 
 pub mod vars {
     use super::*;
-    use crate::arson_assert_len;
 
     pub fn register_funcs<S>(context: &mut Context<S>) {
         context.register_func("do", self::do_block);
@@ -119,25 +118,12 @@ pub mod vars {
     }
 
     pub fn do_block<S>(context: &mut Context<S>, mut args: &NodeSlice) -> ExecuteResult {
-        let mut saved_variables = VariableStack::new();
-        while let NodeValue::Array(var_decl) = args.unevaluated(0)? {
-            args = args.slice(1..)?;
+        let mut saved_variables = VariableStack::new(context);
+        saved_variables.push_initializers(&mut args)?;
 
-            let var_decl = var_decl.borrow()?;
-            let variable = var_decl.variable(0)?;
-            saved_variables.save(context, variable);
-
-            let initializer = var_decl.slice(1..)?;
-            if let Some(value) = initializer.get_opt(0) {
-                arson_assert_len!(initializer, 1, "too many values in initializer for {variable}");
-                let value = value.evaluate(context)?;
-                variable.set(context, value);
-            }
-        }
-
-        let result = context.execute_block(args)?;
-        saved_variables.restore(context);
-        Ok(result)
+        let result = saved_variables.context().execute_block(args);
+        drop(saved_variables); // ensure drop does not occur until after execution
+        result
     }
 
     pub fn with_block<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {

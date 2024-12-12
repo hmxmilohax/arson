@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use crate::primitives::*;
-use crate::{arson_array, arson_assert_len};
+use crate::arson_array;
 
 /// A function which is callable from script.
 pub type HandleFn<State> = fn(context: &mut Context<State>, args: &NodeSlice) -> ExecuteResult;
@@ -129,25 +129,12 @@ impl<State> Context<State> {
     }
 
     pub fn execute_args(&mut self, mut script: &NodeSlice, args: &NodeSlice) -> ExecuteResult {
-        let mut saved_variables = VariableStack::new();
-        if let NodeValue::Array(parameters) = script.unevaluated(0)? {
-            script = script.slice(1..)?;
+        let mut saved_variables = VariableStack::new(self);
+        saved_variables.push_args(&mut script, args)?;
 
-            let parameters = parameters.borrow()?;
-            arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");
-
-            for i in 0..parameters.len() {
-                let variable = parameters.variable(i)?;
-                saved_variables.save(self, variable);
-
-                let value = args.evaluate(self, i)?;
-                variable.set(self, value);
-            }
-        }
-
-        let result = self.execute_block(script)?;
-        saved_variables.restore(self);
-        Ok(result)
+        let result = saved_variables.context().execute_block(script);
+        drop(saved_variables); // ensure drop does not occur until after execution
+        result
     }
 }
 
