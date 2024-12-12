@@ -49,8 +49,23 @@ macro_rules! define_node_types {
                     cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
                 )?
                 $(
-                    extra_eq: {
-                        $($extra_eq_type:ty => |$extra_eq_left:ident, $extra_eq_right:ident| $extra_eq_expr:expr,)+
+                    variant_eq: {
+                        $($variant_eq_type:ident$(($variant_eq_other:ident))? => |$variant_eq_value:ident| $variant_eq_expr:expr,)+
+                    },
+                )?
+                $(
+                    variant_cmp: {
+                        $(
+                            $variant_cmp_type:ident$(($variant_cmp_other:ident))? => |$variant_cmp_value:ident| {
+                                left: $variant_cmp_left_expr:expr,
+                                right: $variant_cmp_right_expr:expr,
+                            },
+                        )+
+                    },
+                )?
+                $(
+                    type_eq: {
+                        $($type_eq_type:ty => |$type_eq_left:ident, $type_eq_right:ident| $type_eq_expr:expr,)+
                     },
                 )?
             })?)?
@@ -69,6 +84,7 @@ macro_rules! define_node_types {
         impl PartialEq for NodeValue {
             fn eq(&self, other: &Self) -> bool {
                 match (self, other) {
+                    // variant types
                     $(
                         (
                             Self::$variant$((meta_morph!($variant_type => meta_select!($($($eq_left)?)?, left))))?,
@@ -78,6 +94,17 @@ macro_rules! define_node_types {
                             $(meta_morph!($variant_type => meta_select!($($($eq_expr)?)?, left == right)))?,
                             true
                         ),
+                        $( // variant value
+                            $( // options block
+                                $( // `variant_eq`
+                                    $( // types to compare against
+                                        (Self::$variant($variant_eq_value), Self::$variant_eq_type$(($variant_eq_other))?)
+                                        | (Self::$variant_eq_type$(($variant_eq_other))?, Self::$variant($variant_eq_value))
+                                        => $variant_eq_expr,
+                                    )+
+                                )?
+                            )?
+                        )?
                     )+
 
                     _ => false,
@@ -96,6 +123,18 @@ macro_rules! define_node_types {
                             $(meta_morph!($variant_type => meta_select!($($($cmp_expr)?)?, left.partial_cmp(right))))?,
                             Some(Ordering::Equal)
                         ),
+                        $(
+                            $(
+                                $(
+                                    $(
+                                        (Self::$variant($variant_cmp_value), Self::$variant_cmp_type$(($variant_cmp_other))?)
+                                        => $variant_cmp_left_expr,
+                                        (Self::$variant_cmp_type$(($variant_cmp_other))?, Self::$variant($variant_cmp_value))
+                                        => $variant_cmp_right_expr,
+                                    )+
+                                )?
+                            )?
+                        )?
                     )+
 
                     _ => None,
@@ -125,9 +164,9 @@ macro_rules! define_node_types {
                 }
 
                 // additional conversions from `from:`
-                $( // repeater for options block
-                    $( // repeater for `from:`
-                        $( // repeater for types
+                $( // options block
+                    $( // `from`
+                        $( // types to compare against
                             impl From<$from_type> for NodeValue {
                                 fn from($from_value: $from_type) -> Self {
                                     Self::$variant($from_expr)
@@ -155,20 +194,20 @@ macro_rules! define_node_types {
                     }
                 }
 
-                // `extra_eq:` implementations
-                $( // repeater for options block
-                    $( // repeater for `extra_eq:`
-                        $( // repeater for types
-                            impl PartialEq<$extra_eq_type> for NodeValue {
-                                fn eq(&self, $extra_eq_right: &$extra_eq_type) -> bool {
+                // `type_eq:` implementations
+                $( // options block
+                    $( // `type_eq`
+                        $( // types to compare against
+                            impl PartialEq<$type_eq_type> for NodeValue {
+                                fn eq(&self, $type_eq_right: &$type_eq_type) -> bool {
                                     match self {
-                                        Self::$variant($extra_eq_left) => $extra_eq_expr,
+                                        Self::$variant($type_eq_left) => $type_eq_expr,
                                         _ => false,
                                     }
                                 }
                             }
 
-                            impl PartialEq<NodeValue> for $extra_eq_type {
+                            impl PartialEq<NodeValue> for $type_eq_type {
                                 fn eq(&self, other: &NodeValue) -> bool {
                                     other.eq(self)
                                 }
@@ -189,7 +228,16 @@ define_node_types! {
             i32 => |value| Wrapping(value as IntegerValue),
             bool => |value| Wrapping(value as IntegerValue),
         },
-        extra_eq: {
+        variant_eq: {
+            Float(other) => |value| value.0 as FloatValue == *other,
+        },
+        variant_cmp: {
+            Float(other) => |value| {
+                left: (value.0 as FloatValue).partial_cmp(other),
+                right: other.partial_cmp(&(value.0 as FloatValue)),
+            },
+        },
+        type_eq: {
             IntegerValue => |left, right| left.0 == *right,
         },
     },
@@ -205,7 +253,16 @@ define_node_types! {
             String => |value| Rc::new(value),
             &str => |value| Rc::new(value.to_owned()),
         },
-        extra_eq: {
+        variant_eq: {
+            Symbol(other) => |value| value == other.name(),
+        },
+        variant_cmp: {
+            Symbol(other) => |value| {
+                left: value.partial_cmp(other.name()),
+                right: other.name().partial_cmp(&value),
+            },
+        },
+        type_eq: {
             String => |left, right| left.as_str() == right,
             str => |left, right| left.as_str() == right,
         },
@@ -223,7 +280,7 @@ define_node_types! {
         from: {
             NodeArray => |value| ArrayRef::new(value),
         },
-        extra_eq: {
+        type_eq: {
             NodeArray => |left, right| ArrayRef::borrow(left).map_or(false, |a| a.eq(right)),
         },
     },
@@ -232,7 +289,7 @@ define_node_types! {
         from: {
             NodeCommand => |value| Rc::new(value),
         },
-        extra_eq: {
+        type_eq: {
             NodeCommand => |left, right| Borrow::<NodeCommand>::borrow(left) == right,
         },
     },
@@ -241,7 +298,7 @@ define_node_types! {
         from: {
             NodeProperty => |value| Rc::new(value),
         },
-        extra_eq: {
+        type_eq: {
             NodeProperty => |left, right| Borrow::<NodeProperty>::borrow(left) == right,
         },
     },
