@@ -14,6 +14,14 @@ pub enum ArrayKind {
 }
 
 impl ArrayKind {
+    pub fn delimiter(&self, open: bool) -> char {
+        let delimiters = self.delimiters();
+        match open {
+            true => delimiters.0,
+            false => delimiters.1,
+        }
+    }
+
     pub fn delimiters(&self) -> (char, char) {
         match self {
             ArrayKind::Array => ('(', ')'),
