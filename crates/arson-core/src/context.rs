@@ -57,44 +57,74 @@ impl<State> Context<State> {
         self.symbol_table.get(name)
     }
 
-    pub fn add_macro(&mut self, name: &Symbol, array: NodeArray) {
-        self.macros.insert(name.clone(), array);
+    pub fn add_macro<N>(&mut self, name: N, array: NodeArray)
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        self.macros.insert(name, array);
     }
 
-    pub fn add_macro_define(&mut self, name: &Symbol) {
+    pub fn add_macro_define<N>(&mut self, name: N)
+    where
+        Self: MakeSymbol<N>,
+    {
         self.add_macro(name, arson_array![1]);
     }
 
-    pub fn remove_macro(&mut self, name: &Symbol) {
-        self.macros.remove(name);
+    pub fn remove_macro<N>(&mut self, name: N)
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        self.macros.remove(&name);
     }
 
-    pub fn get_macro(&mut self, name: &Symbol) -> Option<&NodeArray> {
-        self.macros.get(name)
+    pub fn get_macro<N>(&mut self, name: N) -> Option<&NodeArray>
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        self.macros.get(&name)
     }
 
-    pub fn get_variable(&mut self, name: &Symbol) -> Node {
-        match self.variables.get(name) {
+    pub fn get_variable<N>(&mut self, name: N) -> Node
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        match self.variables.get(&name) {
             Some(value) => value.clone(),
             None => {
                 let value = Node::from(0);
-                self.variables.insert(name.clone(), value.clone());
+                self.variables.insert(name, value.clone());
                 value
             },
         }
     }
 
-    pub fn set_variable<T: Into<Node>>(&mut self, name: &Symbol, value: T) {
-        self.variables.insert(name.clone(), value.into());
+    pub fn set_variable<N, T: Into<Node>>(&mut self, name: N, value: T)
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        self.variables.insert(name, value.into());
     }
 
-    pub fn register_func(&mut self, name: &str, func: HandleFn<State>) -> bool {
-        let name = self.symbol_table.add(name);
-        self.functions.insert(name.clone(), func).is_none()
+    pub fn register_func<N>(&mut self, name: N, func: HandleFn<State>) -> bool
+    where
+        Self: MakeSymbol<N>,
+    {
+        let name = self.make_symbol(name);
+        self.functions.insert(name, func).is_none()
     }
 
-    pub fn register_func_alias(&mut self, alias: &str, actual: &str) -> bool {
-        let actual = self.symbol_table.add(actual);
+    pub fn register_func_alias<N1, N2>(&mut self, alias: N1, actual: N2) -> bool
+    where
+        Self: MakeSymbol<N1>,
+        Self: MakeSymbol<N2>,
+    {
+        let actual = self.make_symbol(actual);
         match self.functions.get(&actual) {
             Some(func) => self.register_func(alias, *func),
             None => false,
@@ -139,5 +169,49 @@ impl<State> Context<State> {
 impl<State: Default> Default for Context<State> {
     fn default() -> Self {
         Self::new(Default::default())
+    }
+}
+
+/// Trait to make APIs which require [`Symbol`]s more convenient to use.
+///
+/// ```rust
+/// use arson_core::{arson_array, Context, MakeSymbol};
+///
+/// let mut context = Context::new(());
+/// let symbol = context.add_symbol("kDefine");
+///
+/// // These are both equivalent, the latter will produce a Symbol behind the scenes.
+/// context.add_macro(&symbol, arson_array![1]);
+/// context.add_macro("kDefine", arson_array![1]);
+///
+/// // This function can take &str, Symbol, or &Symbol as a name input.
+/// fn do_something_with_symbol<N, S>(context: &mut Context<S>, name: N)
+///     where Context<S>: MakeSymbol<N>
+/// {
+///     // ...
+/// }
+///
+/// do_something_with_symbol(&mut context, &symbol);
+/// do_something_with_symbol(&mut context, "kDefine");
+/// ```
+pub trait MakeSymbol<N> {
+    fn make_symbol(&mut self, name: N) -> Symbol;
+}
+
+impl<S> MakeSymbol<&str> for Context<S> {
+    fn make_symbol(&mut self, name: &str) -> Symbol {
+        self.symbol_table.add(name)
+    }
+}
+
+impl<S> MakeSymbol<Symbol> for Context<S> {
+    fn make_symbol(&mut self, name: Symbol) -> Symbol {
+        name
+    }
+}
+
+impl<S> MakeSymbol<&Symbol> for Context<S> {
+    fn make_symbol(&mut self, name: &Symbol) -> Symbol {
+        name.clone()
     }
 }
