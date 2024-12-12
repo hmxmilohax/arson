@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use arson::prolog::*;
+use arson::prelude::*;
 
 struct State {
     file_system: FileSystem,

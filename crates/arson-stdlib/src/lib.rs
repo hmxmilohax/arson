@@ -15,6 +15,6 @@ pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
     stdio::register_funcs(context);
 }
 
-pub mod prolog {
+pub mod prelude {
     pub use super::state::*;
 }

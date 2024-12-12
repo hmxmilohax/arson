@@ -29,7 +29,7 @@ pub use lexer::*;
 pub use loader::*;
 pub use parser::*;
 
-pub mod prolog {
+pub mod prelude {
     pub use super::lexer::{Token, TokenValue, Tokenizer};
     #[cfg(feature = "loading")]
     pub use super::loader::{LoadError, LoadOptions};

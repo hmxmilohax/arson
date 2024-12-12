@@ -32,7 +32,7 @@ mod error;
 pub use context::*;
 pub use error::*;
 
-pub mod prolog {
+pub mod prelude {
     pub use super::context::Context;
     pub use super::primitives::{
         ArrayRef,

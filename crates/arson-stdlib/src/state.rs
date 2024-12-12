@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_core::prolog::*;
-use arson_fs::prolog::*;
-use arson_parse::prolog::*;
+use arson_core::prelude::*;
+use arson_fs::prelude::*;
+use arson_parse::prelude::*;
 
 pub trait StdlibState: FileSystemState {
     fn file_load_options(&self) -> LoadOptions;

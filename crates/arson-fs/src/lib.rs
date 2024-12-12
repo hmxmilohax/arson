@@ -10,7 +10,7 @@ pub use driver::*;
 pub use filesystem::*;
 pub use path::*;
 
-pub mod prolog {
+pub mod prelude {
     pub use super::drivers::BasicFileSystemDriver;
     pub use super::{AbsolutePath, FileSystem, FileSystemState, VirtualPath, VirtualPathBuf};
 }
