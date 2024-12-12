@@ -127,6 +127,14 @@ impl NodeSlice {
         }
     }
 
+    pub fn slice_mut<I: SliceIndex<[Node], Output = [Node]>>(&mut self, index: I) -> crate::Result<&mut NodeSlice> {
+        let len = self.nodes.len(); // borrow checker workaround
+        match self.nodes.get_mut(index) {
+            Some(value) => Ok(Self::from_mut(value)),
+            None => Err(ArrayError::OutOfRange(0..len).into()),
+        }
+    }
+
     pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
         match self.nodes.get(index) {
             Some(value) => Ok(value),
@@ -136,6 +144,18 @@ impl NodeSlice {
 
     pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
         self.nodes.get(index)
+    }
+
+    pub fn get_mut<I: SliceIndex<[Node]>>(&mut self, index: I) -> crate::Result<&mut I::Output> {
+        let len = self.nodes.len(); // borrow checker workaround
+        match self.nodes.get_mut(index) {
+            Some(value) => Ok(value),
+            None => Err(ArrayError::OutOfRange(0..len).into()),
+        }
+    }
+
+    pub fn get_mut_opt<I: SliceIndex<[Node]>>(&mut self, index: I) -> Option<&mut I::Output> {
+        self.nodes.get_mut(index)
     }
 }
 
@@ -490,6 +510,12 @@ impl std::ops::Deref for NodeSlice {
     }
 }
 
+impl std::ops::DerefMut for NodeSlice {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.nodes
+    }
+}
+
 impl<'slice> IntoIterator for &'slice NodeSlice {
     type Item = <&'slice [Node] as IntoIterator>::Item;
     type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
@@ -675,6 +701,7 @@ impl IntoIterator for NodeArray {
         self.nodes.into_iter()
     }
 }
+
 impl<'nodes> IntoIterator for &'nodes NodeArray {
     type Item = <&'nodes Vec<Node> as IntoIterator>::Item;
     type IntoIter = <&'nodes Vec<Node> as IntoIterator>::IntoIter;
