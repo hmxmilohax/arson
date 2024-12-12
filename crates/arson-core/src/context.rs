@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::primitives::*;
 use crate::arson_array;
+use crate::primitives::*;
 
 /// A function which is callable from script.
 pub type HandleFn<State> = fn(context: &mut Context<State>, args: &NodeSlice) -> ExecuteResult;
@@ -19,9 +19,7 @@ pub enum ExecutionError {
 }
 
 pub struct Context<State> {
-    // State type is exposed via Deref/DerefMut
-    // for more seamless integration
-    state: State,
+    pub state: State,
 
     symbol_table: SymbolTable,
 
@@ -141,19 +139,5 @@ impl<State> Context<State> {
 impl<State: Default> Default for Context<State> {
     fn default() -> Self {
         Self::new(Default::default())
-    }
-}
-
-impl<State> std::ops::Deref for Context<State> {
-    type Target = State;
-
-    fn deref(&self) -> &Self::Target {
-        &self.state
-    }
-}
-
-impl<State> std::ops::DerefMut for Context<State> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.state
     }
 }

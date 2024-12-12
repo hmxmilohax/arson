@@ -8,6 +8,12 @@ pub trait StdlibState: FileSystemState {
     fn file_load_options(&self) -> LoadOptions;
 }
 
+impl<S: StdlibState> StdlibState for Context<S> {
+    fn file_load_options(&self) -> LoadOptions {
+        self.state.file_load_options()
+    }
+}
+
 pub trait StdlibContextExt {
     fn load_path(&mut self, path: impl AsRef<VirtualPath>) -> Result<NodeArray, LoadError>;
     fn load_path_with_options(

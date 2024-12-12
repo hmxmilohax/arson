@@ -505,7 +505,7 @@ mod tests {
 
         // Autorun
         context.register_func("autorun_func", |context, args| {
-            context.autorun_str = args.string(context, 0)?.as_ref().clone();
+            context.state.autorun_str = args.string(context, 0)?.as_ref().clone();
             Ok(Node::HANDLED)
         });
 
@@ -514,7 +514,7 @@ mod tests {
             "#autorun {autorun_func \"Auto-run was run\"}",
             arson_array![],
         );
-        assert_eq!(context.autorun_str, "Auto-run was run");
+        assert_eq!(context.state.autorun_str, "Auto-run was run");
     }
 
     #[test]

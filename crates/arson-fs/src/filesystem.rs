@@ -106,3 +106,18 @@ impl FileSystemState for FileSystem {
         self
     }
 }
+
+// Allow calling file_system[_mut] directly on contexts which have a file system state
+//
+// Bit odd to use the same trait meant for states, but this doesn't really have any implications
+// other than being able to nest contexts inside each other and still have the generics work out,
+// and it's much more natural to import the one trait and have it just work on contexts as well.
+impl<S: FileSystemState> FileSystemState for arson_core::Context<S> {
+    fn file_system(&self) -> &FileSystem {
+        self.state.file_system()
+    }
+
+    fn file_system_mut(&mut self) -> &mut FileSystem {
+        self.state.file_system_mut()
+    }
+}
