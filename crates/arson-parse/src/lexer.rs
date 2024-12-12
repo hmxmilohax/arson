@@ -484,6 +484,13 @@ mod tests {
         assert_token("/*****/", TokenValue::Symbol("/*****/"), 0..7);
         assert_token("/*comment*/", TokenValue::Symbol("/*comment*/"), 0..11);
 
+        // Ensure block comment ends aren't swallowed up by delimiters for other tokens
+        assert_token("/* $*/", TokenValue::BlockComment("/* $*/"), 0..6);
+        assert_token("/* \"*/", TokenValue::BlockComment("/* \"*/"), 0..6);
+        assert_token("/* '*/", TokenValue::BlockComment("/* '*/"), 0..6);
+        assert_token("/* ;*/", TokenValue::BlockComment("/* ;*/"), 0..6);
+        assert_token("/* #*/", TokenValue::BlockComment("/* #*/"), 0..6);
+
         assert_token("/*", TokenValue::Error(DiagnosticKind::UnclosedBlockComment), 0..2);
         assert_token(
             "/*a bunch of\ntext",
