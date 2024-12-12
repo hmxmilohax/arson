@@ -5,6 +5,10 @@ use std::ops::{Div, Rem};
 use arson_core::*;
 
 pub fn register_funcs<S>(context: &mut Context<S>) {
+    context.add_macro("PI", arson_array![std::f64::consts::PI]);
+    context.add_macro("TAU", arson_array![std::f64::consts::TAU]);
+    context.add_macro("EULER", arson_array![std::f64::consts::E]);
+
     basic::register_funcs(context);
     limit::register_funcs(context);
     exponential::register_funcs(context);
