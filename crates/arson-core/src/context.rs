@@ -103,7 +103,7 @@ impl<State> Context<State> {
         }
     }
 
-    pub fn set_variable<N, T: Into<Node>>(&mut self, name: N, value: T)
+    pub fn set_variable<N>(&mut self, name: N, value: impl Into<Node>)
     where
         Self: MakeSymbol<N>,
     {
@@ -198,9 +198,9 @@ pub trait MakeSymbol<N> {
     fn make_symbol(&mut self, name: N) -> Symbol;
 }
 
-impl<S> MakeSymbol<&str> for Context<S> {
-    fn make_symbol(&mut self, name: &str) -> Symbol {
-        self.symbol_table.add(name)
+impl<S, N: AsRef<str>> MakeSymbol<N> for Context<S> {
+    fn make_symbol(&mut self, name: N) -> Symbol {
+        self.symbol_table.add(name.as_ref())
     }
 }
 

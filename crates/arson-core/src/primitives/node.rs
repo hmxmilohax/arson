@@ -334,7 +334,11 @@ impl NodeValue {
         }
     }
 
-    pub fn integer(&self) -> Option<Integer> {
+    pub const fn is_unhandled(&self) -> bool {
+        matches!(self, NodeValue::Unhandled)
+    }
+
+    pub const fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
             Self::Float(value) => Some(Wrapping(*value as IntegerValue)),
@@ -342,7 +346,7 @@ impl NodeValue {
         }
     }
 
-    pub fn float(&self) -> Option<FloatValue> {
+    pub const fn float(&self) -> Option<FloatValue> {
         match self {
             Self::Integer(value) => Some(value.0 as FloatValue),
             Self::Float(value) => Some(*value),
@@ -350,7 +354,7 @@ impl NodeValue {
         }
     }
 
-    pub fn number(&self) -> Option<Number> {
+    pub const fn number(&self) -> Option<Number> {
         match self {
             Self::Integer(value) => Some(Number::Integer(*value)),
             Self::Float(value) => Some(Number::Float(*value)),
@@ -374,12 +378,171 @@ impl NodeValue {
         }
     }
 
-    pub fn string(&self) -> Option<&Rc<String>> {
+    pub const fn string(&self) -> Option<&Rc<String>> {
         match self {
             Self::String(value) => Some(value),
             Self::Symbol(value) => Some(value.name()),
             _ => None,
         }
+    }
+
+    pub const fn symbol(&self) -> Option<&Symbol> {
+        match self {
+            Self::Symbol(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn force_symbol<S>(&self, context: &mut Context<S>) -> Option<Symbol> {
+        match self {
+            Self::String(value) => Some(context.add_symbol(&value)),
+            Self::Symbol(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    pub const fn variable(&self) -> Option<&Variable> {
+        match self {
+            Self::Variable(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub const fn array(&self) -> Option<&ArrayRef> {
+        match self {
+            Self::Array(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub const fn command(&self) -> Option<&Rc<NodeCommand>> {
+        match self {
+            Self::Command(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub const fn property(&self) -> Option<&Rc<NodeProperty>> {
+        match self {
+            Self::Property(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+pub trait SymbolDefault {
+    fn into(self) -> Symbol;
+}
+
+impl SymbolDefault for &Symbol {
+    fn into(self) -> Symbol {
+        self.clone()
+    }
+}
+
+impl<S, N> SymbolDefault for (&mut Context<S>, N)
+where
+    Context<S>: MakeSymbol<N>,
+{
+    fn into(self) -> Symbol {
+        self.0.make_symbol(self.1)
+    }
+}
+
+impl NodeValue {
+    pub fn integer_or(&self, default: Integer) -> Integer {
+        self.integer().unwrap_or(default)
+    }
+
+    pub fn float_or(&self, default: FloatValue) -> FloatValue {
+        self.float().unwrap_or(default)
+    }
+
+    pub fn number_or(&self, default: Number) -> Number {
+        self.number().unwrap_or(default)
+    }
+
+    pub fn boolean_or(&self, default: bool) -> bool {
+        self.boolean().unwrap_or(default)
+    }
+
+    pub fn string_or(&self, default: &Rc<String>) -> Rc<String> {
+        self.string().cloned().unwrap_or_else(|| default.clone())
+    }
+
+    pub fn symbol_or(&self, default: impl SymbolDefault) -> Symbol {
+        self.symbol().cloned().unwrap_or_else(|| default.into())
+    }
+
+    pub fn force_symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> Symbol
+    where
+        Context<S>: MakeSymbol<N>,
+    {
+        self.force_symbol(context).unwrap_or_else(|| context.make_symbol(default))
+    }
+
+    pub fn variable_or(&self, default: &Variable) -> Variable {
+        self.variable().cloned().unwrap_or_else(|| default.clone())
+    }
+
+    pub fn array_or(&self, default: &ArrayRef) -> ArrayRef {
+        self.array().cloned().unwrap_or_else(|| default.clone())
+    }
+
+    pub fn command_or(&self, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
+        self.command().cloned().unwrap_or_else(|| default.clone())
+    }
+
+    pub fn property_or(&self, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
+        self.property().cloned().unwrap_or_else(|| default.clone())
+    }
+
+    pub fn integer_or_else(&self, default: impl FnOnce() -> Integer) -> Integer {
+        self.integer().unwrap_or_else(default)
+    }
+
+    pub fn float_or_else(&self, default: impl FnOnce() -> FloatValue) -> FloatValue {
+        self.float().unwrap_or_else(default)
+    }
+
+    pub fn number_or_else(&self, default: impl FnOnce() -> Number) -> Number {
+        self.number().unwrap_or_else(default)
+    }
+
+    pub fn boolean_or_else(&self, default: impl FnOnce() -> bool) -> bool {
+        self.boolean().unwrap_or_else(default)
+    }
+
+    pub fn string_or_else(&self, default: impl FnOnce() -> Rc<String>) -> Rc<String> {
+        self.string().cloned().unwrap_or_else(default)
+    }
+
+    pub fn symbol_or_else(&self, default: impl FnOnce() -> Symbol) -> Symbol {
+        self.symbol().cloned().unwrap_or_else(default)
+    }
+
+    pub fn force_symbol_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Symbol,
+    ) -> Symbol {
+        self.force_symbol(context).unwrap_or_else(default)
+    }
+
+    pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
+        self.variable().cloned().unwrap_or_else(default)
+    }
+
+    pub fn array_or_else(&self, default: impl FnOnce() -> ArrayRef) -> ArrayRef {
+        self.array().cloned().unwrap_or_else(default)
+    }
+
+    pub fn command_or_else(&self, default: impl FnOnce() -> Rc<NodeCommand>) -> Rc<NodeCommand> {
+        self.command().cloned().unwrap_or_else(default)
+    }
+
+    pub fn property_or_else(&self, default: impl FnOnce() -> Rc<NodeProperty>) -> Rc<NodeProperty> {
+        self.property().cloned().unwrap_or_else(default)
     }
 }
 
@@ -439,6 +602,25 @@ macro_rules! match_value {
     }};
 }
 
+macro_rules! match_option {
+    ($value:expr, |$evaluated:ident| $expr:expr, $kind:ident) => {
+        match_option_with_err!($value, |$evaluated| $expr, EvaluationError::NotConvertible {
+            src: $evaluated.get_kind(),
+            dest: NodeKind::$kind
+        })
+    };
+}
+
+macro_rules! match_option_with_err {
+    ($value:expr, |$evaluated:ident| $expr:expr, $err:expr) => {{
+        let $evaluated = $value;
+        match $expr {
+            Some(value) => Ok(value),
+            None => Err($err.into()),
+        }
+    }};
+}
+
 impl Node {
     /// Value returned when a script call has not been handled by a receiver.
     pub const UNHANDLED: Node = Self { value: NodeValue::Unhandled };
@@ -453,72 +635,6 @@ impl Node {
 
     pub const fn get_kind(&self) -> NodeKind {
         self.value.get_kind()
-    }
-
-    pub fn integer<S>(&self, context: &mut Context<S>) -> crate::Result<Integer> {
-        let value = self.evaluate(context)?;
-        match value.integer() {
-            Some(value) => Ok(value),
-            None => {
-                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }.into())
-            },
-        }
-    }
-
-    pub fn float<S>(&self, context: &mut Context<S>) -> crate::Result<FloatValue> {
-        let value = self.evaluate(context)?;
-        match value.float() {
-            Some(value) => Ok(value),
-            None => {
-                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Float }.into())
-            },
-        }
-    }
-
-    pub fn number<S>(&self, context: &mut Context<S>) -> crate::Result<Number> {
-        let value = self.evaluate(context)?;
-        match value.number() {
-            Some(value) => Ok(value),
-            None => Err(EvaluationError::NotNumber(value.get_kind()).into()),
-        }
-    }
-
-    pub fn boolean<S>(&self, context: &mut Context<S>) -> crate::Result<bool> {
-        let value = self.evaluate(context)?;
-        match value.boolean() {
-            Some(b) => Ok(b),
-            None => Err(EvaluationError::NotBoolean(value.get_kind()).into()),
-        }
-    }
-
-    pub fn string<S>(&self, context: &mut Context<S>) -> crate::Result<Rc<String>> {
-        let value = self.evaluate(context)?;
-        match value.string() {
-            Some(value) => Ok(value.clone()),
-            None => {
-                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::String }.into())
-            },
-        }
-    }
-
-    pub fn symbol<S>(&self, context: &mut Context<S>) -> crate::Result<Symbol> {
-        match_value!(self.evaluate(context)?, Symbol(value) => value)
-    }
-
-    pub const fn variable(&self) -> crate::Result<&Variable> {
-        match_value!(self.unevaluated(), Variable(value) => value)
-    }
-
-    pub fn array<S>(&self, context: &mut Context<S>) -> crate::Result<ArrayRef> {
-        match_value!(self.evaluate(context)?, Array(value) => value)
-    }
-
-    pub const fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
-        match_value!(self.unevaluated(), Command(value) => value)
-    }
-
-    pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
-        match_value!(self.unevaluated(), Property(value) => value)
     }
 
     pub const fn is_unhandled(&self) -> bool {
@@ -547,13 +663,249 @@ impl Node {
         Ok(evaluated)
     }
 
-    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) -> crate::Result {
+    pub fn integer<S>(&self, context: &mut Context<S>) -> crate::Result<Integer> {
+        match_option!(self.evaluate(context)?, |value| value.integer(), Integer)
+    }
+
+    pub fn float<S>(&self, context: &mut Context<S>) -> crate::Result<FloatValue> {
+        match_option!(self.evaluate(context)?, |value| value.float(), Float)
+    }
+
+    pub fn number<S>(&self, context: &mut Context<S>) -> crate::Result<Number> {
+        match_option_with_err!(
+            self.evaluate(context)?,
+            |value| value.number(),
+            EvaluationError::NotNumber(value.get_kind())
+        )
+    }
+
+    pub fn boolean<S>(&self, context: &mut Context<S>) -> crate::Result<bool> {
+        match_option_with_err!(
+            self.evaluate(context)?,
+            |value| value.boolean(),
+            EvaluationError::NotBoolean(value.get_kind())
+        )
+    }
+
+    pub fn string<S>(&self, context: &mut Context<S>) -> crate::Result<Rc<String>> {
+        match_option!(self.evaluate(context)?, |value| value.string().cloned(), String)
+    }
+
+    pub fn symbol<S>(&self, context: &mut Context<S>) -> crate::Result<Symbol> {
+        match_value!(self.evaluate(context)?, Symbol(value) => value)
+    }
+
+    pub fn force_symbol<S>(&self, context: &mut Context<S>) -> crate::Result<Symbol> {
+        match_option!(self.evaluate(context)?, |value| value.force_symbol(context), Symbol)
+    }
+
+    pub const fn variable(&self) -> crate::Result<&Variable> {
+        match_value!(self.unevaluated(), Variable(value) => value)
+    }
+
+    pub fn set_variable<S>(&self, context: &mut Context<S>, value: impl Into<Node>) -> crate::Result {
         match self.unevaluated() {
-            NodeValue::Variable(var) => var.set(context, value.into()),
+            NodeValue::Variable(var) => var.set(context, value),
             NodeValue::Property(_prop) => todo!("op_assign property access"),
             unhandled => arson_fail!("Cannot set non-variable value {:?}", unhandled),
         };
         Ok(())
+    }
+
+    pub fn array<S>(&self, context: &mut Context<S>) -> crate::Result<ArrayRef> {
+        match_value!(self.evaluate(context)?, Array(value) => value)
+    }
+
+    pub const fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
+        match_value!(self.unevaluated(), Command(value) => value)
+    }
+
+    pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+        match_value!(self.unevaluated(), Property(value) => value)
+    }
+}
+
+// Optional value retrieval
+impl Node {
+    pub fn integer_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Integer>> {
+        self.evaluate(context).map(|n| n.integer()).transpose()
+    }
+
+    pub fn float_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<FloatValue>> {
+        self.evaluate(context).map(|n| n.float()).transpose()
+    }
+
+    pub fn number_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Number>> {
+        self.evaluate(context).map(|n| n.number()).transpose()
+    }
+
+    pub fn boolean_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<bool>> {
+        self.evaluate(context).map(|n| n.boolean()).transpose()
+    }
+
+    pub fn string_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Rc<String>>> {
+        self.evaluate(context).map(|n| n.string().cloned()).transpose()
+    }
+
+    pub fn symbol_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Symbol>> {
+        self.evaluate(context).map(|n| n.symbol().cloned()).transpose()
+    }
+
+    pub fn force_symbol_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Symbol>> {
+        self.evaluate(context).map(|n| n.force_symbol(context)).transpose()
+    }
+
+    pub const fn variable_opt(&self) -> Option<&Variable> {
+        self.unevaluated().variable()
+    }
+
+    pub fn set_variable_opt<S>(&self, context: &mut Context<S>, value: impl Into<Node>) {
+        match self.unevaluated() {
+            NodeValue::Variable(var) => var.set(context, value),
+            NodeValue::Property(_prop) => todo!("op_assign property access"),
+            _ => (),
+        }
+    }
+
+    pub fn array_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<ArrayRef>> {
+        self.evaluate(context).map(|n| n.array().cloned()).transpose()
+    }
+
+    pub const fn command_opt(&self) -> Option<&Rc<NodeCommand>> {
+        self.unevaluated().command()
+    }
+
+    pub const fn property_opt(&self) -> Option<&Rc<NodeProperty>> {
+        self.unevaluated().property()
+    }
+}
+
+// Optional value retrieval, with defaults
+impl Node {
+    pub fn integer_or<S>(&self, context: &mut Context<S>, default: Integer) -> crate::Result<Integer> {
+        self.evaluate(context).map(|v| v.integer_or(default))
+    }
+
+    pub fn float_or<S>(&self, context: &mut Context<S>, default: FloatValue) -> crate::Result<FloatValue> {
+        self.evaluate(context).map(|v| v.float_or(default))
+    }
+
+    pub fn number_or<S>(&self, context: &mut Context<S>, default: Number) -> crate::Result<Number> {
+        self.evaluate(context).map(|v| v.number_or(default))
+    }
+
+    pub fn boolean_or<S>(&self, context: &mut Context<S>, default: bool) -> crate::Result<bool> {
+        self.evaluate(context).map(|v| v.boolean_or(default))
+    }
+
+    pub fn string_or<S>(&self, context: &mut Context<S>, default: &Rc<String>) -> crate::Result<Rc<String>> {
+        self.evaluate(context).map(|v| v.string_or(default))
+    }
+
+    pub fn symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> crate::Result<Symbol>
+    where
+        Context<S>: MakeSymbol<N>,
+    {
+        self.evaluate(context).map(|v| v.symbol_or((context, default)))
+    }
+
+    pub fn force_symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> crate::Result<Symbol>
+    where
+        Context<S>: MakeSymbol<N>,
+    {
+        self.evaluate(context).map(|v| v.force_symbol_or(context, default))
+    }
+
+    pub fn variable_or(&self, default: &Variable) -> Variable {
+        self.unevaluated().variable_or(default)
+    }
+
+    pub fn array_or<S>(&self, context: &mut Context<S>, default: &ArrayRef) -> crate::Result<ArrayRef> {
+        self.evaluate(context).map(|v| v.array_or(default))
+    }
+
+    pub fn command_or(&self, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
+        self.unevaluated().command_or(default)
+    }
+
+    pub fn property_or(&self, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
+        self.unevaluated().property_or(default)
+    }
+
+    pub fn integer_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Integer,
+    ) -> crate::Result<Integer> {
+        self.evaluate(context).map(|v| v.integer_or_else(default))
+    }
+
+    pub fn float_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> FloatValue,
+    ) -> crate::Result<FloatValue> {
+        self.evaluate(context).map(|v| v.float_or_else(default))
+    }
+
+    pub fn number_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Number,
+    ) -> crate::Result<Number> {
+        self.evaluate(context).map(|v| v.number_or_else(default))
+    }
+
+    pub fn boolean_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> bool,
+    ) -> crate::Result<bool> {
+        self.evaluate(context).map(|v| v.boolean_or_else(default))
+    }
+
+    pub fn string_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Rc<String>,
+    ) -> crate::Result<Rc<String>> {
+        self.evaluate(context).map(|v| v.string_or_else(default))
+    }
+
+    pub fn symbol_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Symbol,
+    ) -> crate::Result<Symbol> {
+        self.evaluate(context).map(|v| v.symbol_or_else(default))
+    }
+
+    pub fn force_symbol_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> Symbol,
+    ) -> crate::Result<Symbol> {
+        self.evaluate(context).map(|v| v.force_symbol_or_else(context, default))
+    }
+
+    pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
+        self.unevaluated().variable_or_else(default)
+    }
+
+    pub fn array_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> ArrayRef,
+    ) -> crate::Result<ArrayRef> {
+        self.evaluate(context).map(|v| v.array_or_else(default))
+    }
+
+    pub fn command_or_else(&self, default: impl FnOnce() -> Rc<NodeCommand>) -> Rc<NodeCommand> {
+        self.unevaluated().command_or_else(default)
+    }
+
+    pub fn property_or_else(&self, default: impl FnOnce() -> Rc<NodeProperty>) -> Rc<NodeProperty> {
+        self.unevaluated().property_or_else(default)
     }
 
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {

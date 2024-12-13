@@ -16,11 +16,11 @@ impl Variable {
         Self { symbol }
     }
 
-    pub fn symbol(&self) -> &Symbol {
+    pub const fn symbol(&self) -> &Symbol {
         &self.symbol
     }
 
-    pub fn name(&self) -> &Rc<String> {
+    pub const fn name(&self) -> &Rc<String> {
         self.symbol.name()
     }
 
@@ -28,7 +28,7 @@ impl Variable {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set<S, T: Into<Node>>(&self, context: &mut Context<S>, value: T) {
+    pub fn set<S>(&self, context: &mut Context<S>, value: impl Into<Node>) {
         context.set_variable(&self.symbol, value)
     }
 }

@@ -15,7 +15,7 @@ pub struct Symbol {
 
 impl Symbol {
     /// Returns the underlying name of this symbol.
-    pub fn name(&self) -> &Rc<String> {
+    pub const fn name(&self) -> &Rc<String> {
         &self.name
     }
 }

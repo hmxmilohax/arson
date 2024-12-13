@@ -27,7 +27,7 @@ pub mod unary {
         // Forward to arithmetic operator
         let add_args = [args.get(0)?.clone(), Node::from(1)];
         let result = binary::add(context, NodeSlice::new(&add_args))?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
@@ -37,7 +37,7 @@ pub mod unary {
         // Forward to arithmetic operator
         let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
         let result = binary::subtract(context, NodeSlice::new(&subtract_args))?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
@@ -112,31 +112,31 @@ pub mod binary {
 
     pub fn add_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::add(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn subtract_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::subtract(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn multiply_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::multiply(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn divide_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::divide(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn modulo_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::modulo(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 }
@@ -183,19 +183,19 @@ pub mod bitwise {
 
     pub fn and_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::and(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn or_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::or(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn xor_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::xor(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 }

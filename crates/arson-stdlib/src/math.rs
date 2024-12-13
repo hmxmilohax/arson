@@ -63,7 +63,7 @@ pub mod basic {
     pub fn mask_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? & !args.integer(context, 1)?;
-        args.set(context, 0, result)?;
+        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 
@@ -78,7 +78,7 @@ pub mod basic {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, (0..IntegerValue::BITS).rev());
-        args.set(context, 0, result)?;
+        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 
@@ -86,14 +86,14 @@ pub mod basic {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, 0..IntegerValue::BITS);
-        args.set(context, 0, result)?;
+        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 
     pub fn count_bits<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.0.count_ones() as IntegerValue;
-        args.set(context, 0, result)?;
+        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 }
@@ -161,19 +161,19 @@ pub mod limit {
 
     pub fn min_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::min(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn max_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::max(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
     pub fn clamp_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let result = self::clamp(context, args)?;
-        args.set(context, 0, result.clone())?;
+        args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
