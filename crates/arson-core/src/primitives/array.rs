@@ -391,27 +391,31 @@ impl NodeSlice {
         value_or!(self, context, index, Node::string_or, default)
     }
 
-    pub fn symbol_or<S, N>(&self, context: &mut Context<S>, index: usize, default: N) -> crate::Result<Symbol>
-    where
-        Context<S>: MakeSymbol<N>,
-    {
+    pub fn symbol_or<S>(
+        &self,
+        context: &mut Context<S>,
+        index: usize,
+        default: impl IntoSymbol,
+    ) -> crate::Result<Symbol> {
         // inlined value_or!, not making a derivative just to handle this case lol
         if let Some(node) = self.get_opt(index) {
             node.symbol_or(context, default)
         } else {
-            Ok(context.make_symbol(default))
+            Ok(default.into_symbol(context))
         }
     }
 
-    pub fn force_symbol_or<S, N>(&self, context: &mut Context<S>, index: usize, default: N) -> crate::Result<Symbol>
-    where
-        Context<S>: MakeSymbol<N>,
-    {
+    pub fn force_symbol_or<S>(
+        &self,
+        context: &mut Context<S>,
+        index: usize,
+        default: impl IntoSymbol,
+    ) -> crate::Result<Symbol> {
         // inlined value_or!, not making a derivative just to handle this case lol
         if let Some(node) = self.get_opt(index) {
             node.force_symbol_or(context, default)
         } else {
-            Ok(context.make_symbol(default))
+            Ok(default.into_symbol(context))
         }
     }
 
@@ -552,7 +556,7 @@ impl NodeSlice {
 /// This trait is primarily just a helper and is not meant to be implemented directly,
 /// though nothing will go wrong if you do (barring any logic errors in said implementation).
 pub trait FindDataPredicate {
-    fn matches(this: &Self, value: &NodeValue) -> bool;
+    fn matches(&self, value: &NodeValue) -> bool;
 }
 
 // No blanket implementation is provided to allow all values which are comparable to NodeValue,
@@ -563,7 +567,8 @@ pub trait FindDataPredicate {
 macro_rules! find_pred_impl {
     ($type:ty => |$predicate:ident, $value:ident| $block:expr) => {
         impl FindDataPredicate for $type {
-            fn matches($predicate: &Self, $value: &NodeValue) -> bool {
+            fn matches(&self, $value: &NodeValue) -> bool {
+                let $predicate = self;
                 $block
             }
         }
@@ -571,8 +576,8 @@ macro_rules! find_pred_impl {
         // Using a blanket implementation for this isn't possible due to the
         // impl for Fn(&NodeValue) -> bool, which inherently handles references
         impl FindDataPredicate for &$type {
-            fn matches(this: &Self, value: &NodeValue) -> bool {
-                FindDataPredicate::matches(*this, value)
+            fn matches(&self, value: &NodeValue) -> bool {
+                FindDataPredicate::matches(*self, value)
             }
         }
     };
@@ -585,8 +590,8 @@ find_pred_impl!(Integer => |predicate, value| value == predicate);
 find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
 
 impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
-    fn matches(this: &Self, value: &NodeValue) -> bool {
-        this(value)
+    fn matches(&self, value: &NodeValue) -> bool {
+        self(value)
     }
 }
 
@@ -659,7 +664,7 @@ impl NodeSlice {
                 continue;
             };
             if let Ok(node) = array.borrow()?.unevaluated(0) {
-                if FindDataPredicate::matches(&predicate, node) {
+                if predicate.matches(node) {
                     return Ok(array.clone());
                 }
             };
@@ -681,7 +686,7 @@ impl NodeSlice {
                 continue;
             };
 
-            if FindDataPredicate::matches(&predicate, node) {
+            if predicate.matches(node) {
                 return Some(array.clone());
             }
         }

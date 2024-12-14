@@ -431,21 +431,18 @@ impl NodeValue {
 }
 
 pub trait SymbolDefault {
-    fn into(self) -> Symbol;
+    fn into_symbol(self) -> Symbol;
 }
 
 impl SymbolDefault for &Symbol {
-    fn into(self) -> Symbol {
+    fn into_symbol(self) -> Symbol {
         self.clone()
     }
 }
 
-impl<S, N> SymbolDefault for (&mut Context<S>, N)
-where
-    Context<S>: MakeSymbol<N>,
-{
-    fn into(self) -> Symbol {
-        self.0.make_symbol(self.1)
+impl<S, N: IntoSymbol> SymbolDefault for (&mut Context<S>, N) {
+    fn into_symbol(self) -> Symbol {
+        self.1.into_symbol(self.0)
     }
 }
 
@@ -471,14 +468,11 @@ impl NodeValue {
     }
 
     pub fn symbol_or(&self, default: impl SymbolDefault) -> Symbol {
-        self.symbol().cloned().unwrap_or_else(|| default.into())
+        self.symbol().cloned().unwrap_or_else(|| default.into_symbol())
     }
 
-    pub fn force_symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> Symbol
-    where
-        Context<S>: MakeSymbol<N>,
-    {
-        self.force_symbol(context).unwrap_or_else(|| context.make_symbol(default))
+    pub fn force_symbol_or<S>(&self, context: &mut Context<S>, default: impl IntoSymbol) -> Symbol {
+        self.force_symbol(context).unwrap_or_else(|| default.into_symbol(context))
     }
 
     pub fn variable_or(&self, default: &Variable) -> Variable {
@@ -802,17 +796,15 @@ impl Node {
         self.evaluate(context).map(|v| v.string_or(default))
     }
 
-    pub fn symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> crate::Result<Symbol>
-    where
-        Context<S>: MakeSymbol<N>,
-    {
+    pub fn symbol_or<S>(&self, context: &mut Context<S>, default: impl IntoSymbol) -> crate::Result<Symbol> {
         self.evaluate(context).map(|v| v.symbol_or((context, default)))
     }
 
-    pub fn force_symbol_or<S, N>(&self, context: &mut Context<S>, default: N) -> crate::Result<Symbol>
-    where
-        Context<S>: MakeSymbol<N>,
-    {
+    pub fn force_symbol_or<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl IntoSymbol,
+    ) -> crate::Result<Symbol> {
         self.evaluate(context).map(|v| v.force_symbol_or(context, default))
     }
 
