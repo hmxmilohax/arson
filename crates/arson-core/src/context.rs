@@ -18,6 +18,10 @@ pub enum ExecutionError {
     Failure(String),
 }
 
+#[allow(
+    clippy::partial_pub_fields,
+    reason = "The `state` field is solely external and has no impact on internal invariants"
+)]
 pub struct Context<State> {
     pub state: State,
 
