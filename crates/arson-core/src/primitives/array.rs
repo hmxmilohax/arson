@@ -160,18 +160,25 @@ impl NodeSlice {
     pub fn get_mut_opt<I: SliceIndex<[Node]>>(&mut self, index: I) -> Option<&mut I::Output> {
         self.nodes.get_mut(index)
     }
+
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
+    }
 }
 
 macro_rules! value_or {
-    ($self:ident, $context:ident, $index:ident, $map:expr, $default:ident) => {
-        if let Some(node) = $self.get_opt($index) {
+    ($value:expr, $context:ident, $map:expr, $default:ident) => {
+        value_or!($value, $context, $map, $default => $default.clone())
+    };
+    ($value:expr, $context:ident, $map:expr, $default:ident => $make_default:expr) => {
+        if let Some(node) = $value {
             $map(node, $context, $default)
         } else {
-            Ok($default.clone())
+            Ok($make_default)
         }
     };
-    ($self:ident, $index:ident, $map:expr, $default:ident) => {
-        if let Some(node) = $self.get_opt($index) {
+    ($value:expr, $map:expr, $default:ident) => {
+        if let Some(node) = $value {
             $map(node, $default)
         } else {
             $default.clone()
@@ -180,19 +187,40 @@ macro_rules! value_or {
 }
 
 macro_rules! value_or_else {
-    ($self:ident, $context:ident, $index:ident, $map:expr, $default:ident) => {
-        if let Some(node) = $self.get_opt($index) {
+    ($value:expr, $context:ident, $map:expr, $default:expr) => {
+        if let Some(node) = $value {
             $map(node, $context, $default)
         } else {
             Ok($default())
         }
     };
-    ($self:ident, $index:ident, $map:expr, $default:ident) => {
-        if let Some(node) = $self.get_opt($index) {
+    ($value:expr, $map:expr, $default:ident) => {
+        if let Some(node) = $value {
             $map(node, $default)
         } else {
             $default()
         }
+    };
+}
+
+macro_rules! index_value_or {
+    ($self:ident, $context:ident, $index:ident, $map:expr, $default:ident) => {
+        value_or!($self.get_opt($index), $context, $map, $default)
+    };
+    ($self:ident, $context:ident, $index:ident, $map:expr, $default:ident => $make_default:expr) => {
+        value_or!($self.get_opt($index), $context, $map, $default => $make_default)
+    };
+    ($self:ident, $index:ident, $map:expr, $default:ident) => {
+        value_or!($self.get_opt($index), $map, $default)
+    };
+}
+
+macro_rules! index_value_or_else {
+    ($self:ident, $context:ident, $index:ident, $map:expr, $default:ident) => {
+        value_or_else!($self.get_opt($index), $context, $map, $default)
+    };
+    ($self:ident, $index:ident, $map:expr, $default:ident) => {
+        value_or_else!($self.get_opt($index), $map, $default)
     };
 }
 
@@ -311,7 +339,9 @@ impl NodeSlice {
     }
 
     pub fn set_variable_opt<S>(&self, context: &mut Context<S>, index: usize, value: impl Into<Node>) {
-        self.get_opt(index).map(|n| n.set_variable_opt(context, value));
+        if let Some(node) = self.get_opt(index) {
+            node.set_variable_opt(context, value);
+        }
     }
 
     pub fn array_opt<S>(&self, context: &mut Context<S>, index: usize) -> Option<crate::Result<ArrayRef>> {
@@ -352,7 +382,7 @@ impl NodeSlice {
         index: usize,
         default: Integer,
     ) -> crate::Result<Integer> {
-        value_or!(self, context, index, Node::integer_or, default)
+        index_value_or!(self, context, index, Node::integer_or, default)
     }
 
     pub fn float_or<S>(
@@ -361,7 +391,7 @@ impl NodeSlice {
         index: usize,
         default: FloatValue,
     ) -> crate::Result<FloatValue> {
-        value_or!(self, context, index, Node::float_or, default)
+        index_value_or!(self, context, index, Node::float_or, default)
     }
 
     pub fn number_or<S>(
@@ -370,7 +400,7 @@ impl NodeSlice {
         index: usize,
         default: Number,
     ) -> crate::Result<Number> {
-        value_or!(self, context, index, Node::number_or, default)
+        index_value_or!(self, context, index, Node::number_or, default)
     }
 
     pub fn boolean_or<S>(
@@ -379,7 +409,7 @@ impl NodeSlice {
         index: usize,
         default: bool,
     ) -> crate::Result<bool> {
-        value_or!(self, context, index, Node::boolean_or, default)
+        index_value_or!(self, context, index, Node::boolean_or, default)
     }
 
     pub fn string_or<S>(
@@ -388,7 +418,7 @@ impl NodeSlice {
         index: usize,
         default: &Rc<String>,
     ) -> crate::Result<Rc<String>> {
-        value_or!(self, context, index, Node::string_or, default)
+        index_value_or!(self, context, index, Node::string_or, default)
     }
 
     pub fn symbol_or<S>(
@@ -397,12 +427,7 @@ impl NodeSlice {
         index: usize,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        // inlined value_or!, not making a derivative just to handle this case lol
-        if let Some(node) = self.get_opt(index) {
-            node.symbol_or(context, default)
-        } else {
-            Ok(default.into_symbol(context))
-        }
+        index_value_or!(self, context, index, Node::symbol_or, default => default.into_symbol(context))
     }
 
     pub fn force_symbol_or<S>(
@@ -411,16 +436,11 @@ impl NodeSlice {
         index: usize,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        // inlined value_or!, not making a derivative just to handle this case lol
-        if let Some(node) = self.get_opt(index) {
-            node.force_symbol_or(context, default)
-        } else {
-            Ok(default.into_symbol(context))
-        }
+        index_value_or!(self, context, index, Node::force_symbol_or, default => default.into_symbol(context))
     }
 
     pub fn variable_or(&self, index: usize, default: &Variable) -> Variable {
-        value_or!(self, index, Node::variable_or, default)
+        index_value_or!(self, index, Node::variable_or, default)
     }
 
     pub fn array_or<S>(
@@ -429,15 +449,15 @@ impl NodeSlice {
         index: usize,
         default: &ArrayRef,
     ) -> crate::Result<ArrayRef> {
-        value_or!(self, context, index, Node::array_or, default)
+        index_value_or!(self, context, index, Node::array_or, default)
     }
 
     pub fn command_or(&self, index: usize, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
-        value_or!(self, index, Node::command_or, default)
+        index_value_or!(self, index, Node::command_or, default)
     }
 
     pub fn property_or(&self, index: usize, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
-        value_or!(self, index, Node::property_or, default)
+        index_value_or!(self, index, Node::property_or, default)
     }
 
     pub fn unevaluated_or_else(&self, index: usize, default: impl FnOnce() -> NodeValue) -> NodeValue {
@@ -463,7 +483,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Integer,
     ) -> crate::Result<Integer> {
-        value_or_else!(self, context, index, Node::integer_or_else, default)
+        index_value_or_else!(self, context, index, Node::integer_or_else, default)
     }
 
     pub fn float_or_else<S>(
@@ -472,7 +492,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> FloatValue,
     ) -> crate::Result<FloatValue> {
-        value_or_else!(self, context, index, Node::float_or_else, default)
+        index_value_or_else!(self, context, index, Node::float_or_else, default)
     }
 
     pub fn number_or_else<S>(
@@ -481,7 +501,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Number,
     ) -> crate::Result<Number> {
-        value_or_else!(self, context, index, Node::number_or_else, default)
+        index_value_or_else!(self, context, index, Node::number_or_else, default)
     }
 
     pub fn boolean_or_else<S>(
@@ -490,7 +510,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> bool,
     ) -> crate::Result<bool> {
-        value_or_else!(self, context, index, Node::boolean_or_else, default)
+        index_value_or_else!(self, context, index, Node::boolean_or_else, default)
     }
 
     pub fn string_or_else<S>(
@@ -499,7 +519,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Rc<String>,
     ) -> crate::Result<Rc<String>> {
-        value_or_else!(self, context, index, Node::string_or_else, default)
+        index_value_or_else!(self, context, index, Node::string_or_else, default)
     }
 
     pub fn symbol_or_else<S>(
@@ -508,7 +528,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Symbol,
     ) -> crate::Result<Symbol> {
-        value_or_else!(self, context, index, Node::symbol_or_else, default)
+        index_value_or_else!(self, context, index, Node::symbol_or_else, default)
     }
 
     pub fn force_symbol_or_else<S>(
@@ -517,11 +537,11 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Symbol,
     ) -> crate::Result<Symbol> {
-        value_or_else!(self, context, index, Node::force_symbol_or_else, default)
+        index_value_or_else!(self, context, index, Node::force_symbol_or_else, default)
     }
 
     pub fn variable_or_else(&self, index: usize, default: impl FnOnce() -> Variable) -> Variable {
-        value_or_else!(self, index, Node::variable_or_else, default)
+        index_value_or_else!(self, index, Node::variable_or_else, default)
     }
 
     pub fn array_or_else<S>(
@@ -530,7 +550,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> ArrayRef,
     ) -> crate::Result<ArrayRef> {
-        value_or_else!(self, context, index, Node::array_or_else, default)
+        index_value_or_else!(self, context, index, Node::array_or_else, default)
     }
 
     pub fn command_or_else(
@@ -538,7 +558,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Rc<NodeCommand>,
     ) -> Rc<NodeCommand> {
-        value_or_else!(self, index, Node::command_or_else, default)
+        index_value_or_else!(self, index, Node::command_or_else, default)
     }
 
     pub fn property_or_else(
@@ -546,7 +566,7 @@ impl NodeSlice {
         index: usize,
         default: impl FnOnce() -> Rc<NodeProperty>,
     ) -> Rc<NodeProperty> {
-        value_or_else!(self, index, Node::property_or_else, default)
+        index_value_or_else!(self, index, Node::property_or_else, default)
     }
 }
 
@@ -655,9 +675,53 @@ impl IntoIntoDataPredicate for &String {
     }
 }
 
+macro_rules! predicate_value_or {
+    ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident) => {
+        value_or!(
+            &$self.find_data_opt($predicate.into_predicate($context)),
+            $context,
+            $map,
+            $default
+        )
+    };
+    ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident => $make_default:expr) => {
+        value_or!(
+            &$self.find_data_opt($predicate.into_predicate($context)),
+            $context,
+            $map,
+            $default => $make_default
+        )
+    };
+    ($self:ident, $predicate:ident, $map:expr, $default:ident) => {
+        value_or!(&$self.find_data_opt($predicate), $map, $default)
+    };
+}
+
+macro_rules! predicate_value_or_else {
+    ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident) => {
+        value_or_else!(
+            &$self.find_data_opt($predicate.into_predicate($context)),
+            $context,
+            $map,
+            $default
+        )
+    };
+    ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident => $make_default:expr) => {
+        value_or_else!(
+            &$self.find_data_opt($predicate.into_predicate($context)),
+            $context,
+            $map,
+            $default => $make_default
+        )
+    };
+    ($self:ident, $predicate:ident, $map:expr, $default:ident) => {
+        value_or_else!(&$self.find_data_opt($predicate), $map, $default)
+    };
+}
+
 // Data retrieval by predicate
 impl NodeSlice {
-    pub fn find_array(&self, predicate: impl IntoDataPredicate) -> crate::Result<ArrayRef> {
+    pub fn find_tag(&self, predicate: impl IntoDataPredicate) -> crate::Result<ArrayRef> {
         let predicate = predicate.into_predicate();
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
@@ -673,41 +737,11 @@ impl NodeSlice {
         Err(ArrayError::NotFound.into())
     }
 
-    pub fn find_array_opt(&self, predicate: impl IntoDataPredicate) -> Option<ArrayRef> {
-        let predicate = predicate.into_predicate();
-        for node in self.iter() {
-            let NodeValue::Array(array) = node.unevaluated() else {
-                continue;
-            };
-            let Ok(borrow) = array.borrow() else {
-                continue;
-            };
-            let Ok(node) = borrow.unevaluated(0) else {
-                continue;
-            };
-
-            if predicate.matches(node) {
-                return Some(array.clone());
-            }
-        }
-
-        None
-    }
-
     pub fn find_data(&self, predicate: impl IntoDataPredicate) -> crate::Result<Node> {
-        let array = self.find_array(predicate)?;
+        let array = self.find_tag(predicate)?;
         let array = array.borrow()?;
         arson_assert_len!(array, 2, "Expected only one value in array");
         array.get(1).cloned()
-    }
-
-    pub fn find_data_opt<S>(&self, predicate: impl IntoDataPredicate) -> Option<Node> {
-        let array = self.find_array_opt(predicate)?;
-        let array = array.borrow().ok()?;
-        if array.len() != 2 {
-            return None;
-        }
-        array.get_opt(1).cloned()
     }
 
     pub fn find_integer<S>(
@@ -758,8 +792,24 @@ impl NodeSlice {
         self.find_data(predicate.into_predicate(context))?.symbol(context)
     }
 
+    pub fn find_symbol_forced<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<Symbol> {
+        self.find_data(predicate.into_predicate(context))?.force_symbol(context)
+    }
+
     pub fn find_variable(&self, predicate: impl IntoDataPredicate) -> crate::Result<Variable> {
         self.find_data(predicate)?.variable().cloned()
+    }
+
+    pub fn find_array<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<ArrayRef> {
+        self.find_data(predicate.into_predicate(context))?.array(context)
     }
 
     pub fn find_command(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeCommand>> {
@@ -769,9 +819,330 @@ impl NodeSlice {
     pub fn find_property(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeProperty>> {
         self.find_data(predicate)?.property().cloned()
     }
+}
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
+// Optional data retrieval by predicate
+impl NodeSlice {
+    pub fn find_tag_opt(&self, predicate: impl IntoDataPredicate) -> Option<ArrayRef> {
+        let predicate = predicate.into_predicate();
+        for node in self.iter() {
+            let NodeValue::Array(array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(borrow) = array.borrow() else {
+                continue;
+            };
+            let Ok(node) = borrow.unevaluated(0) else {
+                continue;
+            };
+
+            if predicate.matches(node) {
+                return Some(array.clone());
+            }
+        }
+
+        None
+    }
+
+    pub fn find_data_opt(&self, predicate: impl IntoDataPredicate) -> Option<Node> {
+        let array = self.find_tag_opt(predicate)?;
+        let array = array.borrow().ok()?;
+        if array.len() != 2 {
+            return None;
+        }
+        array.get_opt(1).cloned()
+    }
+
+    pub fn find_integer_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<Integer>> {
+        self.find_data_opt(predicate.into_predicate(context))?.integer_opt(context)
+    }
+
+    pub fn find_float_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<FloatValue>> {
+        self.find_data_opt(predicate.into_predicate(context))?.float_opt(context)
+    }
+
+    pub fn find_number_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<Number>> {
+        self.find_data_opt(predicate.into_predicate(context))?.number_opt(context)
+    }
+
+    pub fn find_boolean_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<bool>> {
+        self.find_data_opt(predicate.into_predicate(context))?.boolean_opt(context)
+    }
+
+    pub fn find_string_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<Rc<String>>> {
+        self.find_data_opt(predicate.into_predicate(context))?.string_opt(context)
+    }
+
+    pub fn find_symbol_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<Symbol>> {
+        self.find_data_opt(predicate.into_predicate(context))?.symbol_opt(context)
+    }
+
+    pub fn find_symbol_forced_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<Symbol>> {
+        self.find_data_opt(predicate.into_predicate(context))?
+            .force_symbol_opt(context)
+    }
+
+    pub fn find_variable_opt(&self, predicate: impl IntoDataPredicate) -> Option<Variable> {
+        self.find_data_opt(predicate)?.variable_opt().cloned()
+    }
+
+    pub fn find_array_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<ArrayRef>> {
+        self.find_data_opt(predicate.into_predicate(context))?.array_opt(context)
+    }
+
+    pub fn find_command_opt(&self, predicate: impl IntoDataPredicate) -> Option<Rc<NodeCommand>> {
+        self.find_data_opt(predicate)?.command_opt().cloned()
+    }
+
+    pub fn find_property_opt(&self, predicate: impl IntoDataPredicate) -> Option<Rc<NodeProperty>> {
+        self.find_data_opt(predicate)?.property_opt().cloned()
+    }
+}
+
+// Data retrieval by predicate, with defaults
+impl NodeSlice {
+    pub fn find_tag_or(&self, predicate: impl IntoDataPredicate, default: &ArrayRef) -> ArrayRef {
+        self.find_tag_opt(predicate).unwrap_or_else(|| default.clone())
+    }
+
+    pub fn find_data_or(&self, predicate: impl IntoDataPredicate, default: &Node) -> Node {
+        self.find_data_opt(predicate).unwrap_or_else(|| default.clone())
+    }
+
+    pub fn find_integer_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: Integer,
+    ) -> crate::Result<Integer> {
+        predicate_value_or!(self, context, predicate, Node::integer_or, default)
+    }
+
+    pub fn find_float_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: FloatValue,
+    ) -> crate::Result<FloatValue> {
+        predicate_value_or!(self, context, predicate, Node::float_or, default)
+    }
+
+    pub fn find_number_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: Number,
+    ) -> crate::Result<Number> {
+        predicate_value_or!(self, context, predicate, Node::number_or, default)
+    }
+
+    pub fn find_boolean_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: bool,
+    ) -> crate::Result<bool> {
+        predicate_value_or!(self, context, predicate, Node::boolean_or, default)
+    }
+
+    pub fn find_string_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: &Rc<String>,
+    ) -> crate::Result<Rc<String>> {
+        predicate_value_or!(self, context, predicate, Node::string_or, default)
+    }
+
+    pub fn find_symbol_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl IntoSymbol,
+    ) -> crate::Result<Symbol> {
+        predicate_value_or!(self, context, predicate, Node::symbol_or, default => default.into_symbol(context))
+    }
+
+    pub fn find_force_symbol_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl IntoSymbol,
+    ) -> crate::Result<Symbol> {
+        predicate_value_or!(self, context, predicate, Node::force_symbol_or, default => default.into_symbol(context))
+    }
+
+    pub fn find_variable_or(&self, predicate: impl IntoDataPredicate, default: &Variable) -> Variable {
+        predicate_value_or!(self, predicate, Node::variable_or, default)
+    }
+
+    pub fn find_array_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: &ArrayRef,
+    ) -> crate::Result<ArrayRef> {
+        predicate_value_or!(self, context, predicate, Node::array_or, default)
+    }
+
+    pub fn find_command_or(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: &Rc<NodeCommand>,
+    ) -> Rc<NodeCommand> {
+        predicate_value_or!(self, predicate, Node::command_or, default)
+    }
+
+    pub fn find_property_or(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: &Rc<NodeProperty>,
+    ) -> Rc<NodeProperty> {
+        predicate_value_or!(self, predicate, Node::property_or, default)
+    }
+
+    pub fn find_tag_or_else(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: impl FnOnce() -> ArrayRef,
+    ) -> ArrayRef {
+        self.find_tag_opt(predicate).unwrap_or_else(default)
+    }
+
+    pub fn find_data_or_else(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: impl FnOnce() -> Node,
+    ) -> Node {
+        self.find_data_opt(predicate).unwrap_or_else(default)
+    }
+
+    pub fn find_integer_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> Integer,
+    ) -> crate::Result<Integer> {
+        predicate_value_or_else!(self, context, predicate, Node::integer_or_else, default)
+    }
+
+    pub fn find_float_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> FloatValue,
+    ) -> crate::Result<FloatValue> {
+        predicate_value_or_else!(self, context, predicate, Node::float_or_else, default)
+    }
+
+    pub fn find_number_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> Number,
+    ) -> crate::Result<Number> {
+        predicate_value_or_else!(self, context, predicate, Node::number_or_else, default)
+    }
+
+    pub fn find_boolean_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> bool,
+    ) -> crate::Result<bool> {
+        predicate_value_or_else!(self, context, predicate, Node::boolean_or_else, default)
+    }
+
+    pub fn find_string_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> Rc<String>,
+    ) -> crate::Result<Rc<String>> {
+        predicate_value_or_else!(self, context, predicate, Node::string_or_else, default)
+    }
+
+    pub fn find_symbol_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> Symbol,
+    ) -> crate::Result<Symbol> {
+        predicate_value_or_else!(self, context, predicate, Node::symbol_or_else, default)
+    }
+
+    pub fn find_force_symbol_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> Symbol,
+    ) -> crate::Result<Symbol> {
+        predicate_value_or_else!(self, context, predicate, Node::force_symbol_or_else, default)
+    }
+
+    pub fn find_variable_or_else(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: impl FnOnce() -> Variable,
+    ) -> Variable {
+        predicate_value_or_else!(self, predicate, Node::variable_or_else, default)
+    }
+
+    pub fn find_array_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> ArrayRef,
+    ) -> crate::Result<ArrayRef> {
+        predicate_value_or_else!(self, context, predicate, Node::array_or_else, default)
+    }
+
+    pub fn find_command_or_else(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: impl FnOnce() -> Rc<NodeCommand>,
+    ) -> Rc<NodeCommand> {
+        predicate_value_or_else!(self, predicate, Node::command_or_else, default)
+    }
+
+    pub fn find_property_or_else(
+        &self,
+        predicate: impl IntoDataPredicate,
+        default: impl FnOnce() -> Rc<NodeProperty>,
+    ) -> Rc<NodeProperty> {
+        predicate_value_or_else!(self, predicate, Node::property_or_else, default)
     }
 }
 
