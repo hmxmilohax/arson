@@ -107,8 +107,8 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
                     NodeResult::Value(node) => array.push(node),
                     NodeResult::IncludeFile(mut file) => array.append(&mut file),
                     NodeResult::IncludeMacro(define) => array.extend_from_slice(define),
-                    NodeResult::MergeFile(file) => array.merge(&file),
-                    NodeResult::MergeMacro(define) => array.merge(define),
+                    NodeResult::MergeFile(file) => array.merge_tags(&file),
+                    NodeResult::MergeMacro(define) => array.merge_tags(define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {

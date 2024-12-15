@@ -79,6 +79,9 @@ pub struct ArrayRef {
     inner: Rc<RefCell<NodeArray>>,
 }
 
+pub type ArrayBorrow<'a> = std::cell::Ref<'a, NodeArray>;
+pub type ArrayBorrowMut<'a> = std::cell::RefMut<'a, NodeArray>;
+
 impl ArrayRef {
     pub fn new(array: NodeArray) -> Self {
         Self { inner: Rc::new(RefCell::new(array)) }
@@ -1221,7 +1224,10 @@ impl<'slice> IntoIterator for &'slice NodeSlice {
     type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        #[allow(clippy::into_iter_on_ref)]
+        #[expect(
+            clippy::into_iter_on_ref,
+            reason = "intentionally forwarding to into_iter"
+        )]
         self.nodes.into_iter()
     }
 }
@@ -1251,35 +1257,6 @@ impl NodeArray {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self { nodes: Vec::with_capacity(capacity) }
-    }
-
-    pub fn merge(&mut self, source: &NodeArray) {
-        for node in source.iter() {
-            let NodeValue::Array(array) = node.unevaluated() else {
-                continue;
-            };
-            let Ok(borrow) = array.borrow() else {
-                continue;
-            };
-            let Ok(tag) = borrow.get(0) else {
-                continue;
-            };
-
-            // todo: there's probably a better way to handle finding an array by NodeValue, but for now this will do
-            // unsure if this should be the hard-set behavior for NodeValue
-            match self.find_array_opt(|value: &NodeValue| match (tag.unevaluated(), value) {
-                (NodeValue::Symbol(left), NodeValue::Symbol(right)) => *left == *right,
-                (NodeValue::Integer(left), NodeValue::Integer(right)) => *left == *right,
-                _ => false,
-            }) {
-                Some(found) => {
-                    if let Ok(mut found_borrow) = found.borrow_mut() {
-                        found_borrow.merge(&borrow)
-                    }
-                },
-                None => self.push(NodeValue::Array(array.clone())),
-            }
-        }
     }
 
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
@@ -1346,6 +1323,83 @@ impl NodeArray {
     }
 }
 
+// Merge/replace procedures
+impl NodeArray {
+    pub fn merge_tags(&mut self, source: &NodeArray) {
+        for node in source {
+            let NodeValue::Array(source_array) = node.unevaluated() else {
+                continue;
+            };
+            let Ok(source_borrow) = source_array.borrow() else {
+                continue;
+            };
+            let Some(source_tag) = source_borrow.get_opt(0) else {
+                continue;
+            };
+
+            let predicate: &dyn Fn(&NodeValue) -> bool = match source_tag.unevaluated() {
+                NodeValue::Symbol(left) => &move |right| *left == *right,
+                NodeValue::Integer(left) => &move |right| *left == *right,
+                _ => continue,
+            };
+
+            match self.find_tag_opt(predicate) {
+                Some(found) => {
+                    if let Ok(mut dest_borrow) = found.borrow_mut() {
+                        dest_borrow.merge_tags(&source_borrow)
+                    }
+                },
+                None => self.push(source_array),
+            }
+        }
+    }
+
+    pub fn replace_tags(&mut self, source: &NodeArray) {
+        // returns whether an array was found within `dest`,
+        // used to determine whether or not to replace the node wholesale
+        fn replace(dest: &mut NodeArray, source: &NodeArray) -> bool {
+            let mut array_found = false;
+
+            for dest_node in dest {
+                let NodeValue::Array(dest_array) = dest_node.unevaluated() else {
+                    continue;
+                };
+
+                array_found = true;
+                let Ok(mut dest_borrow) = dest_array.borrow_mut() else {
+                    continue;
+                };
+                let Some(dest_tag) = dest_borrow.get_opt(0) else {
+                    continue;
+                };
+
+                let predicate: &dyn Fn(&NodeValue) -> bool = match dest_tag.unevaluated() {
+                    NodeValue::Symbol(left) => &move |right| *left == *right,
+                    NodeValue::Integer(left) => &move |right| *left == *right,
+                    _ => continue,
+                };
+
+                let Some(found) = source.find_tag_opt(predicate) else {
+                    continue;
+                };
+                let Ok(source_borrow) = found.borrow() else {
+                    continue;
+                };
+
+                if !replace(&mut dest_borrow, &source_borrow) {
+                    drop(dest_borrow);
+                    drop(source_borrow);
+                    *dest_node = found.into()
+                }
+            }
+
+            array_found
+        }
+
+        replace(self, source);
+    }
+}
+
 impl From<Vec<Node>> for NodeArray {
     fn from(value: Vec<Node>) -> Self {
         Self { nodes: value }
@@ -1397,7 +1451,6 @@ impl IntoIterator for NodeArray {
     type IntoIter = <Vec<Node> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        #[allow(clippy::into_iter_on_ref)]
         self.nodes.into_iter()
     }
 }
@@ -1407,8 +1460,24 @@ impl<'nodes> IntoIterator for &'nodes NodeArray {
     type IntoIter = <&'nodes Vec<Node> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        #[allow(clippy::into_iter_on_ref)]
-        self.nodes.iter()
+        #[expect(
+            clippy::into_iter_on_ref,
+            reason = "intentionally forwarding to into_iter"
+        )]
+        (&self.nodes).into_iter()
+    }
+}
+
+impl<'nodes> IntoIterator for &'nodes mut NodeArray {
+    type Item = <&'nodes mut Vec<Node> as IntoIterator>::Item;
+    type IntoIter = <&'nodes mut Vec<Node> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        #[expect(
+            clippy::into_iter_on_ref,
+            reason = "intentionally forwarding to into_iter"
+        )]
+        (&mut self.nodes).into_iter()
     }
 }
 
@@ -1485,7 +1554,6 @@ macro_rules! define_array_wrapper {
                 type IntoIter = <NodeArray as IntoIterator>::IntoIter;
 
                 fn into_iter(self) -> Self::IntoIter {
-                    #[allow(clippy::into_iter_on_ref)]
                     self.nodes.into_iter()
                 }
             }
@@ -1495,8 +1563,18 @@ macro_rules! define_array_wrapper {
                 type IntoIter = <&'nodes NodeArray as IntoIterator>::IntoIter;
 
                 fn into_iter(self) -> Self::IntoIter {
-                    #[allow(clippy::into_iter_on_ref)]
+                    #[expect(clippy::into_iter_on_ref, reason = "intentionally forwarding to into_iter")]
                     (&self.nodes).into_iter()
+                }
+            }
+
+            impl<'nodes> IntoIterator for &'nodes mut $name {
+                type Item = <&'nodes mut NodeArray as IntoIterator>::Item;
+                type IntoIter = <&'nodes mut NodeArray as IntoIterator>::IntoIter;
+
+                fn into_iter(self) -> Self::IntoIter {
+                    #[expect(clippy::into_iter_on_ref, reason = "intentionally forwarding to into_iter")]
+                    (&mut self.nodes).into_iter()
                 }
             }
         )+
@@ -1606,4 +1684,193 @@ fn write_nodes(
         }
     }
     f.write_char(r)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_tags() {
+        let mut context = Context::new(());
+
+        let sym1 = context.add_symbol("sym1");
+        let sym2 = context.add_symbol("sym2");
+        let sym_asdf = context.add_symbol("asdf");
+        let sym_jkl = context.add_symbol("jkl");
+
+        /*
+        (sym1 5)
+        (sym2
+            (asdf 100)
+            (jkl 250)
+            (1
+                (5 "foo")
+                (10 "baz")
+            )
+        )
+        (4 4)
+        */
+        #[rustfmt::skip] // using DTA-style formatting here
+        let mut dest = arson_array![
+            arson_array![sym1.clone(), 5],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 100],
+                arson_array![sym_jkl.clone(), 250],
+                arson_array![1,
+                    arson_array![5, "foo"],
+                    arson_array![10, "baz"],
+                ],
+            ],
+            arson_array![4, 4],
+        ];
+
+        /*
+        (sym1 1)
+        (sym2
+            (asdf 10)
+            (jkl 50)
+            (1
+                (10 "bar")
+            )
+        )
+        (3 3)
+        */
+        #[rustfmt::skip]
+        let source = arson_array![
+            arson_array![sym1.clone(), 1],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 10],
+                arson_array![sym_jkl.clone(), 50],
+                arson_array![1,
+                    arson_array![10, "bar"],
+                ],
+            ],
+            arson_array![3, 3],
+        ];
+
+        /*
+        (sym1 5)
+        (sym2
+            (asdf 100)
+            (jkl 250)
+            (1
+                (5 "foo")
+                (10 "baz")
+            )
+        )
+        (3 3)
+        (4 4)
+        */
+        #[rustfmt::skip]
+        let dest_expected = arson_array![
+            arson_array![sym1.clone(), 5],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 100],
+                arson_array![sym_jkl.clone(), 250],
+                arson_array![1,
+                    arson_array![5, "foo"],
+                    arson_array![10, "baz"],
+                ],
+            ],
+            arson_array![4, 4],
+            arson_array![3, 3],
+        ];
+        let source_expected = source.clone();
+
+        dest.merge_tags(&source);
+        assert_eq!(dest, dest_expected);
+        assert_eq!(source, source_expected);
+    }
+
+    #[test]
+    fn replace_tags() {
+        let mut context = Context::new(());
+
+        let sym1 = context.add_symbol("sym1");
+        let sym2 = context.add_symbol("sym2");
+        let sym_asdf = context.add_symbol("asdf");
+        let sym_jkl = context.add_symbol("jkl");
+
+        /*
+        (sym1 5)
+        (sym2
+            (asdf 100)
+            (jkl 250)
+            (1
+                (5 "foo")
+                (10 "baz")
+            )
+        )
+        (4 4)
+        */
+        #[rustfmt::skip] // using DTA-style formatting here
+        let mut dest = arson_array![
+            arson_array![sym1.clone(), 5],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 100],
+                arson_array![sym_jkl.clone(), 250],
+                arson_array![1,
+                    arson_array![5, "foo"],
+                    arson_array![10, "baz"],
+                ],
+            ],
+            arson_array![4, 4],
+        ];
+
+        /*
+        (sym1 1)
+        (sym2
+            (asdf 10)
+            (jkl 50)
+            (1
+                (10 "bar")
+            )
+        )
+        (3 3)
+        */
+        #[rustfmt::skip]
+        let source = arson_array![
+            arson_array![sym1.clone(), 1],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 10],
+                arson_array![sym_jkl.clone(), 50],
+                arson_array![1,
+                    arson_array![10, "bar"],
+                ],
+            ],
+            arson_array![3, 3],
+        ];
+
+        /*
+        (sym1 1)
+        (sym2
+            (asdf 10)
+            (jkl 50)
+            (1
+                (5 "foo")
+                (10 "bar")
+            )
+        )
+        (4 4)
+        */
+        #[rustfmt::skip]
+        let dest_expected = arson_array![
+            arson_array![sym1.clone(), 1],
+            arson_array![sym2.clone(),
+                arson_array![sym_asdf.clone(), 10],
+                arson_array![sym_jkl.clone(), 50],
+                arson_array![1,
+                    arson_array![5, "foo"],
+                    arson_array![10, "bar"],
+                ],
+            ],
+            arson_array![4, 4],
+        ];
+        let source_expected = source.clone();
+
+        dest.replace_tags(&source);
+        assert_eq!(dest, dest_expected);
+        assert_eq!(source, source_expected);
+    }
 }
