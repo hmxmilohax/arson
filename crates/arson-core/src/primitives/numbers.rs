@@ -20,6 +20,22 @@ pub enum Number {
     Float(FloatValue),
 }
 
+impl Number {
+    pub fn integer(&self) -> Integer {
+        match self {
+            Number::Integer(value) => *value,
+            Number::Float(value) => Wrapping(*value as IntegerValue),
+        }
+    }
+
+    pub fn float(&self) -> FloatValue {
+        match self {
+            Number::Integer(value) => value.0 as FloatValue,
+            Number::Float(value) => *value,
+        }
+    }
+}
+
 impl From<Integer> for Number {
     fn from(value: Integer) -> Self {
         Self::Integer(value)

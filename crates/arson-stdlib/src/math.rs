@@ -131,29 +131,37 @@ pub mod limit {
     pub fn clamp<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
 
-        let min = match args.number(context, 0)? {
-            Number::Integer(min) => min,
-            Number::Float(min) => {
-                let max = args.float(context, 1)?;
-                let value = args.float(context, 2)?;
-                return Ok(value.clamp(min, max).into());
-            },
+        let min = args.number(context, 0)?;
+        let max = args.number(context, 1)?;
+        let value = args.number(context, 2)?;
+
+        _clamp(min, max, value)
+    }
+
+    fn _clamp(min: Number, max: Number, value: Number) -> ExecuteResult {
+        fn _integer_clamp(min: Integer, max: Integer, value: Integer) -> ExecuteResult {
+            arson_assert!(min <= max, "Invalid clamp range: min ({min}) is greater than max ({max})");
+            Ok(value.clamp(min, max).into())
+        }
+
+        fn _float_clamp(min: FloatValue, max: FloatValue, value: FloatValue) -> ExecuteResult {
+            arson_assert!(min <= max, "Invalid clamp range: min ({min}) is greater than max ({max})");
+            arson_assert!(!min.is_nan(), "Min cannot be NaN");
+            arson_assert!(!max.is_nan(), "Max cannot be NaN");
+            Ok(value.clamp(min, max).into())
+        }
+
+        let Number::Integer(min) = min else {
+            return _float_clamp(min.float(), max.float(), value.float());
         };
-        let max = match args.number(context, 1)? {
-            Number::Integer(max) => max,
-            Number::Float(max) => {
-                let value = args.float(context, 2)?;
-                return Ok(value.clamp(min.0 as FloatValue, max).into());
-            },
+        let Number::Integer(max) = max else {
+            return _float_clamp(min.0 as FloatValue, max.float(), value.float());
         };
-        let value = match args.number(context, 2)? {
-            Number::Integer(value) => value,
-            Number::Float(value) => {
-                return Ok(value.clamp(min.0 as FloatValue, max.0 as FloatValue).into());
-            },
+        let Number::Integer(value) = value else {
+            return _float_clamp(min.0 as FloatValue, max.0 as FloatValue, value.float());
         };
 
-        Ok(value.clamp(min, max).into())
+        _integer_clamp(min, max, value)
     }
 
     pub fn min_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
@@ -169,7 +177,13 @@ pub mod limit {
     }
 
     pub fn clamp_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
-        let result = self::clamp(context, args)?;
+        arson_assert_len!(args, 3);
+
+        let value = args.number(context, 0)?;
+        let min = args.number(context, 1)?;
+        let max = args.number(context, 2)?;
+
+        let result = _clamp(min, max, value)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
