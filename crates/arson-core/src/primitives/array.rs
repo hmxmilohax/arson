@@ -1563,7 +1563,6 @@ macro_rules! define_array_wrapper {
                 type IntoIter = <&'nodes NodeArray as IntoIterator>::IntoIter;
 
                 fn into_iter(self) -> Self::IntoIter {
-                    #[expect(clippy::into_iter_on_ref, reason = "intentionally forwarding to into_iter")]
                     (&self.nodes).into_iter()
                 }
             }
@@ -1573,7 +1572,6 @@ macro_rules! define_array_wrapper {
                 type IntoIter = <&'nodes mut NodeArray as IntoIterator>::IntoIter;
 
                 fn into_iter(self) -> Self::IntoIter {
-                    #[expect(clippy::into_iter_on_ref, reason = "intentionally forwarding to into_iter")]
                     (&mut self.nodes).into_iter()
                 }
             }

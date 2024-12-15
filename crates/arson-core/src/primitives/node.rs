@@ -259,7 +259,7 @@ define_node_types! {
         variant_cmp: {
             Symbol(other) => |value| {
                 left: value.partial_cmp(other.name()),
-                right: other.name().partial_cmp(&value),
+                right: other.name().partial_cmp(value),
             },
         },
         type_eq: {
@@ -395,7 +395,7 @@ impl NodeValue {
 
     pub fn force_symbol<S>(&self, context: &mut Context<S>) -> Option<Symbol> {
         match self {
-            Self::String(value) => Some(context.add_symbol(&value)),
+            Self::String(value) => Some(context.add_symbol(value)),
             Self::Symbol(value) => Some(value.clone()),
             _ => None,
         }
