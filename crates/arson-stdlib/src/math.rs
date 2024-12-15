@@ -78,7 +78,6 @@ pub mod basic {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, (0..IntegerValue::BITS).rev());
-        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 
@@ -86,14 +85,12 @@ pub mod basic {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, 0..IntegerValue::BITS);
-        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 
     pub fn count_bits<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.0.count_ones() as IntegerValue;
-        args.set_variable(context, 0, result)?;
         Ok(result.into())
     }
 }
