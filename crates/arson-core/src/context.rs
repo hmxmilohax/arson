@@ -76,6 +76,19 @@ impl<State> Context<State> {
         self.macros.get(&name)
     }
 
+    pub fn find_macro(&self, prefix: &str, predicate: impl FindDataPredicate) -> Option<&NodeArray> {
+        for (name, r#macro) in &self.macros {
+            let Some(tag) = r#macro.unevaluated_opt(0) else {
+                continue;
+            };
+            if predicate.matches(tag) && name.name().starts_with(prefix) {
+                return Some(r#macro);
+            }
+        }
+
+        None
+    }
+
     pub fn get_variable(&mut self, name: impl IntoSymbol) -> Node {
         let name = name.into_symbol(self);
         match self.variables.get(&name) {
