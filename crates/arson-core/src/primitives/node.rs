@@ -415,6 +415,20 @@ impl NodeValue {
         }
     }
 
+    pub fn borrow_array(&self) -> Option<crate::Result<ArrayBorrow<'_>>> {
+        match self {
+            Self::Array(value) => Some(value.borrow()),
+            _ => None,
+        }
+    }
+
+    pub fn borrow_array_mut(&self) -> Option<crate::Result<ArrayBorrowMut<'_>>> {
+        match self {
+            Self::Array(value) => Some(value.borrow_mut()),
+            _ => None,
+        }
+    }
+
     pub const fn command(&self) -> Option<&Rc<NodeCommand>> {
         match self {
             Self::Command(value) => Some(value),
