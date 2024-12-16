@@ -7,7 +7,8 @@ use std::fmt;
 use std::num::Wrapping;
 use std::rc::Rc;
 
-use crate::*;
+use crate::primitives::*;
+use crate::{arson_fail, Context, IntoSymbol};
 
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -42,6 +43,11 @@ macro_rules! define_node_types {
                 $(
                     from: {
                         $($from_type:ty => |$from_value:ident| $from_expr:expr,)+
+                    },
+                )?
+                $(
+                    try_from: {
+                        $($try_from_type:ty => |$try_from_value:ident| $try_from_expr:expr,)+
                     },
                 )?
                 $(
@@ -142,16 +148,6 @@ macro_rules! define_node_types {
             }
         }
 
-        impl<T> From<&T> for NodeValue
-        where
-            T: Clone,
-            NodeValue: From<T>
-        {
-            fn from(value: &T) -> Self {
-                Self::from(value.clone())
-            }
-        }
-
         // variant types
         $(
             // variant value
@@ -166,10 +162,33 @@ macro_rules! define_node_types {
                 // additional conversions from `from:`
                 $( // options block
                     $( // `from`
-                        $( // types to compare against
+                        $( // types to convert from
                             impl From<$from_type> for NodeValue {
                                 fn from($from_value: $from_type) -> Self {
                                     Self::$variant($from_expr)
+                                }
+                            }
+                        )+
+                    )?
+                )?
+
+                // additional conversions from `try_from:`
+                $( // options block
+                    $( // `try_from`
+                        $( // types to convert from
+                            impl TryFrom<$try_from_type> for NodeValue {
+                                type Error = crate::Error;
+
+                                fn try_from($try_from_value: $try_from_type) -> Result<Self, Self::Error> {
+                                    Ok(Self::$variant($try_from_expr))
+                                }
+                            }
+
+                            impl TryFrom<$try_from_type> for Node {
+                                type Error = crate::Error;
+
+                                fn try_from(value: $try_from_type) -> Result<Self, Self::Error> {
+                                    Ok(Self { value: NodeValue::try_from(value)? })
                                 }
                             }
                         )+
@@ -225,8 +244,30 @@ define_node_types! {
     Integer(Wrapping<IntegerValue>) {
         from: {
             IntegerValue => |value| Wrapping(value),
+
+            i8 => |value| Wrapping(value as IntegerValue),
+            i16 => |value| Wrapping(value as IntegerValue),
             i32 => |value| Wrapping(value as IntegerValue),
+
+            u8 => |value| Wrapping(value as IntegerValue),
+            u16 => |value| Wrapping(value as IntegerValue),
+            u32 => |value| Wrapping(value as IntegerValue),
+
             bool => |value| Wrapping(value as IntegerValue),
+        },
+        try_from: {
+            u64 => |value| match IntegerValue::try_from(value) {
+                Ok(value) => Wrapping(value),
+                Err(error) => return Err(NumericError::Conversion(error).into()),
+            },
+            isize => |value| match IntegerValue::try_from(value) {
+                Ok(value) => Wrapping(value),
+                Err(error) => return Err(NumericError::Conversion(error).into()),
+            },
+            usize => |value| match IntegerValue::try_from(value) {
+                Ok(value) => Wrapping(value),
+                Err(error) => return Err(NumericError::Conversion(error).into()),
+            },
         },
         variant_eq: {
             Float(other) => |value| value.0 as FloatValue == *other,
@@ -585,6 +626,22 @@ impl NodeValue {
     }
 }
 
+impl Default for NodeValue {
+    fn default() -> Self {
+        Self::from(0)
+    }
+}
+
+impl<T> From<&T> for NodeValue
+where
+    T: Clone,
+    NodeValue: From<T>,
+{
+    fn from(value: &T) -> Self {
+        Self::from(value.clone())
+    }
+}
+
 impl fmt::Display for NodeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use std::fmt::Display;
@@ -623,7 +680,7 @@ pub enum EvaluationError {
     NotBoolean(NodeKind),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Node {
     value: NodeValue,
 }
@@ -633,7 +690,7 @@ macro_rules! match_value {
         let value = $value;
         match value {
             NodeValue::$kind($inner) => Ok($expr),
-            _ => Err(Error::EvaluationError(EvaluationError::TypeMismatch {
+            _ => Err(crate::Error::EvaluationError(EvaluationError::TypeMismatch {
                 expected: NodeKind::$kind,
                 actual: value.get_kind(),
             })),
@@ -986,6 +1043,12 @@ impl PartialEq for Node {
 impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.value.partial_cmp(&other.value)
+    }
+}
+
+impl From<&Node> for Node {
+    fn from(value: &Node) -> Self {
+        value.clone()
     }
 }
 

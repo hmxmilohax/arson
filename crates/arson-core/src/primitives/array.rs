@@ -1284,6 +1284,46 @@ impl std::ops::DerefMut for NodeSlice {
     }
 }
 
+impl<T> std::borrow::Borrow<T> for NodeSlice
+where
+    T: ?Sized,
+    <NodeSlice as std::ops::Deref>::Target: std::borrow::Borrow<T>,
+{
+    fn borrow(&self) -> &T {
+        std::ops::Deref::deref(self).borrow()
+    }
+}
+
+impl<T> std::borrow::BorrowMut<T> for NodeSlice
+where
+    T: ?Sized,
+    <NodeSlice as std::ops::Deref>::Target: std::borrow::BorrowMut<T>,
+{
+    fn borrow_mut(&mut self) -> &mut T {
+        std::ops::DerefMut::deref_mut(self).borrow_mut()
+    }
+}
+
+impl<T> AsRef<T> for NodeSlice
+where
+    T: ?Sized,
+    <NodeSlice as std::ops::Deref>::Target: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        std::ops::Deref::deref(self).as_ref()
+    }
+}
+
+impl<T> AsMut<T> for NodeSlice
+where
+    T: ?Sized,
+    <NodeSlice as std::ops::Deref>::Target: AsMut<T>,
+{
+    fn as_mut(&mut self) -> &mut T {
+        std::ops::DerefMut::deref_mut(self).as_mut()
+    }
+}
+
 impl<'slice> IntoIterator for &'slice NodeSlice {
     type Item = <&'slice [Node] as IntoIterator>::Item;
     type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
@@ -1329,6 +1369,37 @@ impl NodeArray {
     }
 }
 
+fn check_range<R>(range: R, length: usize) -> crate::Result<Range<usize>>
+where
+    R: std::ops::RangeBounds<usize>,
+{
+    use std::ops::Bound;
+
+    let start = match range.start_bound() {
+        Bound::Included(start) => *start,
+        Bound::Excluded(start) => match start.checked_add(1) {
+            Some(start) => start,
+            None => return Err(NumericError::Overflow.into()),
+        },
+        Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+        Bound::Included(end) => match end.checked_add(1) {
+            Some(end) => end,
+            None => return Err(NumericError::Overflow.into()),
+        },
+        Bound::Excluded(end) => *end,
+        Bound::Unbounded => length,
+    };
+
+    if start <= end && end <= length {
+        Ok(start..end)
+    } else {
+        Err(ArrayError::OutOfRange(0..length).into())
+    }
+}
+
 // Vec forwards
 impl NodeArray {
     pub fn capacity(&self) -> usize {
@@ -1343,12 +1414,33 @@ impl NodeArray {
         self.nodes.pop()
     }
 
-    pub fn insert<N: Into<Node>>(&mut self, index: usize, value: N) {
-        self.nodes.insert(index, value.into())
+    pub fn insert<N: Into<Node>>(&mut self, index: usize, value: N) -> crate::Result {
+        arson_assert!(index <= self.nodes.len());
+        self.nodes.insert(index, value.into());
+        Ok(())
     }
 
-    pub fn remove(&mut self, index: usize) -> Node {
-        self.nodes.remove(index)
+    pub fn insert_slice(&mut self, index: usize, values: &[Node]) -> crate::Result {
+        self.splice(index..index, values.iter().cloned())?;
+        Ok(())
+    }
+
+    pub fn remove(&mut self, index: usize) -> crate::Result<Node> {
+        arson_assert!(index < self.nodes.len());
+        Ok(self.nodes.remove(index))
+    }
+
+    pub fn remove_item(&mut self, value: &Node) {
+        if let Some(pos) = self.nodes.iter().position(|v| v == value) {
+            self.nodes.remove(pos);
+        }
+    }
+
+    pub fn drain<R>(&mut self, range: R) -> crate::Result<std::vec::Drain<'_, Node>>
+    where
+        R: std::ops::RangeBounds<usize>,
+    {
+        check_range(range, self.nodes.len()).map(|range| self.nodes.drain(range))
     }
 
     pub fn append(&mut self, other: &mut Self) {
@@ -1357,6 +1449,18 @@ impl NodeArray {
 
     pub fn extend_from_slice(&mut self, other: &[Node]) {
         self.nodes.extend_from_slice(other)
+    }
+
+    pub fn splice<R, I>(
+        &mut self,
+        range: R,
+        replace_with: I,
+    ) -> crate::Result<std::vec::Splice<'_, I::IntoIter>>
+    where
+        R: std::ops::RangeBounds<usize>,
+        I: IntoIterator<Item = Node>,
+    {
+        check_range(range, self.nodes.len()).map(|range| self.nodes.splice(range, replace_with))
     }
 
     pub fn clear(&mut self) {
@@ -1373,6 +1477,10 @@ impl NodeArray {
 
     pub fn resize(&mut self, index: usize, value: Node) {
         self.nodes.resize(index, value)
+    }
+
+    pub fn resize_with<F: FnMut() -> Node>(&mut self, index: usize, value: F) {
+        self.nodes.resize_with(index, value)
     }
 
     pub fn truncate(&mut self, len: usize) {
@@ -1485,6 +1593,12 @@ impl FromIterator<NodeValue> for NodeArray {
     }
 }
 
+impl std::iter::Extend<Node> for NodeArray {
+    fn extend<T: IntoIterator<Item = Node>>(&mut self, iter: T) {
+        self.nodes.extend(iter)
+    }
+}
+
 impl std::ops::Deref for NodeArray {
     type Target = NodeSlice;
 
@@ -1507,6 +1621,18 @@ impl std::borrow::Borrow<Vec<Node>> for NodeArray {
 
 impl std::borrow::BorrowMut<Vec<Node>> for NodeArray {
     fn borrow_mut(&mut self) -> &mut Vec<Node> {
+        &mut self.nodes
+    }
+}
+
+impl AsRef<Vec<Node>> for NodeArray {
+    fn as_ref(&self) -> &Vec<Node> {
+        &self.nodes
+    }
+}
+
+impl AsMut<Vec<Node>> for NodeArray {
+    fn as_mut(&mut self) -> &mut Vec<Node> {
         &mut self.nodes
     }
 }

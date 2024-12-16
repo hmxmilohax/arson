@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::num::Wrapping;
+use std::ops::Range;
 
 /// The integer value type used within nodes.
 pub type IntegerValue = i64;
@@ -50,6 +51,12 @@ impl From<FloatValue> for Number {
 
 #[derive(thiserror::Error, Debug)]
 pub enum NumericError {
+    #[error("An undesired integer overflow occurred")]
+    Overflow,
+
+    #[error("Value outside of range {0:?}")]
+    OutOfRange(Range<usize>),
+
     #[error("{0}")]
     Conversion(std::num::TryFromIntError),
 }
