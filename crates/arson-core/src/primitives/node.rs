@@ -465,6 +465,14 @@ impl NodeValue {
         }
     }
 
+    pub fn array_tag(&self) -> Option<ArrayTag> {
+        match self {
+            Self::Integer(tag) => Some(ArrayTag::Integer(*tag)),
+            Self::Symbol(tag) => Some(ArrayTag::Symbol(tag.clone())),
+            _ => None,
+        }
+    }
+
     pub const fn variable(&self) -> Option<&Variable> {
         match self {
             Self::Variable(value) => Some(value),
@@ -557,6 +565,10 @@ impl NodeValue {
         self.force_symbol(context).unwrap_or_else(|| default.into_symbol(context))
     }
 
+    pub fn array_tag_or(&self, default: &ArrayTag) -> ArrayTag {
+        self.array_tag().unwrap_or_else(|| default.clone())
+    }
+
     pub fn variable_or(&self, default: &Variable) -> Variable {
         self.variable().cloned().unwrap_or_else(|| default.clone())
     }
@@ -607,6 +619,10 @@ impl NodeValue {
         default: impl FnOnce() -> Symbol,
     ) -> Symbol {
         self.force_symbol(context).unwrap_or_else(default)
+    }
+
+    pub fn array_tag_or_else(&self, default: impl FnOnce() -> ArrayTag) -> ArrayTag {
+        self.array_tag().unwrap_or_else(default)
     }
 
     pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
@@ -678,6 +694,9 @@ pub enum EvaluationError {
 
     #[error("Value of type {0:?} is not convertible to a boolean")]
     NotBoolean(NodeKind),
+
+    #[error("Value of type {0:?} is not a valid array tag")]
+    NotArrayTag(NodeKind),
 }
 
 #[derive(Clone, Default)]
@@ -806,6 +825,14 @@ impl Node {
         match_option!(self.evaluate(context)?, |value| value.force_symbol(context), Symbol)
     }
 
+    pub fn array_tag<S>(&self, context: &mut Context<S>) -> crate::Result<ArrayTag> {
+        match_option_with_err!(
+            self.evaluate(context)?,
+            |value| value.array_tag(),
+            EvaluationError::NotArrayTag(value.get_kind())
+        )
+    }
+
     pub const fn variable(&self) -> crate::Result<&Variable> {
         match_value!(self.unevaluated(), Variable(value) => value)
     }
@@ -829,6 +856,10 @@ impl Node {
 
     pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
         match_value!(self.unevaluated(), Property(value) => value)
+    }
+
+    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
+        NodeDisplay { context: Cell::new(Some(context)), node: self }
     }
 }
 
@@ -864,6 +895,10 @@ impl Node {
 
     pub fn force_symbol_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<Symbol>> {
         self.evaluate(context).map(|n| n.force_symbol(context)).transpose()
+    }
+
+    pub fn array_tag_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<ArrayTag>> {
+        self.evaluate(context).map(|n| n.array_tag()).transpose()
     }
 
     pub const fn variable_opt(&self) -> Option<&Variable> {
@@ -927,6 +962,10 @@ impl Node {
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
         self.evaluate(context).map(|v| v.force_symbol_or(context, default))
+    }
+
+    pub fn array_tag_or<S>(&self, context: &mut Context<S>, default: &ArrayTag) -> crate::Result<ArrayTag> {
+        self.evaluate(context).map(|v| v.array_tag_or(default))
     }
 
     pub fn variable_or(&self, default: &Variable) -> Variable {
@@ -1009,6 +1048,14 @@ impl Node {
         self.evaluate(context).map(|v| v.force_symbol_or_else(context, default))
     }
 
+    pub fn array_tag_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> ArrayTag,
+    ) -> crate::Result<ArrayTag> {
+        self.evaluate(context).map(|v| v.array_tag_or_else(default))
+    }
+
     pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
         self.unevaluated().variable_or_else(default)
     }
@@ -1027,10 +1074,6 @@ impl Node {
 
     pub fn property_or_else(&self, default: impl FnOnce() -> Rc<NodeProperty>) -> Rc<NodeProperty> {
         self.unevaluated().property_or_else(default)
-    }
-
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
-        NodeDisplay { context: Cell::new(Some(context)), node: self }
     }
 }
 

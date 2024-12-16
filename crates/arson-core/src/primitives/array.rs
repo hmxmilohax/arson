@@ -269,6 +269,10 @@ impl NodeSlice {
         self.get(index)?.force_symbol(context)
     }
 
+    pub fn array_tag<S>(&self, context: &mut Context<S>, index: usize) -> crate::Result<ArrayTag> {
+        self.get(index)?.array_tag(context)
+    }
+
     pub fn variable(&self, index: usize) -> crate::Result<&Variable> {
         self.get(index)?.variable()
     }
@@ -347,6 +351,10 @@ impl NodeSlice {
         index: usize,
     ) -> Option<crate::Result<Symbol>> {
         self.get_opt(index).and_then(|n| n.force_symbol_opt(context))
+    }
+
+    pub fn array_tag_opt<S>(&self, context: &mut Context<S>, index: usize) -> Option<crate::Result<ArrayTag>> {
+        self.get_opt(index).and_then(|n| n.array_tag_opt(context))
     }
 
     pub fn variable_opt(&self, index: usize) -> Option<&Variable> {
@@ -463,6 +471,15 @@ impl NodeSlice {
         index_value_or!(self, context, index, Node::force_symbol_or, default => default.into_symbol(context))
     }
 
+    pub fn array_tag_or<S>(
+        &self,
+        context: &mut Context<S>,
+        index: usize,
+        default: &ArrayTag,
+    ) -> crate::Result<ArrayTag> {
+        index_value_or!(self, context, index, Node::array_tag_or, default)
+    }
+
     pub fn variable_or(&self, index: usize, default: &Variable) -> Variable {
         index_value_or!(self, index, Node::variable_or, default)
     }
@@ -573,6 +590,15 @@ impl NodeSlice {
         index_value_or_else!(self, context, index, Node::force_symbol_or_else, default)
     }
 
+    pub fn array_tag_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        index: usize,
+        default: impl FnOnce() -> ArrayTag,
+    ) -> crate::Result<ArrayTag> {
+        index_value_or_else!(self, context, index, Node::array_tag_or_else, default)
+    }
+
     pub fn variable_or_else(&self, index: usize, default: impl FnOnce() -> Variable) -> Variable {
         index_value_or_else!(self, index, Node::variable_or_else, default)
     }
@@ -600,6 +626,67 @@ impl NodeSlice {
         default: impl FnOnce() -> Rc<NodeProperty>,
     ) -> Rc<NodeProperty> {
         index_value_or_else!(self, index, Node::property_or_else, default)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum ArrayTag {
+    Integer(Integer),
+    Symbol(Symbol),
+}
+
+impl PartialEq<NodeValue> for ArrayTag {
+    fn eq(&self, other: &NodeValue) -> bool {
+        match (self, other) {
+            (ArrayTag::Integer(left), NodeValue::Integer(right)) => left == right,
+            (ArrayTag::Symbol(left), NodeValue::Symbol(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<Integer> for ArrayTag {
+    fn eq(&self, other: &Integer) -> bool {
+        match self {
+            ArrayTag::Integer(value) => value == other,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<Symbol> for ArrayTag {
+    fn eq(&self, other: &Symbol) -> bool {
+        match self {
+            ArrayTag::Symbol(value) => value == other,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<ArrayTag> for NodeValue {
+    fn eq(&self, other: &ArrayTag) -> bool {
+        other.eq(self)
+    }
+}
+
+impl PartialEq<ArrayTag> for Integer {
+    fn eq(&self, other: &ArrayTag) -> bool {
+        other.eq(self)
+    }
+}
+
+impl PartialEq<ArrayTag> for Symbol {
+    fn eq(&self, other: &ArrayTag) -> bool {
+        other.eq(self)
+    }
+}
+
+impl std::fmt::Display for ArrayTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ArrayTag::Integer(value) => value.fmt(f),
+            ArrayTag::Symbol(value) => value.fmt(f),
+        }
     }
 }
 
@@ -641,6 +728,7 @@ find_pred_impl!(Symbol => |predicate, value| value == predicate);
 // find_pred_impl!(String => |predicate, value| value == predicate);
 find_pred_impl!(Integer => |predicate, value| value == predicate);
 find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
+find_pred_impl!(ArrayTag => |predicate, value| value == predicate);
 
 impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
     fn matches(&self, value: &NodeValue) -> bool {
@@ -841,6 +929,14 @@ impl NodeSlice {
         self.find_data(predicate.into_predicate(context))?.force_symbol(context)
     }
 
+    pub fn find_array_tag<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<ArrayTag> {
+        self.find_data(predicate.into_predicate(context))?.array_tag(context)
+    }
+
     pub fn find_variable(&self, predicate: impl IntoDataPredicate) -> crate::Result<Variable> {
         self.find_data(predicate)?.variable().cloned()
     }
@@ -960,6 +1056,14 @@ impl NodeSlice {
             .force_symbol_opt(context)
     }
 
+    pub fn find_array_tag_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<ArrayTag>> {
+        self.find_data_opt(predicate.into_predicate(context))?.array_tag_opt(context)
+    }
+
     pub fn find_variable_opt(&self, predicate: impl IntoDataPredicate) -> Option<Variable> {
         self.find_data_opt(predicate)?.variable_opt().cloned()
     }
@@ -1061,6 +1165,15 @@ impl NodeSlice {
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
         predicate_value_or!(self, context, predicate, Node::force_symbol_or, default => default.into_symbol(context))
+    }
+
+    pub fn find_array_tag_or<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: &ArrayTag,
+    ) -> crate::Result<ArrayTag> {
+        predicate_value_or!(self, context, predicate, Node::array_tag_or, default)
     }
 
     pub fn find_variable_or(&self, predicate: impl IntoDataPredicate, default: &Variable) -> Variable {
@@ -1178,6 +1291,15 @@ impl NodeSlice {
         default: impl FnOnce() -> Symbol,
     ) -> crate::Result<Symbol> {
         predicate_value_or_else!(self, context, predicate, Node::force_symbol_or_else, default)
+    }
+
+    pub fn find_array_tag_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> ArrayTag,
+    ) -> crate::Result<ArrayTag> {
+        predicate_value_or_else!(self, context, predicate, Node::array_tag_or_else, default)
     }
 
     pub fn find_variable_or_else(
