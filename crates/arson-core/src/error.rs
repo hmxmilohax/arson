@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{ArrayError, EvaluationError, ExecutionError}; //, LoadError};
+use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
@@ -10,6 +10,9 @@ pub enum Error {
 
     #[error("Execution error: {0}")]
     ExecutionError(#[from] ExecutionError),
+
+    #[error("Numeric error: {0}")]
+    NumericError(#[from] NumericError),
 
     #[error("Array error: {0}")]
     ArrayError(#[from] ArrayError),

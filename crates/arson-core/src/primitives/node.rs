@@ -362,6 +362,29 @@ impl NodeValue {
         }
     }
 
+    pub fn size_integer(&self) -> Option<crate::Result<usize>> {
+        match self {
+            Self::Integer(value) => {
+                let result = match usize::try_from(value.0) {
+                    Ok(value) => Ok(value),
+                    Err(err) => Err(NumericError::Conversion(err).into()),
+                };
+                Some(result)
+            },
+            _ => None,
+        }
+    }
+
+    pub fn size_integer_opt(&self) -> Option<usize> {
+        match self {
+            Self::Integer(value) => match usize::try_from(value.0) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn boolean(&self) -> Option<bool> {
         match self {
             NodeValue::Integer(value) => Some(value.0 != 0),
@@ -473,6 +496,10 @@ impl NodeValue {
         self.number().unwrap_or(default)
     }
 
+    pub fn size_integer_or(&self, default: usize) -> usize {
+        self.size_integer_opt().unwrap_or(default)
+    }
+
     pub fn boolean_or(&self, default: bool) -> bool {
         self.boolean().unwrap_or(default)
     }
@@ -515,6 +542,10 @@ impl NodeValue {
 
     pub fn number_or_else(&self, default: impl FnOnce() -> Number) -> Number {
         self.number().unwrap_or_else(default)
+    }
+
+    pub fn size_integer_or_else(&self, default: impl FnOnce() -> usize) -> usize {
+        self.size_integer_opt().unwrap_or_else(default)
     }
 
     pub fn boolean_or_else(&self, default: impl FnOnce() -> bool) -> bool {
@@ -687,6 +718,17 @@ impl Node {
         )
     }
 
+    pub fn size_integer<S>(&self, context: &mut Context<S>) -> crate::Result<usize> {
+        // inlined match_option!, not making a variant just for this lol
+        let value = self.evaluate(context)?;
+        match value.size_integer() {
+            Some(value) => value, // this needs to be returned as-is instead of wrapped in Ok()
+            None => {
+                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Integer }.into())
+            },
+        }
+    }
+
     pub fn boolean<S>(&self, context: &mut Context<S>) -> crate::Result<bool> {
         match_option_with_err!(
             self.evaluate(context)?,
@@ -747,6 +789,10 @@ impl Node {
         self.evaluate(context).map(|n| n.number()).transpose()
     }
 
+    pub fn size_integer_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<usize>> {
+        self.evaluate(context).map(|n| n.size_integer_opt()).transpose()
+    }
+
     pub fn boolean_opt<S>(&self, context: &mut Context<S>) -> Option<crate::Result<bool>> {
         self.evaluate(context).map(|n| n.boolean()).transpose()
     }
@@ -800,6 +846,10 @@ impl Node {
 
     pub fn number_or<S>(&self, context: &mut Context<S>, default: Number) -> crate::Result<Number> {
         self.evaluate(context).map(|v| v.number_or(default))
+    }
+
+    pub fn size_integer_or<S>(&self, context: &mut Context<S>, default: usize) -> crate::Result<usize> {
+        self.evaluate(context).map(|v| v.size_integer_or(default))
     }
 
     pub fn boolean_or<S>(&self, context: &mut Context<S>, default: bool) -> crate::Result<bool> {
@@ -860,6 +910,14 @@ impl Node {
         default: impl FnOnce() -> Number,
     ) -> crate::Result<Number> {
         self.evaluate(context).map(|v| v.number_or_else(default))
+    }
+
+    pub fn size_integer_or_else<S>(
+        &self,
+        context: &mut Context<S>,
+        default: impl FnOnce() -> usize,
+    ) -> crate::Result<usize> {
+        self.evaluate(context).map(|v| v.size_integer_or_else(default))
     }
 
     pub fn boolean_or_else<S>(

@@ -47,3 +47,9 @@ impl From<FloatValue> for Number {
         Self::Float(value)
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+pub enum NumericError {
+    #[error("{0}")]
+    Conversion(std::num::TryFromIntError),
+}
