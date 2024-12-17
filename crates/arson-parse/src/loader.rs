@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::io;
-use std::marker::PhantomData;
 
 use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
-use arson_fs::{FileSystemState, VirtualPath};
+use arson_fs::{AbsolutePath, FileSystemState, VirtualPath};
 
 use crate::{Diagnostic, Expression, ExpressionValue};
 
@@ -27,6 +26,9 @@ pub enum LoadError {
 
     #[error("Inclusion is disallowed by the given load options")]
     IncludeNotAllowed,
+
+    #[error("File {0} is included recursively")]
+    RecursiveInclude(AbsolutePath),
 
     #[error("Auto-run is disallowed by the given load options")]
     AutorunNotAllowed,
@@ -60,6 +62,7 @@ impl From<LoadError> for io::Error {
             LoadError::Parse(_) => io::ErrorKind::InvalidData,
             LoadError::MacroNotFound => io::ErrorKind::Other,
             LoadError::IncludeNotAllowed => io::ErrorKind::PermissionDenied,
+            LoadError::RecursiveInclude(_) => io::ErrorKind::Other,
             LoadError::AutorunNotAllowed => io::ErrorKind::PermissionDenied,
             LoadError::AutorunError(_) => io::ErrorKind::Other,
             LoadError::Inner { .. } => io::ErrorKind::Other,
@@ -74,10 +77,10 @@ impl From<LoadError> for arson_core::Error {
     }
 }
 
-struct Loader<'ctx, 'src, S: FileSystemState> {
+struct Loader<'ctx, S: FileSystemState> {
     context: &'ctx mut Context<S>,
     options: LoadOptions,
-    phantom: PhantomData<&'src ()>,
+    include_stack: Vec<AbsolutePath>,
 }
 
 enum NodeResult<'define> {
@@ -89,14 +92,14 @@ enum NodeResult<'define> {
     Skip,
 }
 
-impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
+impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
     fn new(context: &'ctx mut Context<S>, options: LoadOptions) -> Self {
-        Self { context, options, phantom: PhantomData }
+        Self { context, options, include_stack: Vec::new() }
     }
 
-    fn load_array(
+    fn load_array<'a>(
         &mut self,
-        ast: impl IntoIterator<Item = Expression<'src>>,
+        ast: impl IntoIterator<Item = Expression<'a>>,
     ) -> Result<NodeArray, LoadError> {
         let mut array = NodeArray::with_capacity(4);
         let mut errors = vec![];
@@ -127,7 +130,7 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
         }
     }
 
-    fn load_node(&mut self, expr: Expression<'src>) -> Result<NodeResult, LoadError> {
+    fn load_node<'a>(&mut self, expr: Expression<'a>) -> Result<NodeResult, LoadError> {
         let node = match expr.value {
             ExpressionValue::Integer(value) => value.into(),
             ExpressionValue::Float(value) => value.into(),
@@ -232,8 +235,40 @@ impl<'ctx, 'src, S: FileSystemState> Loader<'ctx, 'src, S> {
         }
     }
 
-    fn load_path(&mut self, path: &str) -> Result<NodeArray, LoadError> {
-        load_path(self.context, self.options.clone(), path)
+    fn load_path<P: AsRef<VirtualPath>>(&mut self, path: P) -> Result<NodeArray, LoadError> {
+        let file = self.context.file_system().open_execute(&path)?;
+        let text = io::read_to_string(file)?;
+
+        let canon = self.context.file_system().canonicalize(&path);
+        let Some(dir) = canon.parent() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "file has no containing directory (how???)",
+            )
+            .into());
+        };
+
+        if self.include_stack.contains(&canon) {
+            return Err(LoadError::RecursiveInclude(canon));
+        }
+
+        let old_cwd = self.context.file_system_mut().set_cwd(dir);
+        self.include_stack.push(canon);
+
+        let array = self.load_text(&text)?;
+
+        self.context.file_system_mut().set_cwd(&old_cwd);
+        self.include_stack.pop().expect("path was added above");
+
+        Ok(array)
+    }
+
+    fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
+        let ast = match super::parse_text(text) {
+            Ok(ast) => ast,
+            Err(errors) => return Err(LoadError::Parse(errors)),
+        };
+        self.load_array(ast)
     }
 }
 
@@ -242,21 +277,7 @@ pub fn load_path<S: FileSystemState, P: AsRef<VirtualPath>>(
     options: LoadOptions,
     path: P,
 ) -> Result<NodeArray, LoadError> {
-    let file = context.file_system().open_execute(&path)?;
-    let text = io::read_to_string(file)?;
-
-    let canon = context.file_system().canonicalize(&path);
-    let Some(dir) = canon.parent() else {
-        return Err(
-            io::Error::new(io::ErrorKind::InvalidData, "file has no containing directory (how???)").into(),
-        );
-    };
-
-    let old_cwd = context.file_system_mut().set_cwd(dir);
-    let array = load_text(context, options, &text)?;
-    context.file_system_mut().set_cwd(&old_cwd);
-
-    Ok(array)
+    Loader::new(context, options).load_path(path)
 }
 
 pub fn load_text<S: FileSystemState>(
@@ -264,11 +285,7 @@ pub fn load_text<S: FileSystemState>(
     options: LoadOptions,
     text: &str,
 ) -> Result<NodeArray, LoadError> {
-    let ast = match super::parse_text(text) {
-        Ok(ast) => ast,
-        Err(errors) => return Err(LoadError::Parse(errors)),
-    };
-    load_ast(context, options, ast)
+    Loader::new(context, options).load_text(text)
 }
 
 pub fn load_ast<'src, S: FileSystemState>(
@@ -276,8 +293,7 @@ pub fn load_ast<'src, S: FileSystemState>(
     options: LoadOptions,
     ast: impl IntoIterator<Item = Expression<'src>>,
 ) -> Result<NodeArray, LoadError> {
-    let mut loader = Loader::new(context, options);
-    loader.load_array(ast)
+    Loader::new(context, options).load_array(ast)
 }
 
 #[cfg(test)]
@@ -548,5 +564,127 @@ mod tests {
         assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![
             arson_array![sym_array, 10]
         ]);
+    }
+
+    #[test]
+    fn recursive_include() {
+        let mut driver = MockFileSystemDriver::new();
+
+        driver.add_text_file(AbsolutePath::new_rooted("self_include.dta"), "#include self_include.dta");
+        driver.add_text_file(AbsolutePath::new_rooted("self_merge.dta"), "#merge self_merge.dta");
+
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_short_1.dta"),
+            "#include include_loop_short_2.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_short_2.dta"),
+            "#include include_loop_short_1.dta",
+        );
+
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_short_1.dta"),
+            "#merge merge_loop_short_2.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_short_2.dta"),
+            "#merge merge_loop_short_1.dta",
+        );
+
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_long_1.dta"),
+            "#include include_loop_long_2.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_long_2.dta"),
+            "#include include_loop_long_3.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_long_3.dta"),
+            "#include include_loop_long_4.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_long_4.dta"),
+            "#include include_loop_long_5.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("include_loop_long_5.dta"),
+            "#include include_loop_long_1.dta",
+        );
+
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_long_1.dta"),
+            "#merge merge_loop_long_2.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_long_2.dta"),
+            "#merge merge_loop_long_3.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_long_3.dta"),
+            "#merge merge_loop_long_4.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_long_4.dta"),
+            "#merge merge_loop_long_5.dta",
+        );
+        driver.add_text_file(
+            AbsolutePath::new_rooted("merge_loop_long_5.dta"),
+            "#merge merge_loop_long_1.dta",
+        );
+
+        let mut context = Context::new(FileSystem::new(driver));
+
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
+
+        fn recursion_error(path: &str, depth: usize) -> LoadError {
+            let mut error = LoadError::Inner {
+                recovered: arson_array![],
+                errors: vec![LoadError::RecursiveInclude(AbsolutePath::new_rooted(path))],
+            };
+
+            for _i in 0..depth {
+                error = LoadError::Inner { recovered: arson_array![], errors: vec![error] };
+            }
+
+            error
+        }
+
+        let result = super::load_path(&mut context, options.clone(), "self_include.dta");
+        assert_eq!(result, Err(recursion_error("self_include.dta", 0)));
+        let result = super::load_path(&mut context, options.clone(), "self_merge.dta");
+        assert_eq!(result, Err(recursion_error("self_merge.dta", 0)));
+
+        let result = super::load_path(&mut context, options.clone(), "include_loop_short_1.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_short_1.dta", 1)));
+        let result = super::load_path(&mut context, options.clone(), "include_loop_short_2.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_short_2.dta", 1)));
+
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_short_1.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_short_1.dta", 1)));
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_short_2.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_short_2.dta", 1)));
+
+        let result = super::load_path(&mut context, options.clone(), "include_loop_long_1.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_long_1.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "include_loop_long_2.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_long_2.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "include_loop_long_3.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_long_3.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "include_loop_long_4.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_long_4.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "include_loop_long_5.dta");
+        assert_eq!(result, Err(recursion_error("include_loop_long_5.dta", 4)));
+
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_1.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_long_1.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_2.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_long_2.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_3.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_long_3.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_4.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_long_4.dta", 4)));
+        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_5.dta");
+        assert_eq!(result, Err(recursion_error("merge_loop_long_5.dta", 4)));
     }
 }
