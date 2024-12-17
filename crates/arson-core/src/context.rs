@@ -12,7 +12,7 @@ pub type ExecuteResult = crate::Result<Node>;
 #[derive(thiserror::Error, Debug)]
 pub enum ExecutionError {
     #[error("No function registered for name '{0}'")]
-    FunctionNotFound(Symbol),
+    FunctionNotFound(String),
 
     #[error("{0}")]
     Failure(String),
@@ -128,7 +128,7 @@ impl<State> Context<State> {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
                 // TODO: cache function/object lookups
                 Some(func) => func(self, command.slice(1..)?)?,
-                None => return Err(ExecutionError::FunctionNotFound(symbol).into()),
+                None => return Err(ExecutionError::FunctionNotFound(symbol.name().to_string()).into()),
             },
             _ => Node::UNHANDLED,
         };
