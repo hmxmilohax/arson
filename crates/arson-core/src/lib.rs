@@ -33,12 +33,13 @@ pub use context::*;
 pub use error::*;
 
 pub mod prelude {
-    pub use super::context::Context;
+    pub use super::context::{Context, ExecuteResult};
     pub use super::primitives::{
         ArrayRef,
         Node,
         NodeArray,
         NodeCommand,
+        NodeKind,
         NodeProperty,
         NodeSlice,
         NodeValue,
@@ -47,4 +48,5 @@ pub mod prelude {
         Variable,
         VariableStack,
     };
+    pub use super::{arson_array, arson_assert, arson_assert_len, arson_fail};
 }

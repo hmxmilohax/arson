@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::*;
+use crate::prelude::*;
 
 mod flow;
 mod operators;

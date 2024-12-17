@@ -2,7 +2,8 @@
 
 use std::ops::{Div, Rem};
 
-use arson_core::*;
+use arson_core::prelude::*;
+use arson_core::{FloatValue, Integer, IntegerValue, Number};
 
 pub fn register_funcs<S>(context: &mut Context<S>) {
     context.add_macro("PI", arson_array![std::f64::consts::PI]);

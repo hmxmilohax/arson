@@ -2,8 +2,9 @@
 
 use std::io;
 
-use arson_core::*;
-use arson_fs::*;
+use arson_core::prelude::*;
+use arson_fs::prelude::*;
+use arson_fs::Metadata;
 
 use crate::{StdlibContextExt, StdlibState};
 

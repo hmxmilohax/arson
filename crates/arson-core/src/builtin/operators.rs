@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::*;
+use crate::prelude::*;
+use crate::{Number, Integer};
 
 pub fn register_funcs<S>(context: &mut Context<S>) {
     unary::register_funcs(context);

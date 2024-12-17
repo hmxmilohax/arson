@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use arson::fs::drivers::BasicFileSystemDriver;
 use arson::prelude::*;
 
 struct State {

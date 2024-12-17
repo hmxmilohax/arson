@@ -7,8 +7,9 @@ use std::fmt;
 use std::num::Wrapping;
 use std::rc::Rc;
 
+use crate::prelude::*;
 use crate::primitives::*;
-use crate::{arson_fail, Context, IntoSymbol};
+use crate::IntoSymbol;
 
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]

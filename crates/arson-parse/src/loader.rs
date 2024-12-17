@@ -282,9 +282,9 @@ pub fn load_ast<'src, S: FileSystemState>(
 
 #[cfg(test)]
 mod tests {
-    use arson_core::*;
+    use arson_core::prelude::*;
     use arson_fs::drivers::MockFileSystemDriver;
-    use arson_fs::*;
+    use arson_fs::prelude::*;
 
     use super::*;
 

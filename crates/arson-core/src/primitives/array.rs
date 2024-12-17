@@ -6,7 +6,8 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::slice::SliceIndex;
 
-use crate::*;
+use crate::prelude::*;
+use crate::{FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
 
 #[macro_export]
 macro_rules! arson_array {

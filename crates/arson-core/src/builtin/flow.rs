@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::*;
+use crate::prelude::*;
 
 pub fn register_funcs<S>(context: &mut Context<S>) {
     control::register_funcs(context);
