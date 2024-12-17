@@ -28,6 +28,7 @@ pub mod control {
     }
 
     pub fn if_else_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 3);
         if args.boolean(context, 0)? {
             args.command(1)?.execute(context)
         } else {

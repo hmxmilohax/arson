@@ -32,12 +32,14 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
 }
 
 pub fn size<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
     let array = args.array(context, 0)?;
 
     array.borrow().and_then(|a| a.len().try_into())
 }
 
 pub fn resize<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let size = args.size_integer(context, 1)?;
 
@@ -46,6 +48,7 @@ pub fn resize<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
 }
 
 pub fn reserve<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let additional = args.size_integer(context, 1)?;
 
@@ -54,6 +57,7 @@ pub fn reserve<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
 }
 
 pub fn push_back<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let value = args.evaluate(context, 1)?;
 
@@ -63,6 +67,7 @@ pub fn push_back<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult
 }
 
 pub fn pop_back<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
     let array = args.array(context, 0)?;
 
     let mut borrow = array.borrow_mut()?;
@@ -73,6 +78,7 @@ pub fn pop_back<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult 
 }
 
 pub fn elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let index = args.size_integer(context, 1)?;
 
@@ -81,6 +87,7 @@ pub fn elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
 }
 
 pub fn last_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
     let array = args.array(context, 0)?;
     let borrow = array.borrow()?;
 
@@ -91,6 +98,7 @@ pub fn last_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult
 }
 
 pub fn set_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 3);
     let array = args.array(context, 0)?;
     let index = args.size_integer(context, 1)?;
     let value: Node = args.evaluate(context, 2)?.into();
@@ -101,6 +109,7 @@ pub fn set_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult 
 }
 
 pub fn insert_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 3);
     let array = args.array(context, 0)?;
     let index = args.size_integer(context, 1)?;
     let value = args.evaluate(context, 2)?;
@@ -111,6 +120,7 @@ pub fn insert_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResu
 }
 
 pub fn insert_elems<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 3);
     let array = args.array(context, 0)?;
     let index = args.size_integer(context, 1)?;
     let values = args.array(context, 2)?;
@@ -121,6 +131,7 @@ pub fn insert_elems<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteRes
 }
 
 pub fn remove_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let value: Node = args.evaluate(context, 1)?.into();
 
@@ -130,6 +141,7 @@ pub fn remove_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResu
 }
 
 pub fn remove_elems<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 3);
     let array = args.array(context, 0)?;
     let index = args.size_integer(context, 1)?;
     let count = args.size_integer(context, 2)?;
@@ -140,6 +152,7 @@ pub fn remove_elems<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteRes
 }
 
 pub fn contains<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let value: Node = args.evaluate(context, 1)?.into();
 
@@ -184,6 +197,7 @@ pub fn find_exists<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResu
 }
 
 pub fn find_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
     let array = args.array(context, 0)?;
     let target: Node = args.evaluate(context, 1)?.into();
 
@@ -205,6 +219,7 @@ pub fn find_elem<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult
 }
 
 pub fn sort<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
     let array = args.array(context, 0)?;
 
     let array = AssertUnwindSafe(array);
@@ -221,6 +236,7 @@ pub fn sort_by<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     let mut context = AssertUnwindSafe(context);
     let args = AssertUnwindSafe(args);
     let result = std::panic::catch_unwind(move || -> ExecuteResult {
+        arson_assert_len!(args, 4);
         let array = args.array(context.0, 0)?;
         let left_var = args.variable(1)?;
         let right_var = args.variable(2)?;
