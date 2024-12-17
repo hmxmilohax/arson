@@ -292,6 +292,15 @@ define_node_types! {
             u32 => |value| Wrapping(value as IntegerValue),
 
             bool => |value| Wrapping(value as IntegerValue),
+
+            NodeKind => |value| {
+                // Convert the kind for Unhandled into its value,
+                // to make {== {type $value} kDataUnhandled} work correctly
+                if matches!(value, NodeKind::Unhandled) {
+                    return NodeValue::Unhandled;
+                }
+                Wrapping(value as IntegerValue)
+            },
         },
         try_from: {
             u64 => |value| match IntegerValue::try_from(value) {
