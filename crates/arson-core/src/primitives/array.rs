@@ -95,6 +95,13 @@ impl ArrayRef {
     pub fn borrow_mut(&self) -> crate::Result<std::cell::RefMut<'_, NodeArray>> {
         self.inner.try_borrow_mut().map_err(|e| ArrayError::BadMutBorrow(e).into())
     }
+
+    pub fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Unlike other places in the code, there's no good way of handling or propogating
+        // borrow errors without destroying the intent of the method, so this is
+        // one of the few places where a potential panic is deliberately left in.
+        self.inner.borrow().total_cmp(&other.inner.borrow())
+    }
 }
 
 impl std::fmt::Debug for ArrayRef {
@@ -163,6 +170,28 @@ impl NodeSlice {
 
     pub fn get_mut_opt<I: SliceIndex<[Node]>>(&mut self, index: I) -> Option<&mut I::Output> {
         self.nodes.get_mut(index)
+    }
+
+    pub fn sort(&mut self) {
+        self.nodes.sort_by(Node::total_cmp)
+    }
+
+    pub fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Modified from SlicePartialOrd::partial_cmp in core::slice
+
+        let min = self.len().min(other.len());
+
+        let left = &self[..min];
+        let right = &other[..min];
+
+        for i in 0..min {
+            match left[i].total_cmp(&right[i]) {
+                std::cmp::Ordering::Equal => (),
+                non_eq => return non_eq,
+            }
+        }
+
+        self.len().cmp(&other.len())
     }
 
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {

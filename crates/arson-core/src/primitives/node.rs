@@ -54,18 +54,25 @@ macro_rules! define_node_types {
                 $(
                     eq: |$eq_left:ident, $eq_right:ident| $eq_expr:expr,
                     cmp: |$cmp_left:ident, $cmp_right:ident| $cmp_expr:expr,
+                    total_cmp: |$total_cmp_left:ident, $total_cmp_right:ident| $total_cmp_expr:expr,
                 )?
                 $(
                     variant_eq: {
                         $($variant_eq_type:ident$(($variant_eq_other:ident))? => |$variant_eq_value:ident| $variant_eq_expr:expr,)+
                     },
-                )?
-                $(
                     variant_cmp: {
                         $(
                             $variant_cmp_type:ident$(($variant_cmp_other:ident))? => |$variant_cmp_value:ident| {
                                 left: $variant_cmp_left_expr:expr,
                                 right: $variant_cmp_right_expr:expr,
+                            },
+                        )+
+                    },
+                    variant_total_cmp: {
+                        $(
+                            $variant_total_cmp_type:ident$(($variant_total_cmp_other:ident))? => |$variant_total_cmp_value:ident| {
+                                left: $variant_total_cmp_left_expr:expr,
+                                right: $variant_total_cmp_right_expr:expr,
                             },
                         )+
                     },
@@ -145,6 +152,36 @@ macro_rules! define_node_types {
                     )+
 
                     _ => None,
+                }
+            }
+        }
+
+        impl NodeValue {
+            fn total_cmp(&self, other: &Self) -> Ordering {
+                match (self, other) {
+                    $(
+                        (
+                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($total_cmp_left)?)?, left))))?,
+                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($total_cmp_right)?)?, right))))?
+                        ) => meta_select!(
+                            $(meta_morph!($variant_type => meta_select!($($($total_cmp_expr)?)?, left.cmp(right))))?,
+                            Ordering::Equal
+                        ),
+                        $(
+                            $(
+                                $(
+                                    $(
+                                        (Self::$variant($variant_total_cmp_value), Self::$variant_total_cmp_type$(($variant_total_cmp_other))?)
+                                        => $variant_total_cmp_left_expr,
+                                        (Self::$variant_total_cmp_type$(($variant_total_cmp_other))?, Self::$variant($variant_total_cmp_value))
+                                        => $variant_total_cmp_right_expr,
+                                    )+
+                                )?
+                            )?
+                        )?
+                    )+
+
+                    (left, right) => left.get_kind().cmp(&right.get_kind()),
                 }
             }
         }
@@ -279,6 +316,12 @@ define_node_types! {
                 right: other.partial_cmp(&(value.0 as FloatValue)),
             },
         },
+        variant_total_cmp: {
+            Float(other) => |value| {
+                left: (value.0 as FloatValue).total_cmp(other),
+                right: other.total_cmp(&(value.0 as FloatValue)),
+            },
+        },
         type_eq: {
             IntegerValue => |left, right| left.0 == *right,
         },
@@ -288,6 +331,9 @@ define_node_types! {
         from: {
             f32 => |value| value as FloatValue,
         },
+        eq: |left, right| left == right,
+        cmp: |left, right| left.partial_cmp(right),
+        total_cmp: |left, right| left.total_cmp(right),
     },
     /// An immutable string value.
     String(Rc<String>) {
@@ -304,6 +350,12 @@ define_node_types! {
                 right: other.name().partial_cmp(value),
             },
         },
+        variant_total_cmp: {
+            Symbol(other) => |value| {
+                left: value.cmp(other.name()),
+                right: other.name().cmp(value),
+            },
+        },
         type_eq: {
             String => |left, right| left.as_str() == right,
             str => |left, right| left.as_str() == right,
@@ -315,6 +367,7 @@ define_node_types! {
     Variable(Variable) {
         eq: |left, right| left.symbol() == right.symbol(),
         cmp: |left, right| left.symbol().partial_cmp(right.symbol()),
+        total_cmp: |left, right| left.symbol().cmp(right.symbol()),
     },
 
     /// An array of values (see [`NodeArray`]).
@@ -322,6 +375,9 @@ define_node_types! {
         from: {
             NodeArray => |value| ArrayRef::new(value),
         },
+        eq: |left, right| left == right,
+        cmp: |left, right| left.partial_cmp(right),
+        total_cmp: |left, right| left.total_cmp(right),
         type_eq: {
             NodeArray => |left, right| ArrayRef::borrow(left).map_or(false, |a| a.eq(right)),
         },
@@ -331,6 +387,9 @@ define_node_types! {
         from: {
             NodeCommand => |value| Rc::new(value),
         },
+        eq: |left, right| left == right,
+        cmp: |left, right| left.partial_cmp(right),
+        total_cmp: |left, right| left.total_cmp(right),
         type_eq: {
             NodeCommand => |left, right| Borrow::<NodeCommand>::borrow(left) == right,
         },
@@ -340,6 +399,9 @@ define_node_types! {
         from: {
             NodeProperty => |value| Rc::new(value),
         },
+        eq: |left, right| left == right,
+        cmp: |left, right| left.partial_cmp(right),
+        total_cmp: |left, right| left.total_cmp(right),
         type_eq: {
             NodeProperty => |left, right| Borrow::<NodeProperty>::borrow(left) == right,
         },
@@ -857,6 +919,10 @@ impl Node {
 
     pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
         match_value!(self.unevaluated(), Property(value) => value)
+    }
+
+    pub fn total_cmp(&self, other: &Self) -> Ordering {
+        self.value.total_cmp(&other.value)
     }
 
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
