@@ -113,6 +113,15 @@ impl std::fmt::Debug for ArrayRef {
     }
 }
 
+impl std::fmt::Display for ArrayRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.inner.try_borrow() {
+            Ok(inner) => inner.fmt(f),
+            Err(_) => f.write_str("(<borrowed>)"),
+        }
+    }
+}
+
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
 #[derive(PartialEq, PartialOrd)]
@@ -383,7 +392,11 @@ impl NodeSlice {
         self.get_opt(index).and_then(|n| n.force_symbol_opt(context))
     }
 
-    pub fn array_tag_opt<S>(&self, context: &mut Context<S>, index: usize) -> Option<crate::Result<ArrayTag>> {
+    pub fn array_tag_opt<S>(
+        &self,
+        context: &mut Context<S>,
+        index: usize,
+    ) -> Option<crate::Result<ArrayTag>> {
         self.get_opt(index).and_then(|n| n.array_tag_opt(context))
     }
 
@@ -1091,7 +1104,8 @@ impl NodeSlice {
         context: &mut Context<S>,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<ArrayTag>> {
-        self.find_data_opt(predicate.into_predicate(context))?.array_tag_opt(context)
+        self.find_data_opt(predicate.into_predicate(context))?
+            .array_tag_opt(context)
     }
 
     pub fn find_variable_opt(&self, predicate: impl IntoDataPredicate) -> Option<Variable> {

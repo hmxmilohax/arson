@@ -732,10 +732,7 @@ impl fmt::Display for NodeValue {
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => Display::fmt(value, f),
 
-            Self::Array(value) => match ArrayRef::borrow(value) {
-                Ok(borrow) => borrow.fmt(f),
-                Err(err) => write!(f, "<failed to borrow array: {err}>"),
-            },
+            Self::Array(value) => Display::fmt(value, f),
             Self::Command(value) => Display::fmt(value, f),
             Self::Property(value) => Display::fmt(value, f),
 
