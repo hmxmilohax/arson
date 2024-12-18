@@ -10,6 +10,7 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
     bitwise::register_funcs(context);
     logical::register_funcs(context);
     compare::register_funcs(context);
+    escape::register_funcs(context);
 }
 
 mod arithmetic {
@@ -314,5 +315,73 @@ mod compare {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? <= args.evaluate(context, 1)?;
         Ok(result.into())
+    }
+}
+
+pub mod escape {
+    use super::*;
+
+    pub fn register_funcs<S>(context: &mut Context<S>) {
+        context.register_func("quote", self::quote);
+        context.register_func("quasiquote", self::quasiquote);
+        context.register_func("unquote", self::unquote);
+        context.register_func("eval", self::eval);
+
+        context.register_func("'", self::quote);
+        context.register_func("`", self::quasiquote);
+        context.register_func(",", self::unquote);
+    }
+
+    pub fn quote<S>(_context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 1);
+        args.get(1).cloned()
+    }
+
+    pub fn quasiquote<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 1);
+        return do_quasiquote(context, args.get(1)?);
+
+        fn do_quasiquote<S>(context: &mut Context<S>, value: &Node) -> ExecuteResult {
+            match value.unevaluated() {
+                NodeValue::Array(array) => {
+                    let borrow = array.borrow()?;
+                    let quoted = quote_array(context, &borrow)?;
+                    Ok(quoted.into())
+                },
+                NodeValue::Command(command) => {
+                    if let Some(NodeValue::Symbol(symbol)) = command.unevaluated_opt(0) {
+                        if *symbol == context.builtin_state.unquote
+                            || *symbol == context.builtin_state.unquote_abbrev
+                        {
+                            return unquote(context, command.slice(1..)?);
+                        }
+                    }
+
+                    let quoted = quote_array(context, command)?;
+                    Ok(NodeCommand::from(quoted).into())
+                },
+                value => Ok(value.into()),
+            }
+        }
+
+        fn quote_array<S>(context: &mut Context<S>, array: &NodeArray) -> crate::Result<NodeArray> {
+            let mut quoted = NodeArray::with_capacity(array.len());
+            for value in array {
+                let value = do_quasiquote(context, value)?;
+                quoted.push(value);
+            }
+            Ok(quoted)
+        }
+    }
+
+    pub fn unquote<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 1);
+        Ok(args.evaluate(context, 1)?.into())
+    }
+
+    pub fn eval<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 1);
+        let value: Node = args.evaluate(context, 1)?.into();
+        Ok(value.evaluate(context)?.into())
     }
 }

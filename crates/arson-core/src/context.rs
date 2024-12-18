@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use crate::builtin::BuiltinState;
 use crate::prelude::*;
 use crate::{FindDataPredicate, SymbolTable};
 
@@ -23,6 +24,7 @@ pub enum ExecutionError {
     reason = "The `state` field is solely external and has no impact on internal invariants"
 )]
 pub struct Context<State> {
+    pub(crate) builtin_state: BuiltinState,
     pub state: State,
 
     symbol_table: SymbolTable,
@@ -34,10 +36,14 @@ pub struct Context<State> {
 
 impl<State> Context<State> {
     pub fn new(state: State) -> Self {
+        let mut symbol_table = SymbolTable::new();
+        let builtin_state = BuiltinState::new(&mut symbol_table);
+
         let mut context = Self {
+            builtin_state,
             state,
 
-            symbol_table: SymbolTable::new(),
+            symbol_table,
 
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
