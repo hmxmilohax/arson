@@ -58,5 +58,11 @@ pub enum NumericError {
     OutOfRange(Range<usize>),
 
     #[error("{0}")]
-    Conversion(std::num::TryFromIntError),
+    IntegerConversion(#[from] std::num::TryFromIntError),
+
+    #[error("{0}")]
+    IntegerParse(#[from] std::num::ParseIntError),
+
+    #[error("{0}")]
+    FloatParse(#[from] std::num::ParseFloatError),
 }

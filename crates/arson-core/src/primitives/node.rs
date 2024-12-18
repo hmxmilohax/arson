@@ -305,15 +305,15 @@ define_node_types! {
         try_from: {
             u64 => |value| match IntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
-                Err(error) => return Err(NumericError::Conversion(error).into()),
+                Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
             isize => |value| match IntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
-                Err(error) => return Err(NumericError::Conversion(error).into()),
+                Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
             usize => |value| match IntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
-                Err(error) => return Err(NumericError::Conversion(error).into()),
+                Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
         },
         variant_eq: {
@@ -480,7 +480,7 @@ impl NodeValue {
             Self::Integer(value) => {
                 let result = match usize::try_from(value.0) {
                     Ok(value) => Ok(value),
-                    Err(err) => Err(NumericError::Conversion(err).into()),
+                    Err(err) => Err(NumericError::IntegerConversion(err).into()),
                 };
                 Some(result)
             },

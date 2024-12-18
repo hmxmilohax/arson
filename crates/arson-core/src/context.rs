@@ -115,14 +115,6 @@ impl<State> Context<State> {
         self.functions.insert(name, func).is_none()
     }
 
-    pub fn register_func_alias(&mut self, alias: impl IntoSymbol, actual: impl IntoSymbol) -> bool {
-        let actual = actual.into_symbol(self);
-        match self.functions.get(&actual) {
-            Some(func) => self.register_func(alias, *func),
-            None => false,
-        }
-    }
-
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {

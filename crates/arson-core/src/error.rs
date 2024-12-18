@@ -2,6 +2,8 @@
 
 use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
 
+pub type Result<T = ()> = std::result::Result<T, self::Error>;
+
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -21,7 +23,23 @@ pub enum Error {
     IoError(#[from] std::io::Error),
 }
 
-pub type Result<T = ()> = std::result::Result<T, self::Error>;
+impl From<std::num::TryFromIntError> for Error {
+    fn from(value: std::num::TryFromIntError) -> Self {
+        Self::NumericError(value.into())
+    }
+}
+
+impl From<std::num::ParseIntError> for Error {
+    fn from(value: std::num::ParseIntError) -> Self {
+        Self::NumericError(value.into())
+    }
+}
+
+impl From<std::num::ParseFloatError> for Error {
+    fn from(value: std::num::ParseFloatError) -> Self {
+        Self::NumericError(value.into())
+    }
+}
 
 #[macro_export]
 macro_rules! arson_assert {

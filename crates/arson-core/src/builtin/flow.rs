@@ -4,20 +4,20 @@ use crate::prelude::*;
 
 pub fn register_funcs<S>(context: &mut Context<S>) {
     control::register_funcs(context);
-    loops::register_funcs(context);
-    vars::register_funcs(context);
+    r#loop::register_funcs(context);
+    scope::register_funcs(context);
 }
 
-pub mod control {
+mod control {
     use super::*;
 
     pub fn register_funcs<S>(context: &mut Context<S>) {
-        context.register_func("if", self::if_block);
-        context.register_func("if_else", self::if_else_block);
-        context.register_func("unless", self::unless_block);
+        context.register_func("if", self::r#if);
+        context.register_func("if_else", self::if_else);
+        context.register_func("unless", self::unless);
     }
 
-    pub fn if_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn r#if<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -27,7 +27,7 @@ pub mod control {
         Ok(Node::HANDLED)
     }
 
-    pub fn if_else_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn if_else<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
         if args.boolean(context, 0)? {
             args.command(1)?.execute(context)
@@ -36,7 +36,7 @@ pub mod control {
         }
     }
 
-    pub fn unless_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn unless<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         if !args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -47,16 +47,16 @@ pub mod control {
     }
 }
 
-pub mod loops {
+mod r#loop {
     use super::*;
 
     pub fn register_funcs<S>(context: &mut Context<S>) {
-        context.register_func("while", self::while_block);
-        context.register_func("foreach", self::foreach_block);
+        context.register_func("while", self::r#while);
+        context.register_func("foreach", self::foreach);
         context.register_func("foreach_int", self::foreach_int);
     }
 
-    pub fn while_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn r#while<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         while args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -66,7 +66,7 @@ pub mod loops {
         Ok(Node::HANDLED)
     }
 
-    pub fn foreach_block<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn foreach<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         let variable = args.variable(0)?;
 
         for node in args.array(context, 1)?.borrow()?.iter() {
@@ -80,7 +80,7 @@ pub mod loops {
         Ok(Node::HANDLED)
     }
 
-    pub fn foreach_int<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn foreach_int<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         fn run_loop<S>(
             context: &mut Context<S>,
             args: &NodeSlice,
@@ -110,15 +110,15 @@ pub mod loops {
     }
 }
 
-pub mod vars {
+mod scope {
     use super::*;
 
     pub fn register_funcs<S>(context: &mut Context<S>) {
-        context.register_func("do", self::do_block);
+        context.register_func("do", self::r#do);
         context.register_func("with", self::with_block);
     }
 
-    pub fn do_block<S>(context: &mut Context<S>, mut args: &NodeSlice) -> ExecuteResult {
+    fn r#do<S>(context: &mut Context<S>, mut args: &NodeSlice) -> ExecuteResult {
         let mut saved_variables = VariableStack::new(context);
         saved_variables.push_initializers(&mut args)?;
 
@@ -127,7 +127,7 @@ pub mod vars {
         result
     }
 
-    pub fn with_block<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+    fn with_block<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
         todo!("`with` func")
     }
 }
