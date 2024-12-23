@@ -192,32 +192,41 @@ impl<State: Default> Default for Context<State> {
 ///
 /// ```rust
 /// use arson_core::{arson_array, Context, IntoSymbol};
-#[cfg_attr(feature = "file-loading", doc = "use arson_fs::drivers::MockFileSystemDriver;")]
+#[cfg_attr(
+    feature = "file-loading",
+    doc = "use arson_fs::drivers::MockFileSystemDriver;\n\
+    \n\
+    let driver = MockFileSystemDriver::new();\n\
+    let mut context = Context::new((), driver);"
+)]
+#[cfg_attr(
+    not(feature = "file-loading"),
+    doc = "\nlet mut context = Context::new(());"
+)]
 ///
-#[cfg_attr(feature = "file-loading", doc = "let driver = MockFileSystemDriver::new();")]
-#[cfg_attr(feature = "file-loading", doc = "let mut context = Context::new((), driver);")]
-#[cfg_attr(not(feature = "file-loading"), doc = "let mut context = Context::new(());")]
-///
-/// // add_macro makes use of this trait.
+/// // Context::add_macro makes use of this trait.
 /// // You can use either a Symbol, which gets used as-is...
 /// let symbol = context.add_symbol("kDefine");
 /// context.add_macro(&symbol, arson_array![1]);
 /// assert_eq!(context.get_macro(&symbol), Some(&arson_array![1]));
-/// 
+///
 /// // ...or a &str, which gets converted to a Symbol behind the scenes.
 /// context.add_macro("kDefine", arson_array![2]);
 /// assert_eq!(context.get_macro("kDefine"), Some(&arson_array![2]));
 ///
 /// // An implementation example, which sets a variable
 /// // with the given name to the text "some text".
-/// fn do_something_with_symbol<S>(context: &mut Context<S>, name: impl IntoSymbol) {
+/// fn do_something_with_symbol<S>(
+///     context: &mut Context<S>,
+///     name: impl IntoSymbol,
+/// ) {
 ///     context.set_variable(name, "some text");
 /// }
 ///
 /// let symbol = context.add_symbol("text");
 /// do_something_with_symbol(&mut context, &symbol);
 /// assert_eq!(context.get_variable(&symbol), "some text".into());
-/// 
+///
 /// do_something_with_symbol(&mut context, "text2");
 /// assert_eq!(context.get_variable("text2"), "some text".into());
 /// ```
