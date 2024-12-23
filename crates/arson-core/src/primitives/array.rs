@@ -2058,89 +2058,62 @@ mod tests {
     #[test]
     fn merge_tags() {
         let mut context = crate::make_test_context(());
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
 
-        let sym1 = context.add_symbol("sym1");
-        let sym2 = context.add_symbol("sym2");
-        let sym_asdf = context.add_symbol("asdf");
-        let sym_jkl = context.add_symbol("jkl");
-
-        /*
-        (sym1 5)
-        (sym2
-            (asdf 100)
-            (jkl 250)
-            (1
-                (5 "foo")
-                (10 "baz")
+        let mut dest = context
+            .load_text(
+                options.clone(),
+                r#"
+                (sym1 5)
+                (sym2
+                    (asdf 100)
+                    (jkl 250)
+                    (1
+                        (5 "foo")
+                        (10 "baz")
+                    )
+                )
+                (4 4)
+                "#,
             )
-        )
-        (4 4)
-        */
-        #[rustfmt::skip] // using DTA-style formatting here
-        let mut dest = arson_array![
-            arson_array![sym1.clone(), 5],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 100],
-                arson_array![sym_jkl.clone(), 250],
-                arson_array![1,
-                    arson_array![5, "foo"],
-                    arson_array![10, "baz"],
-                ],
-            ],
-            arson_array![4, 4],
-        ];
+            .unwrap();
 
-        /*
-        (sym1 1)
-        (sym2
-            (asdf 10)
-            (jkl 50)
-            (1
-                (10 "bar")
+        let source = context
+            .load_text(
+                options.clone(),
+                r#"
+                (sym1 1)
+                (sym2
+                    (asdf 10)
+                    (jkl 50)
+                    (1
+                        (10 "bar")
+                    )
+                )
+                (3 3)
+                "#,
             )
-        )
-        (3 3)
-        */
-        #[rustfmt::skip]
-        let source = arson_array![
-            arson_array![sym1.clone(), 1],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 10],
-                arson_array![sym_jkl.clone(), 50],
-                arson_array![1,
-                    arson_array![10, "bar"],
-                ],
-            ],
-            arson_array![3, 3],
-        ];
+            .unwrap();
 
-        /*
-        (sym1 5)
-        (sym2
-            (asdf 100)
-            (jkl 250)
-            (1
-                (5 "foo")
-                (10 "baz")
+        let dest_expected = context
+            .load_text(
+                options.clone(),
+                r#"
+                (sym1 5)
+                (sym2
+                    (asdf 100)
+                    (jkl 250)
+                    (1
+                        (5 "foo")
+                        (10 "baz")
+                    )
+                )
+                (4 4)
+                (3 3)
+                "#,
             )
-        )
-        (3 3)
-        (4 4)
-        */
-        #[rustfmt::skip]
-        let dest_expected = arson_array![
-            arson_array![sym1.clone(), 5],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 100],
-                arson_array![sym_jkl.clone(), 250],
-                arson_array![1,
-                    arson_array![5, "foo"],
-                    arson_array![10, "baz"],
-                ],
-            ],
-            arson_array![4, 4],
-            arson_array![3, 3],
-        ];
+            .unwrap();
+
         let source_expected = source.clone();
 
         dest.merge_tags(&source);
@@ -2151,87 +2124,61 @@ mod tests {
     #[test]
     fn replace_tags() {
         let mut context = crate::make_test_context(());
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
 
-        let sym1 = context.add_symbol("sym1");
-        let sym2 = context.add_symbol("sym2");
-        let sym_asdf = context.add_symbol("asdf");
-        let sym_jkl = context.add_symbol("jkl");
-
-        /*
-        (sym1 5)
-        (sym2
-            (asdf 100)
-            (jkl 250)
-            (1
-                (5 "foo")
-                (10 "baz")
+        let mut dest = context
+            .load_text(
+                options.clone(),
+                r#"
+                (sym1 5)
+                (sym2
+                    (asdf 100)
+                    (jkl 250)
+                    (1
+                        (5 "foo")
+                        (10 "baz")
+                    )
+                )
+                (4 4)
+                "#,
             )
-        )
-        (4 4)
-        */
-        #[rustfmt::skip] // using DTA-style formatting here
-        let mut dest = arson_array![
-            arson_array![sym1.clone(), 5],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 100],
-                arson_array![sym_jkl.clone(), 250],
-                arson_array![1,
-                    arson_array![5, "foo"],
-                    arson_array![10, "baz"],
-                ],
-            ],
-            arson_array![4, 4],
-        ];
+            .unwrap();
 
-        /*
-        (sym1 1)
-        (sym2
-            (asdf 10)
-            (jkl 50)
-            (1
-                (10 "bar")
+        let source = context
+            .load_text(
+                options.clone(),
+                r#"
+                (sym1 1)
+                (sym2
+                    (asdf 10)
+                    (jkl 50)
+                    (1
+                        (10 "bar")
+                    )
+                )
+                (3 3)
+                "#,
             )
-        )
-        (3 3)
-        */
-        #[rustfmt::skip]
-        let source = arson_array![
-            arson_array![sym1.clone(), 1],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 10],
-                arson_array![sym_jkl.clone(), 50],
-                arson_array![1,
-                    arson_array![10, "bar"],
-                ],
-            ],
-            arson_array![3, 3],
-        ];
+            .unwrap();
 
-        /*
-        (sym1 1)
-        (sym2
-            (asdf 10)
-            (jkl 50)
-            (1
-                (5 "foo")
-                (10 "bar")
+        let dest_expected = context
+            .load_text(
+                options,
+                r#"
+                (sym1 1)
+                (sym2
+                    (asdf 10)
+                    (jkl 50)
+                    (1
+                        (5 "foo")
+                        (10 "bar")
+                    )
+                )
+                (4 4)
+                "#,
             )
-        )
-        (4 4)
-        */
-        #[rustfmt::skip]
-        let dest_expected = arson_array![
-            arson_array![sym1.clone(), 1],
-            arson_array![sym2.clone(),
-                arson_array![sym_asdf.clone(), 10],
-                arson_array![sym_jkl.clone(), 50],
-                arson_array![1,
-                    arson_array![5, "foo"],
-                    arson_array![10, "bar"],
-                ],
-            ],
-            arson_array![4, 4],
-        ];
+            .unwrap();
+
         let source_expected = source.clone();
 
         dest.replace_tags(&source);
