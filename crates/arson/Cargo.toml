@@ -10,7 +10,7 @@ rust-version.workspace = true
 parse-reporting = ["arson-parse/reporting"]
 
 [dependencies]
-arson-core = { version = "0.1.0", path = "../arson-core", features = ["file-loading"] }
-arson-fs = { version = "0.1.0", path = "../arson-fs" }
-arson-parse = { version = "0.1.0", path = "../arson-parse" }
-arson-stdlib = { version = "0.1.0", path = "../arson-stdlib" }
+arson-core = { path = "../arson-core", features = ["file-loading"] }
+arson-fs = { path = "../arson-fs" }
+arson-parse = { path = "../arson-parse" }
+arson-stdlib = { path = "../arson-stdlib" }

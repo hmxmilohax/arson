@@ -17,7 +17,7 @@ file-system = ["dep:arson-fs"]
 file-loading = ["file-system"]
 
 [dependencies]
-arson-parse = { version = "0.1.0", path = "../arson-parse" }
-arson-fs = { version = "0.1.0", path = "../arson-fs", optional = true }
+arson-parse = { path = "../arson-parse" }
+arson-fs = { path = "../arson-fs", optional = true }
 
 thiserror = "1.0.65"
