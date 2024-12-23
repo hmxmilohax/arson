@@ -6,6 +6,8 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::slice::SliceIndex;
 
+pub use arson_parse::ArrayKind;
+
 use crate::prelude::*;
 use crate::{FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
 
@@ -20,41 +22,6 @@ macro_rules! arson_array {
     ($($x:expr),+ $(,)?) => (
         $crate::NodeArray::from(vec![$($x.into()),+])
     );
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ArrayKind {
-    Array,
-    Command,
-    Property,
-}
-
-impl ArrayKind {
-    pub fn delimiter(&self, open: bool) -> char {
-        let delimiters = self.delimiters();
-        match open {
-            true => delimiters.0,
-            false => delimiters.1,
-        }
-    }
-
-    pub fn delimiters(&self) -> (char, char) {
-        match self {
-            ArrayKind::Array => ('(', ')'),
-            ArrayKind::Command => ('{', '}'),
-            ArrayKind::Property => ('[', ']'),
-        }
-    }
-}
-
-impl std::fmt::Display for ArrayKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ArrayKind::Array => write!(f, "array"),
-            ArrayKind::Command => write!(f, "command"),
-            ArrayKind::Property => write!(f, "property"),
-        }
-    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -2047,7 +2014,7 @@ mod tests {
 
     #[test]
     fn merge_tags() {
-        let mut context = Context::new(());
+        let mut context = crate::make_test_context(());
 
         let sym1 = context.add_symbol("sym1");
         let sym2 = context.add_symbol("sym2");
@@ -2140,7 +2107,7 @@ mod tests {
 
     #[test]
     fn replace_tags() {
-        let mut context = Context::new(());
+        let mut context = crate::make_test_context(());
 
         let sym1 = context.add_symbol("sym1");
         let sym2 = context.add_symbol("sym2");

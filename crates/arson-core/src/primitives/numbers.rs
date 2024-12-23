@@ -3,11 +3,7 @@
 use std::num::Wrapping;
 use std::ops::Range;
 
-/// The integer value type used within nodes.
-pub type IntegerValue = i64;
-
-/// The floating-point value type used within nodes.
-pub type FloatValue = f64;
+pub use arson_parse::{FloatValue, IntegerValue};
 
 /// An integer value with wrapping/overflow semantics.
 pub type Integer = Wrapping<IntegerValue>;

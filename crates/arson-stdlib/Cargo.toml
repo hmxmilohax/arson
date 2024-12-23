@@ -9,8 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-arson-core = { version = "0.1.0", path = "../arson-core" }
+arson-core = { version = "0.1.0", path = "../arson-core", features = ["file-loading"] }
 arson-fs = { version = "0.1.0", path = "../arson-fs" }
-arson-parse = { version = "0.1.0", path = "../arson-parse", features = ["loading"] }
 
 thiserror = "1.0.65"

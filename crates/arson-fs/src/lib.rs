@@ -11,5 +11,5 @@ pub use filesystem::*;
 pub use path::*;
 
 pub mod prelude {
-    pub use super::{AbsolutePath, FileSystem, FileSystemState, VirtualPath, VirtualPathBuf};
+    pub use super::{AbsolutePath, FileSystem, VirtualPath, VirtualPathBuf};
 }

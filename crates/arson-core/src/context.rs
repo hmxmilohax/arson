@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+#[cfg(feature = "file-system")]
+use arson_fs::{FileSystem, FileSystemDriver, VirtualPath};
+
 use crate::builtin::BuiltinState;
 use crate::prelude::*;
 use crate::{FindDataPredicate, SymbolTable};
@@ -24,30 +27,39 @@ pub enum ExecutionError {
     reason = "The `state` field is solely external and has no impact on internal invariants"
 )]
 pub struct Context<State> {
-    pub(crate) builtin_state: BuiltinState,
-    pub state: State,
-
     symbol_table: SymbolTable,
 
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<Node>,
     functions: SymbolMap<HandleFn<State>>,
+
+    #[cfg(feature = "file-system")]
+    file_system: FileSystem,
+
+    pub(crate) builtin_state: BuiltinState,
+    pub state: State,
 }
 
 impl<State> Context<State> {
-    pub fn new(state: State) -> Self {
+    pub fn new(
+        state: State,
+        #[cfg(feature = "file-system")] driver: impl FileSystemDriver + 'static,
+    ) -> Self {
         let mut symbol_table = SymbolTable::new();
         let builtin_state = BuiltinState::new(&mut symbol_table);
 
         let mut context = Self {
-            builtin_state,
-            state,
-
             symbol_table,
 
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
+
+            #[cfg(feature = "file-system")]
+            file_system: FileSystem::new(driver),
+
+            builtin_state,
+            state,
         };
 
         crate::builtin::register_funcs(&mut context);
@@ -154,8 +166,22 @@ impl<State> Context<State> {
         drop(saved_variables); // ensure drop does not occur until after execution
         result
     }
+
+    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
+        crate::loader::load_text(self, options, text)
+    }
 }
 
+#[cfg(test)]
+pub(crate) fn make_test_context<S>(state: S) -> Context<S> {
+    Context::new(
+        state,
+        #[cfg(feature = "file-loading")]
+        arson_fs::drivers::MockFileSystemDriver::new(),
+    )
+}
+
+#[cfg(not(feature = "file-system"))]
 impl<State: Default> Default for Context<State> {
     fn default() -> Self {
         Self::new(Default::default())
@@ -166,21 +192,34 @@ impl<State: Default> Default for Context<State> {
 ///
 /// ```rust
 /// use arson_core::{arson_array, Context, IntoSymbol};
+#[cfg_attr(feature = "file-loading", doc = "use arson_fs::drivers::MockFileSystemDriver;")]
 ///
-/// let mut context = Context::new(());
+#[cfg_attr(feature = "file-loading", doc = "let driver = MockFileSystemDriver::new();")]
+#[cfg_attr(feature = "file-loading", doc = "let mut context = Context::new((), driver);")]
+#[cfg_attr(not(feature = "file-loading"), doc = "let mut context = Context::new(());")]
+///
+/// // add_macro makes use of this trait.
+/// // You can use either a Symbol, which gets used as-is...
 /// let symbol = context.add_symbol("kDefine");
-///
-/// // These are both equivalent, the latter will produce a Symbol behind the scenes.
 /// context.add_macro(&symbol, arson_array![1]);
-/// context.add_macro("kDefine", arson_array![1]);
+/// assert_eq!(context.get_macro(&symbol), Some(&arson_array![1]));
+/// 
+/// // ...or a &str, which gets converted to a Symbol behind the scenes.
+/// context.add_macro("kDefine", arson_array![2]);
+/// assert_eq!(context.get_macro("kDefine"), Some(&arson_array![2]));
 ///
-/// // This function can take &str, Symbol, or &Symbol as a name input.
+/// // An implementation example, which sets a variable
+/// // with the given name to the text "some text".
 /// fn do_something_with_symbol<S>(context: &mut Context<S>, name: impl IntoSymbol) {
-///     // ...
+///     context.set_variable(name, "some text");
 /// }
 ///
+/// let symbol = context.add_symbol("text");
 /// do_something_with_symbol(&mut context, &symbol);
-/// do_something_with_symbol(&mut context, "kDefine");
+/// assert_eq!(context.get_variable(&symbol), "some text".into());
+/// 
+/// do_something_with_symbol(&mut context, "text2");
+/// assert_eq!(context.get_variable("text2"), "some text".into());
 /// ```
 pub trait IntoSymbol {
     fn into_symbol<S>(self, context: &mut Context<S>) -> Symbol;
@@ -201,5 +240,27 @@ impl IntoSymbol for Symbol {
 impl IntoSymbol for &Symbol {
     fn into_symbol<S>(self, _context: &mut Context<S>) -> Symbol {
         self.clone()
+    }
+}
+
+#[cfg(feature = "file-system")]
+impl<S> Context<S> {
+    pub fn file_system(&self) -> &FileSystem {
+        &self.file_system
+    }
+
+    pub fn file_system_mut(&mut self) -> &mut FileSystem {
+        &mut self.file_system
+    }
+}
+
+#[cfg(feature = "file-loading")]
+impl<S> Context<S> {
+    pub fn load_path<P: AsRef<VirtualPath>>(
+        &mut self,
+        options: LoadOptions,
+        path: P,
+    ) -> Result<NodeArray, LoadError> {
+        crate::loader::load_path(self, options, path)
     }
 }

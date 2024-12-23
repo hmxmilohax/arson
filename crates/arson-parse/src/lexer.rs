@@ -5,9 +5,10 @@ use std::fmt::Write;
 use lazy_regex::{regex, regex_is_match};
 use logos::{Logos, Span, SpannedIter};
 
-use crate::{DiagnosticKind, FloatValue, IntegerValue};
+use crate::DiagnosticKind;
 
-type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
+pub type IntegerValue = i64;
+pub type FloatValue = f64;
 
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
@@ -229,6 +230,8 @@ make_tokens! {
         value_display: |f, value| value.fmt(f),
     },
 }
+
+type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 
 fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, DiagnosticKind> {
     let trim_range = before..text.len() - after;

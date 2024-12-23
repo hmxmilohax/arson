@@ -4,15 +4,6 @@ use std::io::{self, Read, Write};
 
 use super::{AbsolutePath, FileSystemDriver, Metadata, ReadWrite, VirtualPath};
 
-/// A state type that exposes a [`FileSystem`].
-///
-/// Use this as a bound to the state type on [`Context`](arson_core::Context)
-/// to require file system access for a function.
-pub trait FileSystemState {
-    fn file_system(&self) -> &FileSystem;
-    fn file_system_mut(&mut self) -> &mut FileSystem;
-}
-
 /// A file system implementation to be used from scripts.
 ///
 /// All methods which take a path accept relative paths,
@@ -94,30 +85,5 @@ impl FileSystem {
     /// Opens a file with execute permissions.
     pub fn open_execute<P: AsRef<VirtualPath>>(&self, path: P) -> io::Result<Box<dyn Read>> {
         self.driver.open_execute(&self.canonicalize(path))
-    }
-}
-
-impl FileSystemState for FileSystem {
-    fn file_system(&self) -> &FileSystem {
-        self
-    }
-
-    fn file_system_mut(&mut self) -> &mut FileSystem {
-        self
-    }
-}
-
-// Allow calling file_system[_mut] directly on contexts which have a file system state
-//
-// Bit odd to use the same trait meant for states, but this doesn't really have any implications
-// other than being able to nest contexts inside each other and still have the generics work out,
-// and it's much more natural to import the one trait and have it just work on contexts as well.
-impl<S: FileSystemState> FileSystemState for arson_core::Context<S> {
-    fn file_system(&self) -> &FileSystem {
-        self.state.file_system()
-    }
-
-    fn file_system_mut(&mut self) -> &mut FileSystem {
-        self.state.file_system_mut()
     }
 }

@@ -2,10 +2,11 @@
 
 use std::io;
 
-use arson_core::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
-use arson_fs::{AbsolutePath, FileSystemState, VirtualPath};
+#[cfg(feature = "file-loading")]
+use arson_fs::{AbsolutePath, VirtualPath};
+use arson_parse::{Diagnostic, Expression, ExpressionValue};
 
-use crate::{Diagnostic, Expression, ExpressionValue};
+use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
 #[derive(Clone)]
 pub struct LoadOptions {
@@ -24,17 +25,23 @@ pub enum LoadError {
     #[error("A required macro definition was not found")]
     MacroNotFound,
 
+    #[allow(dead_code)]
     #[error("Inclusion is disallowed by the given load options")]
     IncludeNotAllowed,
 
+    #[cfg(feature = "file-loading")]
     #[error("File {0} is included recursively")]
     RecursiveInclude(AbsolutePath),
+
+    #[allow(dead_code)]
+    #[error("Inclusion is not supported in this build")]
+    IncludeNotSupported,
 
     #[error("Auto-run is disallowed by the given load options")]
     AutorunNotAllowed,
 
     #[error("Error occurred in #autorun block: {0}")]
-    AutorunError(#[from] arson_core::Error),
+    AutorunError(#[from] crate::Error),
 
     #[error("Encountered errors while including other files")]
     Inner { recovered: NodeArray, errors: Vec<LoadError> },
@@ -62,7 +69,9 @@ impl From<LoadError> for io::Error {
             LoadError::Parse(_) => io::ErrorKind::InvalidData,
             LoadError::MacroNotFound => io::ErrorKind::Other,
             LoadError::IncludeNotAllowed => io::ErrorKind::PermissionDenied,
+            #[cfg(feature = "file-loading")]
             LoadError::RecursiveInclude(_) => io::ErrorKind::Other,
+            LoadError::IncludeNotSupported => io::ErrorKind::PermissionDenied,
             LoadError::AutorunNotAllowed => io::ErrorKind::PermissionDenied,
             LoadError::AutorunError(_) => io::ErrorKind::Other,
             LoadError::Inner { .. } => io::ErrorKind::Other,
@@ -71,18 +80,20 @@ impl From<LoadError> for io::Error {
     }
 }
 
-impl From<LoadError> for arson_core::Error {
+impl From<LoadError> for crate::Error {
     fn from(value: LoadError) -> Self {
         io::Error::from(value).into()
     }
 }
 
-struct Loader<'ctx, S: FileSystemState> {
+struct Loader<'ctx, S> {
     context: &'ctx mut Context<S>,
     options: LoadOptions,
+    #[cfg(feature = "file-loading")]
     include_stack: Vec<AbsolutePath>,
 }
 
+#[allow(dead_code)]
 enum NodeResult<'define> {
     Value(Node),
     IncludeFile(NodeArray),
@@ -92,9 +103,14 @@ enum NodeResult<'define> {
     Skip,
 }
 
-impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
+impl<'ctx, S> Loader<'ctx, S> {
     fn new(context: &'ctx mut Context<S>, options: LoadOptions) -> Self {
-        Self { context, options, include_stack: Vec::new() }
+        Self {
+            context,
+            options,
+            #[cfg(feature = "file-loading")]
+            include_stack: Vec::new(),
+        }
     }
 
     fn load_array<'a>(
@@ -163,21 +179,39 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
                 return Ok(NodeResult::Skip);
             },
             ExpressionValue::Include(path) => {
-                if !self.options.allow_include {
-                    return Err(LoadError::IncludeNotAllowed);
+                #[cfg(feature = "file-loading")]
+                {
+                    if !self.options.allow_include {
+                        return Err(LoadError::IncludeNotAllowed);
+                    }
+
+                    let file = self.load_path(path.text)?;
+                    return Ok(NodeResult::IncludeFile(file));
                 }
 
-                let file = self.load_path(path.text)?;
-                return Ok(NodeResult::IncludeFile(file));
+                #[cfg(not(feature = "file-loading"))]
+                {
+                    let _path = path; // mark as unused
+                    return Err(LoadError::IncludeNotSupported);
+                }
             },
             ExpressionValue::IncludeOptional(path) => {
-                if !self.options.allow_include {
-                    return Ok(NodeResult::Skip);
+                #[cfg(feature = "file-loading")]
+                {
+                    if !self.options.allow_include {
+                        return Ok(NodeResult::Skip);
+                    }
+
+                    match self.load_path_opt(path.text)? {
+                        Some(file) => return Ok(NodeResult::IncludeFile(file)),
+                        None => return Ok(NodeResult::Skip),
+                    }
                 }
 
-                match self.load_path_opt(path.text)? {
-                    Some(file) => return Ok(NodeResult::IncludeFile(file)),
-                    None => return Ok(NodeResult::Skip),
+                #[cfg(not(feature = "file-loading"))]
+                {
+                    let _path = path; // mark as unused
+                    return Err(LoadError::IncludeNotSupported);
                 }
             },
             ExpressionValue::Merge(name) => {
@@ -187,12 +221,21 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
                         None => return Err(LoadError::MacroNotFound),
                     }
                 } else {
-                    if !self.options.allow_include {
-                        return Err(LoadError::IncludeNotAllowed);
+                    #[cfg(feature = "file-loading")]
+                    {
+                        if !self.options.allow_include {
+                            return Err(LoadError::IncludeNotAllowed);
+                        }
+
+                        let file = self.load_path(name.text)?;
+                        return Ok(NodeResult::MergeFile(file));
                     }
 
-                    let file = self.load_path(name.text)?;
-                    return Ok(NodeResult::MergeFile(file));
+                    #[cfg(not(feature = "file-loading"))]
+                    {
+                        let _name = name; // mark as unused
+                        return Err(LoadError::IncludeNotSupported);
+                    }
                 }
             },
             ExpressionValue::Autorun(exprs) => {
@@ -228,6 +271,7 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
         Ok(NodeResult::Value(node))
     }
 
+    #[cfg(feature = "file-loading")]
     fn load_path_opt(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
         match self.context.file_system().exists(path) {
             true => self.load_path(path).map(Some),
@@ -235,6 +279,7 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
         }
     }
 
+    #[cfg(feature = "file-loading")]
     fn load_path<P: AsRef<VirtualPath>>(&mut self, path: P) -> Result<NodeArray, LoadError> {
         let file = self.context.file_system().open_execute(&path)?;
         let text = io::read_to_string(file)?;
@@ -264,7 +309,7 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
     }
 
     fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
-        let ast = match super::parse_text(text) {
+        let ast = match arson_parse::parse_text(text) {
             Ok(ast) => ast,
             Err(errors) => return Err(LoadError::Parse(errors)),
         };
@@ -272,7 +317,8 @@ impl<'ctx, S: FileSystemState> Loader<'ctx, S> {
     }
 }
 
-pub fn load_path<S: FileSystemState, P: AsRef<VirtualPath>>(
+#[cfg(feature = "file-loading")]
+pub fn load_path<S, P: AsRef<VirtualPath>>(
     context: &mut Context<S>,
     options: LoadOptions,
     path: P,
@@ -280,7 +326,7 @@ pub fn load_path<S: FileSystemState, P: AsRef<VirtualPath>>(
     Loader::new(context, options).load_path(path)
 }
 
-pub fn load_text<S: FileSystemState>(
+pub fn load_text<S>(
     context: &mut Context<S>,
     options: LoadOptions,
     text: &str,
@@ -288,7 +334,7 @@ pub fn load_text<S: FileSystemState>(
     Loader::new(context, options).load_text(text)
 }
 
-pub fn load_ast<'src, S: FileSystemState>(
+pub fn load_ast<'src, S>(
     context: &mut Context<S>,
     options: LoadOptions,
     ast: impl IntoIterator<Item = Expression<'src>>,
@@ -298,17 +344,13 @@ pub fn load_ast<'src, S: FileSystemState>(
 
 #[cfg(test)]
 mod tests {
-    use arson_core::prelude::*;
-    use arson_fs::drivers::MockFileSystemDriver;
-    use arson_fs::prelude::*;
+    #[cfg(feature = "file-loading")]
+    use arson_fs::{drivers::MockFileSystemDriver, prelude::*};
 
     use super::*;
+    use crate::prelude::*;
 
-    fn default_context() -> Context<FileSystem> {
-        Context::new(FileSystem::new(MockFileSystemDriver::new()))
-    }
-
-    fn assert_loaded<S: FileSystemState>(context: &mut Context<S>, text: &str, expected: NodeArray) {
+    fn assert_loaded<S>(context: &mut Context<S>, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
@@ -317,14 +359,10 @@ mod tests {
         assert_eq!(array, expected, "Unexpected result for '{text}'");
     }
 
-    #[expect(
-        dead_code,
-        reason = "Currently unused, left for future use (remove this message when used)"
-    )]
-    fn assert_error(text: &str, expected: LoadError) {
-        let mut context = default_context();
+    #[allow(dead_code)]
+    fn assert_error<S>(context: &mut Context<S>, text: &str, expected: LoadError) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
-        let errors = match load_text(&mut context, options, text) {
+        let errors = match load_text(context, options, text) {
             Ok(ast) => panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}"),
             Err(errors) => errors,
         };
@@ -333,25 +371,25 @@ mod tests {
 
     #[test]
     fn integer() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
         assert_loaded(&mut context, "1 2 3", arson_array![1, 2, 3]);
     }
 
     #[test]
     fn float() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
         assert_loaded(&mut context, "1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn string() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
         assert_loaded(&mut context, "\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
     }
 
     #[test]
     fn symbol() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
 
         let sym_asdf = context.add_symbol("asdf");
         let sym_plus = context.add_symbol("+");
@@ -362,7 +400,7 @@ mod tests {
 
     #[test]
     fn variable() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
 
         let var_asdf = Variable::new("asdf", &mut context);
         let var_this = Variable::new("this", &mut context);
@@ -372,13 +410,13 @@ mod tests {
 
     #[test]
     fn unhandled() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
         assert_loaded(&mut context, "kDataUnhandled", arson_array![Node::UNHANDLED])
     }
 
     #[test]
     fn arrays() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
 
         {
             let sym_asdf = context.add_symbol("asdf");
@@ -413,7 +451,23 @@ mod tests {
     }
 
     #[test]
-    fn directives() {
+    fn defines() {
+        let mut context = crate::make_test_context(());
+
+        #[allow(non_snake_case)]
+        let sym_kDefine = context.add_symbol("kDefine");
+        assert_eq!(context.get_macro(&sym_kDefine), None);
+
+        assert_loaded(&mut context, "#define kDefine (1)", arson_array![]);
+        assert_eq!(context.get_macro(&sym_kDefine), Some(&arson_array![1]));
+
+        assert_loaded(&mut context, "#undef kDefine", arson_array![]);
+        assert_eq!(context.get_macro(&sym_kDefine), None);
+    }
+
+    #[cfg(feature = "file-loading")]
+    #[test]
+    fn includes() {
         let mut driver = MockFileSystemDriver::new();
         driver.add_text_file(AbsolutePath::new_rooted("empty.dta"), "");
         driver.add_text_file(AbsolutePath::new_rooted("numbers.dta"), "1 2 3 4 5");
@@ -430,36 +484,7 @@ mod tests {
             ",
         );
 
-        struct TestState {
-            autorun_str: String,
-            file_system: FileSystem,
-        }
-
-        impl FileSystemState for TestState {
-            fn file_system(&self) -> &FileSystem {
-                &self.file_system
-            }
-
-            fn file_system_mut(&mut self) -> &mut FileSystem {
-                &mut self.file_system
-            }
-        }
-
-        let mut context = Context::new(TestState {
-            autorun_str: String::new(),
-            file_system: FileSystem::new(driver),
-        });
-
-        // Defines
-        #[allow(non_snake_case)]
-        let sym_kDefine = context.add_symbol("kDefine");
-        assert_eq!(context.get_macro(&sym_kDefine), None);
-
-        assert_loaded(&mut context, "#define kDefine (1)", arson_array![]);
-        assert_eq!(context.get_macro(&sym_kDefine), Some(&arson_array![1]));
-
-        assert_loaded(&mut context, "#undef kDefine", arson_array![]);
-        assert_eq!(context.get_macro(&sym_kDefine), None);
+        let mut context = Context::new((), driver);
 
         // Includes
         assert_loaded(&mut context, "#include empty.dta", arson_array![]);
@@ -518,8 +543,30 @@ mod tests {
                 arson_array![sym_list2, 4, 5, 6],
             ],
         );
+    }
 
-        // Autorun
+    #[cfg(not(feature = "file-loading"))]
+    #[test]
+    fn includes() {
+        let mut context = crate::make_test_context(());
+        assert_error(&mut context, "#include empty.dta", LoadError::Inner {
+            recovered: arson_array![],
+            errors: vec![LoadError::IncludeNotSupported],
+        });
+        assert_error(&mut context, "#merge empty.dta", LoadError::Inner {
+            recovered: arson_array![],
+            errors: vec![LoadError::IncludeNotSupported],
+        });
+    }
+
+    #[test]
+    fn autorun() {
+        struct TestState {
+            autorun_str: String,
+        }
+
+        let mut context = crate::make_test_context(TestState { autorun_str: String::new() });
+
         context.register_func("autorun_func", |context, args| {
             context.state.autorun_str = args.string(context, 0)?.as_ref().clone();
             Ok(Node::HANDLED)
@@ -535,7 +582,7 @@ mod tests {
 
     #[test]
     fn conditionals() {
-        let mut context = default_context();
+        let mut context = crate::make_test_context(());
 
         let sym_define = context.add_symbol("kDefine");
 
@@ -566,6 +613,7 @@ mod tests {
         ]);
     }
 
+    #[cfg(feature = "file-loading")]
     #[test]
     fn recursive_include() {
         let mut driver = MockFileSystemDriver::new();
@@ -633,7 +681,7 @@ mod tests {
             "#merge merge_loop_long_1.dta",
         );
 
-        let mut context = Context::new(FileSystem::new(driver));
+        let mut context = Context::new((), driver);
 
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 

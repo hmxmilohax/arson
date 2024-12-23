@@ -28,12 +28,15 @@ pub use primitives::*;
 
 mod context;
 mod error;
+mod loader;
 
 pub use context::*;
 pub use error::*;
+pub use loader::*;
 
 pub mod prelude {
     pub use super::context::{Context, ExecuteResult};
+    pub use super::loader::{LoadError, LoadOptions};
     pub use super::primitives::{
         ArrayRef,
         Node,

@@ -5,19 +5,7 @@ use std::path::Path;
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::prelude::*;
 
-struct State {
-    file_system: FileSystem,
-}
-
-impl FileSystemState for State {
-    fn file_system(&self) -> &FileSystem {
-        &self.file_system
-    }
-
-    fn file_system_mut(&mut self) -> &mut FileSystem {
-        &mut self.file_system
-    }
-}
+struct State;
 
 impl StdlibState for State {
     fn file_load_options(&self) -> LoadOptions {
@@ -33,12 +21,13 @@ fn main() -> arson::Result {
     let driver = BasicFileSystemDriver::new(&mount_dir)?;
 
     // Make context
-    let mut context = Context::new(State { file_system: FileSystem::new(driver) });
+    let mut context = Context::new(State, driver);
     arson::stdlib::register_funcs(&mut context);
     println!("Created context.");
 
     // Load main.dta file
-    let file = context.load_path("/main.dta")?;
+    let options = LoadOptions { allow_include: true, allow_autorun: true };
+    let file = context.load_path(options, "/main.dta")?;
     println!("Loaded main.dta");
 
     // Execute (main {...}) script

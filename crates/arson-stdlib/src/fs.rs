@@ -6,7 +6,7 @@ use arson_core::prelude::*;
 use arson_fs::prelude::*;
 use arson_fs::Metadata;
 
-use crate::{StdlibContextExt, StdlibState};
+use crate::StdlibState;
 
 pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
     context.register_func("basename", self::basename);
@@ -49,7 +49,7 @@ pub fn read_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> 
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
-    let array = context.load_path(path.as_ref())?;
+    let array = context.load_path(context.file_load_options(), path.as_ref())?;
     Ok(array.into())
 }
 

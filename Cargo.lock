@@ -25,6 +25,8 @@ dependencies = [
 name = "arson-core"
 version = "0.1.0"
 dependencies = [
+ "arson-fs",
+ "arson-parse",
  "thiserror",
 ]
 
@@ -32,7 +34,6 @@ dependencies = [
 name = "arson-fs"
 version = "0.1.0"
 dependencies = [
- "arson-core",
  "thiserror",
 ]
 
@@ -40,8 +41,6 @@ dependencies = [
 name = "arson-parse"
 version = "0.1.0"
 dependencies = [
- "arson-core",
- "arson-fs",
  "codespan-reporting",
  "lazy-regex",
  "logos",
@@ -54,7 +53,6 @@ version = "0.1.0"
 dependencies = [
  "arson-core",
  "arson-fs",
- "arson-parse",
  "thiserror",
 ]
 
