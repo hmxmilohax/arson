@@ -15,7 +15,7 @@ pub type ExecuteResult = crate::Result<Node>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ExecutionError {
-    #[error("No function registered for name '{0}'")]
+    #[error("no function registered for name '{0}'")]
     FunctionNotFound(String),
 
     #[error("{0}")]

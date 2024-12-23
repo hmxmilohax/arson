@@ -26,19 +26,19 @@ macro_rules! arson_array {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ArrayError {
-    #[error("Bad array length {actual}, expected {expected}")]
+    #[error("bad array length {actual}, expected {expected}")]
     LengthMismatch { expected: usize, actual: usize },
 
-    #[error("Array index outside of range {0:?}")]
+    #[error("array index outside of range {0:?}")]
     OutOfRange(Range<usize>),
 
-    #[error("Requested data was not found")]
-    NotFound,
+    #[error("requested data for {0} was not found")]
+    NotFound(String),
 
-    #[error("Array already mutably borrowed: {0:?}")]
+    #[error("array already mutably borrowed: {0:?}")]
     BadBorrow(#[from] std::cell::BorrowError),
 
-    #[error("Array already immutably borrowed: {0:?}")]
+    #[error("array already immutably borrowed: {0:?}")]
     BadMutBorrow(#[from] std::cell::BorrowMutError),
 }
 
@@ -707,6 +707,7 @@ impl std::fmt::Display for ArrayTag {
 /// though nothing will go wrong if you do (barring any logic errors in said implementation).
 pub trait FindDataPredicate {
     fn matches(&self, value: &NodeValue) -> bool;
+    fn err_string(&self) -> String;
 }
 
 // No blanket implementation is provided to allow all values which are comparable to NodeValue,
@@ -715,34 +716,76 @@ pub trait FindDataPredicate {
 // so if a more special need arises, it can be handled using that custom logic.
 
 macro_rules! find_pred_impl {
-    ($type:ty => |$predicate:ident, $value:ident| $block:expr) => {
-        impl FindDataPredicate for $type {
-            fn matches(&self, $value: &NodeValue) -> bool {
-                let $predicate = self;
-                $block
-            }
-        }
+    (
+        $(
+            $type:ty {
+                matches: |$matches_predicate:ident, $matches_value:ident| $matches_block:expr,
+                err_string: |$err_string_self:ident| $err_string_block:expr,
+            },
+        )+
+    ) => {
+        $(
+            impl FindDataPredicate for $type {
+                fn matches(&self, $matches_value: &NodeValue) -> bool {
+                    let $matches_predicate = self;
+                    $matches_block
+                }
 
-        // Using a blanket implementation for this isn't possible due to the
-        // impl for Fn(&NodeValue) -> bool, which inherently handles references
-        impl FindDataPredicate for &$type {
-            fn matches(&self, value: &NodeValue) -> bool {
-                FindDataPredicate::matches(*self, value)
+                fn err_string(&self) -> String {
+                    let $err_string_self = self;
+                    $err_string_block
+                }
             }
-        }
+
+            // Using a blanket implementation for this isn't possible due to the
+            // impl for Fn(&NodeValue) -> bool, which inherently handles references
+            impl FindDataPredicate for &$type {
+                fn matches(&self, value: &NodeValue) -> bool {
+                    FindDataPredicate::matches(*self, value)
+                }
+
+                fn err_string(&self) -> String {
+                    FindDataPredicate::err_string(*self)
+                }
+            }
+        )+
     };
 }
 
-find_pred_impl!(Symbol => |predicate, value| value == predicate);
-// We could allow this, but really, you should use a Symbol instead...
-// find_pred_impl!(String => |predicate, value| value == predicate);
-find_pred_impl!(Integer => |predicate, value| value == predicate);
-find_pred_impl!(IntegerValue => |predicate, value| value == predicate);
-find_pred_impl!(ArrayTag => |predicate, value| value == predicate);
+find_pred_impl! {
+    Symbol {
+        matches: |predicate, value| value == predicate,
+        err_string: |this| format!("symbol {this}"),
+    },
+    // We could allow this, but really, you should use a Symbol instead...
+    // String {
+    //     matches: |predicate, value| value == predicate,
+    //     err_string: |this| format!("string {this}"),
+    // },
+    Integer {
+        matches: |predicate, value| value == predicate,
+        err_string: |this| format!("integer {this}"),
+    },
+    IntegerValue {
+        matches: |predicate, value| value == predicate,
+        err_string: |this| format!("integer {this}"),
+    },
+    ArrayTag {
+        matches: |predicate, value| value == predicate,
+        err_string: |this| match this {
+            ArrayTag::Integer(tag) => FindDataPredicate::err_string(tag),
+            ArrayTag::Symbol(tag) => FindDataPredicate::err_string(tag),
+        },
+    },
+}
 
 impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
     fn matches(&self, value: &NodeValue) -> bool {
         self(value)
+    }
+
+    fn err_string(&self) -> String {
+        "custom predicate".to_owned()
     }
 }
 
@@ -865,7 +908,7 @@ impl NodeSlice {
             };
         }
 
-        Err(ArrayError::NotFound.into())
+        Err(ArrayError::NotFound(predicate.err_string()).into())
     }
 
     pub fn find_data(&self, predicate: impl IntoDataPredicate) -> crate::Result<Node> {

@@ -47,10 +47,10 @@ impl From<FloatValue> for Number {
 
 #[derive(thiserror::Error, Debug)]
 pub enum NumericError {
-    #[error("An undesired integer overflow occurred")]
+    #[error("an undesired integer overflow occurred")]
     Overflow,
 
-    #[error("Value outside of range {0:?}")]
+    #[error("value outside of range {0:?}")]
     OutOfRange(Range<usize>),
 
     #[error("{0}")]

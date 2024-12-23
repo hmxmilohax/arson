@@ -752,19 +752,19 @@ impl fmt::Display for NodeValue {
 
 #[derive(thiserror::Error, Debug)]
 pub enum EvaluationError {
-    #[error("Expected value of type {expected:?}, got {actual:?} instead")]
+    #[error("expected value of type {expected:?}, got {actual:?} instead")]
     TypeMismatch { expected: NodeKind, actual: NodeKind },
 
-    #[error("Value of type {src:?} is not convertible to {dest:?}")]
+    #[error("value of type {src:?} is not convertible to {dest:?}")]
     NotConvertible { src: NodeKind, dest: NodeKind },
 
-    #[error("Value of type {0:?} is not a number")]
+    #[error("value of type {0:?} is not a number")]
     NotNumber(NodeKind),
 
-    #[error("Value of type {0:?} is not convertible to a boolean")]
+    #[error("value of type {0:?} is not convertible to a boolean")]
     NotBoolean(NodeKind),
 
-    #[error("Value of type {0:?} is not a valid array tag")]
+    #[error("value of type {0:?} is not a valid array tag")]
     NotArrayTag(NodeKind),
 }
 
@@ -778,10 +778,11 @@ macro_rules! match_value {
         let value = $value;
         match value {
             NodeValue::$kind($inner) => Ok($expr),
-            _ => Err(crate::Error::EvaluationError(EvaluationError::TypeMismatch {
+            _ => Err(EvaluationError::TypeMismatch {
                 expected: NodeKind::$kind,
                 actual: value.get_kind(),
-            })),
+            }
+            .into()),
         }
     }};
 }
@@ -902,7 +903,7 @@ impl Node {
         )
     }
 
-    pub const fn variable(&self) -> crate::Result<&Variable> {
+    pub fn variable(&self) -> crate::Result<&Variable> {
         match_value!(self.unevaluated(), Variable(value) => value)
     }
 
@@ -919,11 +920,11 @@ impl Node {
         match_value!(self.evaluate(context)?, Array(value) => value)
     }
 
-    pub const fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
+    pub fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
         match_value!(self.unevaluated(), Command(value) => value)
     }
 
-    pub const fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+    pub fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
         match_value!(self.unevaluated(), Property(value) => value)
     }
 

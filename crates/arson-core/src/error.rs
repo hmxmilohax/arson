@@ -1,43 +1,95 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
+use std::backtrace::Backtrace;
+
+use crate::{ArrayError, EvaluationError, ExecutionError, LoadError, NumericError};
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Evaluation error: {0}")]
+pub enum ErrorKind {
+    #[error("{0}")]
     EvaluationError(#[from] EvaluationError),
 
-    #[error("Execution error: {0}")]
+    #[error("{0}")]
     ExecutionError(#[from] ExecutionError),
 
-    #[error("Numeric error: {0}")]
-    NumericError(#[from] NumericError),
+    #[error("{0}")]
+    NumericError(#[source] NumericError),
 
-    #[error("Array error: {0}")]
+    #[error("{0}")]
     ArrayError(#[from] ArrayError),
 
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("{0}")]
+    LoadError(#[from] LoadError),
 }
 
-impl From<std::num::TryFromIntError> for Error {
-    fn from(value: std::num::TryFromIntError) -> Self {
+impl From<std::io::ErrorKind> for crate::ErrorKind {
+    fn from(value: std::io::ErrorKind) -> Self {
+        Self::IoError(value.into())
+    }
+}
+
+impl<E: Into<NumericError>> From<E> for crate::ErrorKind {
+    fn from(value: E) -> Self {
         Self::NumericError(value.into())
     }
 }
 
-impl From<std::num::ParseIntError> for Error {
-    fn from(value: std::num::ParseIntError) -> Self {
-        Self::NumericError(value.into())
+/// Data is separated out and boxed to keep the size of [`Error`] down,
+/// and consequently the size of [`Result`].
+#[derive(Debug)]
+struct ErrorData {
+    kind: ErrorKind,
+    location: Backtrace,
+}
+
+pub struct Error {
+    data: Box<ErrorData>,
+}
+
+impl self::Error {
+    pub fn new(kind: ErrorKind) -> Self {
+        Self {
+            data: Box::new(ErrorData { kind, location: Backtrace::capture() }),
+        }
+    }
+
+    pub fn kind(&self) -> &ErrorKind {
+        &self.data.kind
+    }
+
+    pub fn location(&self) -> &Backtrace {
+        &self.data.location
     }
 }
 
-impl From<std::num::ParseFloatError> for Error {
-    fn from(value: std::num::ParseFloatError) -> Self {
-        Self::NumericError(value.into())
+impl std::error::Error for self::Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.data.kind)
+    }
+}
+
+impl std::fmt::Debug for self::Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Skip straight to displaying `data` for simplicity
+        self.data.fmt(f)
+    }
+}
+
+impl std::fmt::Display for self::Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.data.kind.fmt(f)
+    }
+}
+
+impl<E: Into<ErrorKind>> From<E> for self::Error {
+    fn from(value: E) -> Self {
+        Self::new(value.into())
     }
 }
 
@@ -59,9 +111,7 @@ macro_rules! arson_assert {
 macro_rules! arson_fail {
     ($($arg:tt)+) => {
         return Err(
-            $crate::Error::ExecutionError(
-                $crate::ExecutionError::Failure(format!($($arg)+))
-            )
+            $crate::ExecutionError::Failure(format!($($arg)+)).into()
         )
     };
 }
@@ -70,10 +120,10 @@ macro_rules! arson_fail {
 macro_rules! arson_assert_len {
     ($array:ident, $len:expr) => {
         if $array.len() != $len {
-            return Err($crate::Error::ArrayError($crate::ArrayError::LengthMismatch {
+            return Err($crate::ArrayError::LengthMismatch {
                 expected: $len,
                 actual: $array.len(),
-            }));
+            }.into());
         }
     };
     ($array:ident, $len:expr, $($arg:expr)+) => {

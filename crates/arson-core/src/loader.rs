@@ -41,10 +41,10 @@ pub enum LoadError {
     AutorunNotAllowed,
 
     #[error("Error occurred in #autorun block: {0}")]
-    AutorunError(#[from] crate::Error),
+    AutorunError(#[source] crate::Error),
 
     #[error("Encountered errors while including other files")]
-    Inner { recovered: NodeArray, errors: Vec<LoadError> },
+    Inner(Vec<LoadError>),
 }
 
 // manual impl because io::Error has no eq impl, but io::Error.kind() does
@@ -53,36 +53,15 @@ impl PartialEq for LoadError {
         match (self, other) {
             (Self::IO(left), Self::IO(right)) => left.kind() == right.kind(),
             (Self::Parse(left), Self::Parse(right)) => left == right,
-            (
-                Self::Inner { recovered: l_recovered, errors: l_errors },
-                Self::Inner { recovered: r_recovered, errors: r_errors },
-            ) => l_recovered == r_recovered && l_errors == r_errors,
+            (Self::Inner(left), Self::Inner(right)) => left == right,
             _ => std::mem::discriminant(self) == std::mem::discriminant(other),
         }
     }
 }
 
-impl From<LoadError> for io::Error {
-    fn from(value: LoadError) -> Self {
-        let io_kind = match value {
-            LoadError::IO(error) => return error,
-            LoadError::Parse(_) => io::ErrorKind::InvalidData,
-            LoadError::MacroNotFound => io::ErrorKind::Other,
-            LoadError::IncludeNotAllowed => io::ErrorKind::PermissionDenied,
-            #[cfg(feature = "file-loading")]
-            LoadError::RecursiveInclude(_) => io::ErrorKind::Other,
-            LoadError::IncludeNotSupported => io::ErrorKind::PermissionDenied,
-            LoadError::AutorunNotAllowed => io::ErrorKind::PermissionDenied,
-            LoadError::AutorunError(_) => io::ErrorKind::Other,
-            LoadError::Inner { .. } => io::ErrorKind::Other,
-        };
-        io::Error::new(io_kind, value.to_string())
-    }
-}
-
-impl From<LoadError> for crate::Error {
-    fn from(value: LoadError) -> Self {
-        io::Error::from(value).into()
+impl From<std::io::ErrorKind> for LoadError {
+    fn from(value: std::io::ErrorKind) -> Self {
+        Self::IO(value.into())
     }
 }
 
@@ -140,7 +119,7 @@ impl<'ctx, S> Loader<'ctx, S> {
         array.shrink_to_fit();
 
         if !errors.is_empty() {
-            Err(LoadError::Inner { recovered: array, errors })
+            Err(LoadError::Inner(errors))
         } else {
             Ok(array)
         }
@@ -549,14 +528,16 @@ mod tests {
     #[test]
     fn includes() {
         let mut context = crate::make_test_context(());
-        assert_error(&mut context, "#include empty.dta", LoadError::Inner {
-            recovered: arson_array![],
-            errors: vec![LoadError::IncludeNotSupported],
-        });
-        assert_error(&mut context, "#merge empty.dta", LoadError::Inner {
-            recovered: arson_array![],
-            errors: vec![LoadError::IncludeNotSupported],
-        });
+        assert_error(
+            &mut context,
+            "#include empty.dta",
+            LoadError::Inner(vec![LoadError::IncludeNotSupported]),
+        );
+        assert_error(
+            &mut context,
+            "#merge empty.dta",
+            LoadError::Inner(vec![LoadError::IncludeNotSupported]),
+        );
     }
 
     #[test]
@@ -682,57 +663,44 @@ mod tests {
         );
 
         let mut context = Context::new((), driver);
-
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 
-        fn recursion_error(path: &str, depth: usize) -> LoadError {
-            let mut error = LoadError::Inner {
-                recovered: arson_array![],
-                errors: vec![LoadError::RecursiveInclude(AbsolutePath::new_rooted(path))],
-            };
+        let mut assert_recursion_error = |path: &str, depth: usize| {
+            let mut expected =
+                LoadError::Inner(vec![LoadError::RecursiveInclude(AbsolutePath::new_rooted(path))]);
 
             for _i in 0..depth {
-                error = LoadError::Inner { recovered: arson_array![], errors: vec![error] };
+                expected = LoadError::Inner(vec![expected]);
             }
 
-            error
-        }
+            let result = match super::load_path(&mut context, options.clone(), path) {
+                Ok(ast) => {
+                    panic!("Expected recursion error, got success instead.\nPath: {path}\nResult: {ast:?}")
+                },
+                Err(error) => error,
+            };
+            assert_eq!(result, expected);
+        };
 
-        let result = super::load_path(&mut context, options.clone(), "self_include.dta");
-        assert_eq!(result, Err(recursion_error("self_include.dta", 0)));
-        let result = super::load_path(&mut context, options.clone(), "self_merge.dta");
-        assert_eq!(result, Err(recursion_error("self_merge.dta", 0)));
+        assert_recursion_error("self_include.dta", 0);
+        assert_recursion_error("self_merge.dta", 0);
 
-        let result = super::load_path(&mut context, options.clone(), "include_loop_short_1.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_short_1.dta", 1)));
-        let result = super::load_path(&mut context, options.clone(), "include_loop_short_2.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_short_2.dta", 1)));
+        assert_recursion_error("include_loop_short_1.dta", 1);
+        assert_recursion_error("include_loop_short_2.dta", 1);
 
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_short_1.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_short_1.dta", 1)));
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_short_2.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_short_2.dta", 1)));
+        assert_recursion_error("merge_loop_short_1.dta", 1);
+        assert_recursion_error("merge_loop_short_2.dta", 1);
 
-        let result = super::load_path(&mut context, options.clone(), "include_loop_long_1.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_long_1.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "include_loop_long_2.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_long_2.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "include_loop_long_3.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_long_3.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "include_loop_long_4.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_long_4.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "include_loop_long_5.dta");
-        assert_eq!(result, Err(recursion_error("include_loop_long_5.dta", 4)));
+        assert_recursion_error("include_loop_long_1.dta", 4);
+        assert_recursion_error("include_loop_long_2.dta", 4);
+        assert_recursion_error("include_loop_long_3.dta", 4);
+        assert_recursion_error("include_loop_long_4.dta", 4);
+        assert_recursion_error("include_loop_long_5.dta", 4);
 
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_1.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_long_1.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_2.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_long_2.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_3.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_long_3.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_4.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_long_4.dta", 4)));
-        let result = super::load_path(&mut context, options.clone(), "merge_loop_long_5.dta");
-        assert_eq!(result, Err(recursion_error("merge_loop_long_5.dta", 4)));
+        assert_recursion_error("merge_loop_long_1.dta", 4);
+        assert_recursion_error("merge_loop_long_2.dta", 4);
+        assert_recursion_error("merge_loop_long_3.dta", 4);
+        assert_recursion_error("merge_loop_long_4.dta", 4);
+        assert_recursion_error("merge_loop_long_5.dta", 4);
     }
 }

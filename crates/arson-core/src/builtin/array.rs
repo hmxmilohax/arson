@@ -331,5 +331,5 @@ fn convert_panic(result: Result<ExecuteResult, Box<dyn std::any::Any + Send + 's
         },
     };
 
-    return Err(crate::Error::ExecutionError(ExecutionError::Failure(msg)));
+    return Err(ExecutionError::Failure(msg).into());
 }
