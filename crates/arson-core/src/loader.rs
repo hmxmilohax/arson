@@ -190,7 +190,7 @@ impl<'ctx, S> Loader<'ctx, S> {
                 #[cfg(not(feature = "file-loading"))]
                 {
                     let _path = path; // mark as unused
-                    return Err(LoadError::IncludeNotSupported);
+                    return Ok(NodeResult::Skip);
                 }
             },
             ExpressionValue::Merge(name) => {
@@ -252,9 +252,9 @@ impl<'ctx, S> Loader<'ctx, S> {
 
     #[cfg(feature = "file-loading")]
     fn load_path_opt(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
-        match self.context.file_system()?.exists(path) {
-            true => self.load_path(path).map(Some),
-            false => Ok(None),
+        match self.context.file_system_opt().map(|fs| fs.exists(path)) {
+            Some(true) => self.load_path(path).map(Some),
+            _ => Ok(None),
         }
     }
 
@@ -524,10 +524,32 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "file-loading")]
+    #[test]
+    fn includes_no_fs() {
+        let mut context = Context::new(());
+
+        assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
+
+        assert_error(
+            &mut context,
+            "#include empty.dta",
+            LoadError::Inner(vec![io::ErrorKind::Unsupported.into()]),
+        );
+        assert_error(
+            &mut context,
+            "#merge empty.dta",
+            LoadError::Inner(vec![io::ErrorKind::Unsupported.into()]),
+        );
+    }
+
     #[cfg(not(feature = "file-loading"))]
     #[test]
     fn includes() {
         let mut context = Context::new(());
+
+        assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
+
         assert_error(
             &mut context,
             "#include empty.dta",
