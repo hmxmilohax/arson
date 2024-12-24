@@ -3,7 +3,13 @@
 use std::num::Wrapping;
 use std::ops::Range;
 
+#[cfg(feature = "text-loading")]
 pub use arson_parse::{FloatValue, IntegerValue};
+
+#[cfg(not(feature = "text-loading"))]
+pub type IntegerValue = i64;
+#[cfg(not(feature = "text-loading"))]
+pub type FloatValue = f64;
 
 /// An integer value with wrapping/overflow semantics.
 pub type Integer = Wrapping<IntegerValue>;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #[cfg(feature = "file-system")]
-use arson_fs::{FileSystem, FileSystemDriver, VirtualPath};
+use arson_fs::FileSystem;
 
 use crate::builtin::BuiltinState;
 use crate::prelude::*;
@@ -163,10 +163,6 @@ impl<State> Context<State> {
         drop(saved_variables); // ensure drop does not occur until after execution
         result
     }
-
-    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
-        crate::loader::load_text(self, options, text)
-    }
 }
 
 impl<State: Default> Default for Context<State> {
@@ -230,9 +226,16 @@ impl IntoSymbol for &Symbol {
     }
 }
 
+#[cfg(feature = "text-loading")]
+impl<S> Context<S> {
+    pub fn load_text(&mut self, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
+        crate::loader::load_text(self, options, text)
+    }
+}
+
 #[cfg(feature = "file-system")]
 impl<S> Context<S> {
-    pub fn with_filesystem_driver(self, driver: impl FileSystemDriver + 'static) -> Self {
+    pub fn with_filesystem_driver(self, driver: impl arson_fs::FileSystemDriver + 'static) -> Self {
         Self { file_system: Some(FileSystem::new(driver)), ..self }
     }
 
@@ -259,7 +262,7 @@ impl<S> Context<S> {
 
 #[cfg(feature = "file-loading")]
 impl<S> Context<S> {
-    pub fn load_path<P: AsRef<VirtualPath>>(
+    pub fn load_path<P: AsRef<arson_fs::VirtualPath>>(
         &mut self,
         options: LoadOptions,
         path: P,

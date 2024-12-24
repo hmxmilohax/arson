@@ -13,11 +13,15 @@ rust-version.workspace = true
 publish = false
 
 [features]
+default = ["text-loading"]
+
 file-system = ["dep:arson-fs"]
-file-loading = ["file-system"]
+
+text-loading = ["dep:arson-parse"]
+file-loading = ["text-loading", "file-system"]
 
 [dependencies]
-arson-parse = { path = "../arson-parse" }
+arson-parse = { path = "../arson-parse", optional = true }
 arson-fs = { path = "../arson-fs", optional = true }
 
 thiserror = "1.0.65"

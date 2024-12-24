@@ -28,14 +28,17 @@ pub use primitives::*;
 
 mod context;
 mod error;
+#[cfg(feature = "text-loading")]
 mod loader;
 
 pub use context::*;
 pub use error::*;
+#[cfg(feature = "text-loading")]
 pub use loader::*;
 
 pub mod prelude {
     pub use super::context::{Context, ExecuteResult};
+    #[cfg(feature = "text-loading")]
     pub use super::loader::{LoadError, LoadOptions};
     pub use super::primitives::{
         ArrayRef,

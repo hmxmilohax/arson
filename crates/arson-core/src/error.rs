@@ -2,7 +2,9 @@
 
 use std::backtrace::Backtrace;
 
-use crate::{ArrayError, EvaluationError, ExecutionError, LoadError, NumericError};
+use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
+#[cfg(feature = "text-loading")]
+use crate::LoadError;
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
 
@@ -24,6 +26,7 @@ pub enum ErrorKind {
     #[error("{0}")]
     IoError(#[from] std::io::Error),
 
+    #[cfg(feature = "text-loading")]
     #[error("{0}")]
     LoadError(#[from] LoadError),
 }

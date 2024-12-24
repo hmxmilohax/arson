@@ -6,11 +6,25 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+publish = false
+
 [features]
-parse-reporting = ["arson-parse/reporting"]
+default = ["arson-fs", "arson-stdlib", "file-loading"]
+
+# Optional components
+arson-fs = ["dep:arson-fs", "arson-core/file-system"]
+arson-parse = ["dep:arson-parse"]
+arson-stdlib = ["dep:arson-stdlib"]
+
+# arson-core features
+file-loading = ["text-loading", "arson-fs", "arson-core/file-loading"]
+text-loading = ["arson-core/text-loading"]
+
+# arson-parse features
+parse-reporting = ["arson-parse", "arson-parse/reporting"]
 
 [dependencies]
-arson-core = { path = "../arson-core", features = ["file-loading"] }
-arson-fs = { path = "../arson-fs" }
-arson-parse = { path = "../arson-parse" }
-arson-stdlib = { path = "../arson-stdlib" }
+arson-core = { path = "../arson-core", default-features = false }
+arson-fs = { path = "../arson-fs", optional = true }
+arson-parse = { path = "../arson-parse", optional = true }
+arson-stdlib = { path = "../arson-stdlib", optional = true }
