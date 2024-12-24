@@ -21,7 +21,7 @@ fn main() -> arson::Result {
     let driver = BasicFileSystemDriver::new(&mount_dir)?;
 
     // Make context
-    let mut context = Context::new(State, driver);
+    let mut context = Context::new(State).with_filesystem_driver(driver);
     arson::stdlib::register_funcs(&mut context);
     println!("Created context.");
 

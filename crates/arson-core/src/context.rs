@@ -34,17 +34,14 @@ pub struct Context<State> {
     functions: SymbolMap<HandleFn<State>>,
 
     #[cfg(feature = "file-system")]
-    file_system: FileSystem,
+    file_system: Option<FileSystem>,
 
     pub(crate) builtin_state: BuiltinState,
     pub state: State,
 }
 
 impl<State> Context<State> {
-    pub fn new(
-        state: State,
-        #[cfg(feature = "file-system")] driver: impl FileSystemDriver + 'static,
-    ) -> Self {
+    pub fn new(state: State) -> Self {
         let mut symbol_table = SymbolTable::new();
         let builtin_state = BuiltinState::new(&mut symbol_table);
 
@@ -56,7 +53,7 @@ impl<State> Context<State> {
             functions: SymbolMap::new(),
 
             #[cfg(feature = "file-system")]
-            file_system: FileSystem::new(driver),
+            file_system: None,
 
             builtin_state,
             state,
@@ -172,16 +169,6 @@ impl<State> Context<State> {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn make_test_context<S>(state: S) -> Context<S> {
-    Context::new(
-        state,
-        #[cfg(feature = "file-loading")]
-        arson_fs::drivers::MockFileSystemDriver::new(),
-    )
-}
-
-#[cfg(not(feature = "file-system"))]
 impl<State: Default> Default for Context<State> {
     fn default() -> Self {
         Self::new(Default::default())
@@ -192,17 +179,8 @@ impl<State: Default> Default for Context<State> {
 ///
 /// ```rust
 /// use arson_core::{arson_array, Context, IntoSymbol};
-#[cfg_attr(
-    feature = "file-loading",
-    doc = "use arson_fs::drivers::MockFileSystemDriver;\n\
-    \n\
-    let driver = MockFileSystemDriver::new();\n\
-    let mut context = Context::new((), driver);"
-)]
-#[cfg_attr(
-    not(feature = "file-loading"),
-    doc = "\nlet mut context = Context::new(());"
-)]
+///
+/// let mut context = Context::new(());
 ///
 /// // Context::add_macro makes use of this trait.
 /// // You can use either a Symbol, which gets used as-is...
@@ -254,12 +232,28 @@ impl IntoSymbol for &Symbol {
 
 #[cfg(feature = "file-system")]
 impl<S> Context<S> {
-    pub fn file_system(&self) -> &FileSystem {
-        &self.file_system
+    pub fn with_filesystem_driver(self, driver: impl FileSystemDriver + 'static) -> Self {
+        Self { file_system: Some(FileSystem::new(driver)), ..self }
     }
 
-    pub fn file_system_mut(&mut self) -> &mut FileSystem {
-        &mut self.file_system
+    fn no_fs_error() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Unsupported, "no file system driver registered")
+    }
+
+    pub fn file_system(&self) -> std::io::Result<&FileSystem> {
+        self.file_system_opt().ok_or_else(Self::no_fs_error)
+    }
+
+    pub fn file_system_mut(&mut self) -> std::io::Result<&mut FileSystem> {
+        self.file_system_opt_mut().ok_or_else(Self::no_fs_error)
+    }
+
+    pub fn file_system_opt(&self) -> Option<&FileSystem> {
+        self.file_system.as_ref()
+    }
+
+    pub fn file_system_opt_mut(&mut self) -> Option<&mut FileSystem> {
+        self.file_system.as_mut()
     }
 }
 

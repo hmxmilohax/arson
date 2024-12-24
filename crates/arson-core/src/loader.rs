@@ -252,7 +252,7 @@ impl<'ctx, S> Loader<'ctx, S> {
 
     #[cfg(feature = "file-loading")]
     fn load_path_opt(&mut self, path: &str) -> Result<Option<NodeArray>, LoadError> {
-        match self.context.file_system().exists(path) {
+        match self.context.file_system()?.exists(path) {
             true => self.load_path(path).map(Some),
             false => Ok(None),
         }
@@ -260,10 +260,10 @@ impl<'ctx, S> Loader<'ctx, S> {
 
     #[cfg(feature = "file-loading")]
     fn load_path<P: AsRef<VirtualPath>>(&mut self, path: P) -> Result<NodeArray, LoadError> {
-        let file = self.context.file_system().open_execute(&path)?;
+        let file = self.context.file_system()?.open_execute(&path)?;
         let text = io::read_to_string(file)?;
 
-        let canon = self.context.file_system().canonicalize(&path);
+        let canon = self.context.file_system()?.canonicalize(&path);
         let Some(dir) = canon.parent() else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -276,12 +276,12 @@ impl<'ctx, S> Loader<'ctx, S> {
             return Err(LoadError::RecursiveInclude(canon));
         }
 
-        let old_cwd = self.context.file_system_mut().set_cwd(dir);
+        let old_cwd = self.context.file_system_mut()?.set_cwd(dir);
         self.include_stack.push(canon);
 
         let array = self.load_text(&text)?;
 
-        self.context.file_system_mut().set_cwd(&old_cwd);
+        self.context.file_system_mut()?.set_cwd(&old_cwd);
         self.include_stack.pop().expect("path was added above");
 
         Ok(array)
@@ -350,25 +350,25 @@ mod tests {
 
     #[test]
     fn integer() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         assert_loaded(&mut context, "1 2 3", arson_array![1, 2, 3]);
     }
 
     #[test]
     fn float() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         assert_loaded(&mut context, "1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn string() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         assert_loaded(&mut context, "\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
     }
 
     #[test]
     fn symbol() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
 
         let sym_asdf = context.add_symbol("asdf");
         let sym_plus = context.add_symbol("+");
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn variable() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
 
         let var_asdf = Variable::new("asdf", &mut context);
         let var_this = Variable::new("this", &mut context);
@@ -389,13 +389,13 @@ mod tests {
 
     #[test]
     fn unhandled() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         assert_loaded(&mut context, "kDataUnhandled", arson_array![Node::UNHANDLED])
     }
 
     #[test]
     fn arrays() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
 
         {
             let sym_asdf = context.add_symbol("asdf");
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn defines() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
 
         #[allow(non_snake_case)]
         let sym_kDefine = context.add_symbol("kDefine");
@@ -463,7 +463,7 @@ mod tests {
             ",
         );
 
-        let mut context = Context::new((), driver);
+        let mut context = Context::new(()).with_filesystem_driver(driver);
 
         // Includes
         assert_loaded(&mut context, "#include empty.dta", arson_array![]);
@@ -479,12 +479,12 @@ mod tests {
         assert_loaded(&mut context, "#merge numbers.dta", arson_array![]);
 
         // Ensure working directory behaves properly during includes
-        let cwd = context.file_system().cwd().clone();
+        let cwd = context.file_system().unwrap().cwd().clone();
         let sym_included = context.add_symbol("included");
         assert_loaded(&mut context, "(included #include ./config/config.dta)", arson_array![
             arson_array![sym_included, 1, 2, 3, 4, 5]
         ]);
-        assert_eq!(*context.file_system().cwd(), cwd);
+        assert_eq!(*context.file_system().unwrap().cwd(), cwd);
 
         // Ensure included paths are not added as symbols
         // (despite being lexed as them)
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(context.get_symbol("../numbers.dta"), None);
 
         // Ensure #include_opt is truly optional
-        assert!(!context.file_system().exists("nonexistent.dta"));
+        assert!(!context.file_system().unwrap().exists("nonexistent.dta"));
         assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
         // Ensure #merge overrides included keys with already-present ones
@@ -527,7 +527,7 @@ mod tests {
     #[cfg(not(feature = "file-loading"))]
     #[test]
     fn includes() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         assert_error(
             &mut context,
             "#include empty.dta",
@@ -546,7 +546,7 @@ mod tests {
             autorun_str: String,
         }
 
-        let mut context = crate::make_test_context(TestState { autorun_str: String::new() });
+        let mut context = Context::new(TestState { autorun_str: String::new() });
 
         context.register_func("autorun_func", |context, args| {
             context.state.autorun_str = args.string(context, 0)?.as_ref().clone();
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn conditionals() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
 
         let sym_define = context.add_symbol("kDefine");
 
@@ -662,7 +662,7 @@ mod tests {
             "#merge merge_loop_long_1.dta",
         );
 
-        let mut context = Context::new((), driver);
+        let mut context = Context::new(()).with_filesystem_driver(driver);
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 
         let mut assert_recursion_error = |path: &str, depth: usize| {

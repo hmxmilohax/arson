@@ -2057,7 +2057,7 @@ mod tests {
 
     #[test]
     fn merge_tags() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 
         let mut dest = context
@@ -2123,7 +2123,7 @@ mod tests {
 
     #[test]
     fn replace_tags() {
-        let mut context = crate::make_test_context(());
+        let mut context = Context::new(());
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 
         let mut dest = context

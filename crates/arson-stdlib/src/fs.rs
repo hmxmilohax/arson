@@ -61,7 +61,7 @@ pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
-    let exists = context.file_system().is_file(path.as_ref());
+    let exists = context.file_system()?.is_file(path.as_ref());
     Ok(exists.into())
 }
 
@@ -69,7 +69,7 @@ pub fn file_read_only<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
-    match context.file_system().metadata(path.as_ref())? {
+    match context.file_system()?.metadata(path.as_ref())? {
         Metadata::File { is_readonly, .. } => Ok(is_readonly.into()),
         Metadata::Directory { .. } => Err(io::Error::from(io::ErrorKind::NotADirectory).into()),
     }
