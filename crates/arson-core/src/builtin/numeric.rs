@@ -146,9 +146,23 @@ mod limit {
         }
 
         fn float_clamp(min: FloatValue, max: FloatValue, value: FloatValue) -> ExecuteResult {
-            arson_assert!(min <= max, "Invalid clamp range: min ({min}) is greater than max ({max})");
+            use std::cmp::Ordering;
+
+            // Manual handling of `min <= max` to make the `None` case explicitly defined,
+            // per Clippy recommendation. The behavior would be identical otherwise,
+            // but this allows us to set a specific error message for this case.
+            match min.partial_cmp(&max) {
+                Some(Ordering::Less) => (/* continue on */),
+                Some(Ordering::Equal) => (/* continue on */),
+                Some(Ordering::Greater) => {
+                    arson_fail!("Invalid clamp range: min ({min}) is greater than max ({max})")
+                },
+                None => arson_fail!("Invalid clamp range: min ({min}) and max ({max}) are not comparable"),
+            }
+
             arson_assert!(!min.is_nan(), "Min cannot be NaN");
             arson_assert!(!max.is_nan(), "Max cannot be NaN");
+
             Ok(value.clamp(min, max).into())
         }
 

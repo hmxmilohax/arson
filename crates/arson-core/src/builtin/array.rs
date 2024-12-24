@@ -130,7 +130,7 @@ mod manip {
 
         let mut borrow = array.borrow_mut()?;
         match borrow.pop() {
-            Some(value) => Ok(value.into()),
+            Some(value) => Ok(value),
             None => Ok(Node::UNHANDLED),
         }
     }
@@ -293,7 +293,7 @@ mod algo {
             borrow.sort_by(|left, right| {
                 left_var.set(context.0, left);
                 right_var.set(context.0, right);
-                let ordering = match context.execute(&predicate) {
+                let ordering = match context.execute(predicate) {
                     Ok(value) => value,
                     Err(error) => std::panic::panic_any(error),
                 };
@@ -331,5 +331,5 @@ fn convert_panic(result: Result<ExecuteResult, Box<dyn std::any::Any + Send + 's
         },
     };
 
-    return Err(ExecutionError::Failure(msg).into());
+    Err(ExecutionError::Failure(msg).into())
 }

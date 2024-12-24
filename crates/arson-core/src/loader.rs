@@ -125,7 +125,7 @@ impl<'ctx, S> Loader<'ctx, S> {
         }
     }
 
-    fn load_node<'a>(&mut self, expr: Expression<'a>) -> Result<NodeResult, LoadError> {
+    fn load_node(&mut self, expr: Expression<'_>) -> Result<NodeResult, LoadError> {
         let node = match expr.value {
             ExpressionValue::Integer(value) => value.into(),
             ExpressionValue::Float(value) => value.into(),
