@@ -57,7 +57,13 @@ impl std::fmt::Debug for Symbol {
 
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.name.fmt(f)
+        // placed into variable to keep formatting nicer
+        let pattern = [' ', '\x0b', '\t', '\r', '\n', '\x0c', '(', ')', '[', ']', '{', '}'];
+        if self.name.contains(pattern) {
+            write!(f, "'{}'", self.name)
+        } else {
+            self.name.fmt(f)
+        }
     }
 }
 
@@ -129,6 +135,28 @@ mod tests {
             assert_ne!(sym1, sym2);
             assert_ne!(sym1, sym3);
             assert_ne!(sym2, sym3);
+        }
+
+        #[test]
+        fn print_formatting() {
+            assert_eq!(new_symbol("asdf").to_string(), "asdf");
+            assert_eq!(new_symbol("jkl;").to_string(), "jkl;");
+
+            assert_eq!(new_symbol("with space").to_string(), "'with space'");
+            assert_eq!(new_symbol(" ").to_string(), "' '");
+
+            assert_eq!(new_symbol(" ").to_string(), "' '");
+            assert_eq!(new_symbol("\x0b").to_string(), "'\x0b'");
+            assert_eq!(new_symbol("\t").to_string(), "'\t'");
+            assert_eq!(new_symbol("\r").to_string(), "'\r'");
+            assert_eq!(new_symbol("\n").to_string(), "'\n'");
+            assert_eq!(new_symbol("\x0c").to_string(), "'\x0c'");
+            assert_eq!(new_symbol("(").to_string(), "'('");
+            assert_eq!(new_symbol(")").to_string(), "')'");
+            assert_eq!(new_symbol("[").to_string(), "'['");
+            assert_eq!(new_symbol("]").to_string(), "']'");
+            assert_eq!(new_symbol("{").to_string(), "'{'");
+            assert_eq!(new_symbol("}").to_string(), "'}'");
         }
     }
 
