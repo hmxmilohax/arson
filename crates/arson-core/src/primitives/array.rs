@@ -169,7 +169,7 @@ impl NodeSlice {
         self.len().cmp(&other.len())
     }
 
-    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
 }
@@ -1539,7 +1539,7 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
 }
@@ -1958,7 +1958,7 @@ impl NodeCommand {
         context.execute(self)
     }
 
-    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Command, options)
     }
 }
@@ -1976,7 +1976,7 @@ impl fmt::Display for NodeCommand {
 }
 
 impl NodeProperty {
-    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Property, options)
     }
 }

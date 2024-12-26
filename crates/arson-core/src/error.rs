@@ -2,9 +2,9 @@
 
 use std::backtrace::Backtrace;
 
-use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
 #[cfg(feature = "text-loading")]
 use crate::LoadError;
+use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
 

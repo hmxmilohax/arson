@@ -598,7 +598,7 @@ impl NodeValue {
     }
 
     pub fn is_size_integer(&self) -> bool {
-        matches!(self, NodeValue::Integer(value) if matches!(usize::try_from(value.0), Ok(_)))
+        matches!(self, NodeValue::Integer(value) if usize::try_from(value.0).is_ok())
     }
 
     pub const fn is_string(&self) -> bool {

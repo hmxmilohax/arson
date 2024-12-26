@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-pub use arson_core::*;
 pub use arson_core as core;
-
+pub use arson_core::*;
 #[cfg(feature = "arson-fs")]
 pub use arson_fs as fs;
 #[cfg(feature = "arson-parse")]

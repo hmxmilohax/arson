@@ -509,4 +509,6 @@ mod tests {
         assert_tokens("\n\t", vec![]);
         assert_tokens(" \x0b\t\r\n\x0c", vec![]); // " \v\t\r\n\f"
     }
+
+    mod display {}
 }
