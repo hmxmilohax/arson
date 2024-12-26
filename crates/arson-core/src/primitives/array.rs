@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::fmt::{self, Write};
 use std::ops::Range;
@@ -168,8 +169,8 @@ impl NodeSlice {
         self.len().cmp(&other.len())
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
+    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
 }
 
@@ -1519,7 +1520,7 @@ impl fmt::Debug for NodeSlice {
 
 impl fmt::Display for NodeSlice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
+        ArrayDisplay::new_default(&self.nodes, ArrayKind::Array).fmt(f)
     }
 }
 
@@ -1538,8 +1539,8 @@ impl NodeArray {
         Self { nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Array, context)
+    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
 }
 
@@ -1854,7 +1855,7 @@ impl fmt::Debug for NodeArray {
 
 impl fmt::Display for NodeArray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_nodes_unevaluated(&self.nodes, ArrayKind::Array, f)
+        ArrayDisplay::new_default(&self.nodes, ArrayKind::Array).fmt(f)
     }
 }
 
@@ -1957,8 +1958,8 @@ impl NodeCommand {
         context.execute(self)
     }
 
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Command, context)
+    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Command, options)
     }
 }
 
@@ -1970,13 +1971,13 @@ impl fmt::Debug for NodeCommand {
 
 impl fmt::Display for NodeCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_nodes_unevaluated(&self.nodes, ArrayKind::Command, f)
+        ArrayDisplay::new_default(&self.nodes, ArrayKind::Command).fmt(f)
     }
 }
 
 impl NodeProperty {
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> ArrayDisplay<'a, S> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Property, context)
+    pub fn display_with_options<'a>(&'a self, options: ArrayDisplayOptions) -> ArrayDisplay<'a> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Property, options)
     }
 }
 
@@ -1988,77 +1989,208 @@ impl fmt::Debug for NodeProperty {
 
 impl fmt::Display for NodeProperty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_nodes_unevaluated(&self.nodes, ArrayKind::Property, f)
+        ArrayDisplay::new_default(&self.nodes, ArrayKind::Property).fmt(f)
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum ArrayKind {
     Array,
     Command,
     Property,
 }
 
-pub struct ArrayDisplay<'a, S> {
-    context: Cell<Option<&'a mut Context<S>>>,
+#[derive(Debug, Clone, Copy)]
+pub enum ArrayIndentation {
+    Tabs,
+    Spaces(usize),
+}
+
+/// Options for array pretty-printing.
+#[derive(Debug, Clone)]
+pub struct ArrayDisplayOptions {
+    /// The indentation style to use.
+    pub indentation: ArrayIndentation,
+    /// The maximum width of arrays in the output.
+    pub max_array_width: usize,
+}
+
+impl Default for ArrayDisplayOptions {
+    fn default() -> Self {
+        Self {
+            indentation: ArrayIndentation::Spaces(3),
+            max_array_width: 60,
+        }
+    }
+}
+
+impl ArrayDisplayOptions {
+    fn indent_text(&self) -> String {
+        match self.indentation {
+            ArrayIndentation::Tabs => "\t".to_owned(),
+            ArrayIndentation::Spaces(count) => std::iter::repeat_n(' ', count).collect(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ArrayDisplay<'a> {
     nodes: &'a [Node],
     kind: ArrayKind,
+    options: ArrayDisplayOptions,
+
+    indent_level: Cell<usize>,
+    indent_text: Cow<'a, String>,
 }
 
-impl<'a, S> ArrayDisplay<'a, S> {
-    fn new(nodes: &'a [Node], kind: ArrayKind, context: &'a mut Context<S>) -> Self {
-        Self { context: Cell::new(Some(context)), nodes, kind }
+impl<'a> ArrayDisplay<'a> {
+    fn new(nodes: &'a [Node], kind: ArrayKind, options: ArrayDisplayOptions) -> Self {
+        let indent_text = options.indent_text();
+        Self {
+            nodes,
+            kind,
+            options,
+
+            indent_level: Cell::new(0),
+            indent_text: Cow::Owned(indent_text),
+        }
     }
-}
 
-impl<S> fmt::Display for ArrayDisplay<'_, S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.context.take() {
-            Some(context) => {
-                let result = write_nodes_evaluated(self.nodes, self.kind, context, f);
-                // Re-store context to ensure repeated uses have the same result
-                self.context.set(Some(context));
-                result
+    fn new_default(nodes: &'a [Node], kind: ArrayKind) -> Self {
+        Self::new(nodes, kind, ArrayDisplayOptions::default())
+    }
+
+    fn new_inner(other: &'a Self, nodes: &'a [Node], kind: ArrayKind) -> Self {
+        Self {
+            nodes,
+            kind,
+
+            options: other.options.clone(),
+            indent_level: other.indent_level.clone(),
+            indent_text: Cow::Borrowed(&other.indent_text),
+        }
+    }
+
+    fn write_array_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.nodes.is_empty() {
+            fmt::Display::fmt(&self.nodes[0], f)?;
+            for node in &self.nodes[1..] {
+                f.write_char(' ')?;
+                fmt::Display::fmt(node, f)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_array_pretty(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.nodes.is_empty() {
+            return Ok(());
+        }
+
+        // If there is only one element, and it is not an array itself, always print it as-is
+        if self.nodes.len() == 1 && !self.nodes[0].is_any_array() {
+            return fmt::Display::fmt(&self.nodes[0], f);
+        }
+
+        // Attempt compact array first, so long as there is no more than one inner array
+        if self.nodes.iter().filter(|n| n.is_any_array()).count() <= 1 {
+            // Max width - 2, to account for array delimiters
+            let max_len = self.options.max_array_width - 2;
+            let mut limit_buffer = String::new();
+
+            write!(limit_buffer, "{}", &self.nodes[0])?;
+            for node in &self.nodes[1..] {
+                write!(limit_buffer, " {node}")?;
+                if limit_buffer.len() > max_len {
+                    break;
+                }
+            }
+
+            if limit_buffer.len() <= max_len {
+                return f.write_str(&limit_buffer);
+            }
+        }
+
+        // Bump up indentation for inner elements
+        let original_indent = self.indent_level.get();
+        self.indent_level.set(original_indent + 1);
+
+        let mut iter = self.nodes.iter();
+
+        // Display leading symbol on the same line as the array opening
+        match iter.next() {
+            Some(node) if node.is_symbol() => writeln!(f, "{node}")?,
+            Some(node) => {
+                f.write_char('\n')?;
+                self.write_node_pretty(node, f)?
             },
-            None => write_nodes_unevaluated(self.nodes, self.kind, f),
+            None => return Ok(()),
         }
+
+        for node in iter {
+            self.write_node_pretty(node, f)?;
+        }
+
+        // Restore and write indentation for closing delimiter
+        self.indent_level.set(original_indent);
+        self.write_indent(f)?;
+
+        Ok(())
+    }
+
+    fn write_node_pretty(&'a self, node: &Node, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write_indent(f)?;
+        match node.unevaluated() {
+            NodeValue::Array(array) => {
+                let Ok(borrow) = array.borrow() else {
+                    return writeln!(f, "(<borrowed>)");
+                };
+                self.write_inner_array_pretty(&borrow, ArrayKind::Array, f)
+            },
+            NodeValue::Command(array) => self.write_inner_array_pretty(array, ArrayKind::Command, f),
+            NodeValue::Property(array) => self.write_inner_array_pretty(array, ArrayKind::Property, f),
+            node => writeln!(f, "{node}"),
+        }
+    }
+
+    fn write_inner_array_pretty(
+        &'a self,
+        nodes: &'a [Node],
+        kind: ArrayKind,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let display = Self::new_inner(self, nodes, kind);
+        writeln!(f, "{display:#}")
+    }
+
+    fn write_indent(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for _i in 0..self.indent_level.get() {
+            f.write_str(&self.indent_text)?;
+        }
+
+        Ok(())
     }
 }
 
-fn write_nodes_evaluated<S>(
-    nodes: &[Node],
-    kind: ArrayKind,
-    context: &mut Context<S>,
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    write_nodes(nodes, kind, f, |node, f| write!(f, "{}", node.display_evaluated(context)))
-}
+impl fmt::Display for ArrayDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (l, r) = match self.kind {
+            ArrayKind::Array => ('(', ')'),
+            ArrayKind::Command => ('{', '}'),
+            ArrayKind::Property => ('[', ']'),
+        };
 
-fn write_nodes_unevaluated(nodes: &[Node], kind: ArrayKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write_nodes(nodes, kind, f, |node, f| write!(f, "{}", node.unevaluated()))
-}
+        f.write_char(l)?;
 
-fn write_nodes(
-    nodes: &[Node],
-    kind: ArrayKind,
-    f: &mut fmt::Formatter<'_>,
-    mut display: impl FnMut(&Node, &mut fmt::Formatter<'_>) -> fmt::Result,
-) -> fmt::Result {
-    let (l, r) = match kind {
-        ArrayKind::Array => ('(', ')'),
-        ArrayKind::Command => ('{', '}'),
-        ArrayKind::Property => ('[', ']'),
-    };
-
-    f.write_char(l)?;
-    if !nodes.is_empty() {
-        display(&nodes[0], f)?;
-        for node in &nodes[1..] {
-            f.write_char(' ')?;
-            display(node, f)?;
+        if f.alternate() {
+            self.write_array_pretty(f)?;
+        } else {
+            self.write_array_compact(f)?;
         }
+
+        f.write_char(r)
     }
-    f.write_char(r)
 }
 
 #[cfg(test)]
@@ -2134,8 +2266,8 @@ mod tests {
                 (10 "baz")
             )
         )
-        (3 3)
         (4 4)
+        (3 3)
         */
         #[rustfmt::skip]
         let dest_expected = arson_array![
@@ -2247,5 +2379,198 @@ mod tests {
         dest.replace_tags(&source);
         assert_eq!(dest, dest_expected);
         assert_eq!(source, source_expected);
+    }
+
+    mod display {
+        use super::*;
+
+        fn assert_display(array: impl fmt::Display, standard: &str, pretty: &str) {
+            assert_eq!(array.to_string(), standard);
+            assert_eq!(format!("{array:#}"), pretty);
+        }
+
+        #[test]
+        fn general() {
+            let mut context = Context::new(());
+            let sym = context.add_symbol("sym");
+            let var = Variable::new("var", &mut context);
+
+            assert_display(arson_array![5], "(5)", "(5)");
+            assert_display(arson_array![10.0], "(10.0)", "(10.0)");
+            assert_display(arson_array!["asdf"], "(\"asdf\")", "(\"asdf\")");
+            assert_display(arson_array![sym], "(sym)", "(sym)");
+            assert_display(arson_array![var], "($var)", "($var)");
+            assert_display(arson_array![Node::UNHANDLED], "(kDataUnhandled)", "(kDataUnhandled)");
+        }
+
+        #[test]
+        fn arrays() {
+            assert_display(arson_array![1, 2, 3], "(1 2 3)", "(1 2 3)");
+            assert_display(NodeCommand::from(arson_array![1, 2, 3]), "{1 2 3}", "{1 2 3}");
+            assert_display(NodeProperty::from(arson_array![1, 2, 3]), "[1 2 3]", "[1 2 3]");
+        }
+
+        #[test]
+        fn inner_arrays() {
+            let mut context = Context::new(());
+            let sym1 = context.add_symbol("sym1");
+            let sym2 = context.add_symbol("sym2");
+
+            assert_display(
+                arson_array![sym1.clone(), arson_array![sym2.clone(), 100]],
+                "(sym1 (sym2 100))",
+                "(sym1 (sym2 100))",
+            );
+            assert_display(
+                arson_array![sym1.clone(), NodeCommand::from(arson_array![sym2.clone(), 100])],
+                "(sym1 {sym2 100})",
+                "(sym1 {sym2 100})",
+            );
+            assert_display(
+                arson_array![sym1.clone(), NodeProperty::from(arson_array![sym2.clone(), 100])],
+                "(sym1 [sym2 100])",
+                "(sym1 [sym2 100])",
+            );
+        }
+
+        #[test]
+        fn multiple_arrays() {
+            let mut context = Context::new(());
+
+            let sym1 = context.add_symbol("sym1");
+            let sym2 = context.add_symbol("sym2");
+
+            #[rustfmt::skip] // preserve correlation between array formatting and display output
+            assert_display(
+                arson_array![sym1.clone(),
+                    arson_array![10, 20, 30],
+                    NodeCommand::from(arson_array![sym2.clone(), 100]),
+                    NodeProperty::from(arson_array![sym2.clone()]),
+                ],
+                "(sym1 (10 20 30) {sym2 100} [sym2])",
+                "(sym1\
+               \n   (10 20 30)\
+               \n   {sym2 100}\
+               \n   [sym2]\
+               \n)",
+            );
+        }
+
+        #[test]
+        fn big_example() {
+            let mut context = Context::new(());
+
+            let sym1 = context.add_symbol("sym1");
+            let sym2 = context.add_symbol("sym2");
+            let sym_asdf = context.add_symbol("asdf");
+            let sym_jkl = context.add_symbol("jkl");
+
+            #[rustfmt::skip] // preserve correlation between array formatting and display output
+            assert_display(
+                arson_array![
+                    arson_array![sym1.clone(), 5],
+                    arson_array![sym2.clone(),
+                        arson_array![sym_asdf.clone(), 100],
+                        arson_array![sym_jkl.clone(), 250],
+                        arson_array![1,
+                            arson_array![5, "foo"],
+                            arson_array![10, "bar"],
+                        ],
+                    ],
+                    arson_array![3, 3],
+                    arson_array![4, 4],
+                ],
+                "((sym1 5) (sym2 (asdf 100) (jkl 250) (1 (5 \"foo\") (10 \"bar\"))) (3 3) (4 4))",
+                "(\
+               \n   (sym1 5)\
+               \n   (sym2\
+               \n      (asdf 100)\
+               \n      (jkl 250)\
+               \n      (\
+               \n         1\
+               \n         (5 \"foo\")\
+               \n         (10 \"bar\")\
+               \n      )\
+               \n   )\
+               \n   (3 3)\
+               \n   (4 4)\
+               \n)"
+            );
+        }
+
+        #[test]
+        fn indent_style() {
+            fn assert_indent(array: NodeArray, expected: &str, indentation: ArrayIndentation) {
+                let options = ArrayDisplayOptions { indentation, ..Default::default() };
+                let display = array.display_with_options(options);
+                assert_eq!(format!("{display:#}"), expected);
+            }
+
+            assert_indent(
+                arson_array![arson_array![1, 2, 3], arson_array![4, 5, 6]],
+                "(\
+               \n   (1 2 3)\
+               \n   (4 5 6)\
+               \n)",
+                ArrayIndentation::Spaces(3),
+            );
+
+            assert_indent(
+                arson_array![arson_array![1, 2, 3], arson_array![4, 5, 6]],
+                "(\
+               \n        (1 2 3)\
+               \n        (4 5 6)\
+               \n)",
+                ArrayIndentation::Spaces(8),
+            );
+
+            assert_indent(
+                arson_array![arson_array![1, 2, 3], arson_array![4, 5, 6]],
+                "(\
+               \n\t(1 2 3)\
+               \n\t(4 5 6)\
+               \n)",
+                ArrayIndentation::Tabs,
+            );
+        }
+
+        #[test]
+        fn max_line_width() {
+            fn assert_width(array: NodeArray, expected: &str, width: usize) {
+                let options = ArrayDisplayOptions { max_array_width: width, ..Default::default() };
+                let display = array.display_with_options(options);
+                assert_eq!(format!("{display:#}"), expected);
+            }
+
+            assert_width(
+                arson_array!["1234567890", "1234567890", "1234567890", "1234567890", "1234567890"],
+                "(\
+               \n   \"1234567890\"\
+               \n   \"1234567890\"\
+               \n   \"1234567890\"\
+               \n   \"1234567890\"\
+               \n   \"1234567890\"\
+               \n)",
+                60,
+            );
+            assert_width(
+                arson_array!["1234567890", "1234567890", "1234567890", "1234567890", "1234567890"],
+                "(\"1234567890\" \"1234567890\" \"1234567890\" \"1234567890\" \"1234567890\")",
+                80,
+            );
+            assert_width(
+                arson_array!["1234567890", "1234567890"],
+                "(\
+               \n   \"1234567890\"\
+               \n   \"1234567890\"\
+               \n)",
+                25,
+            );
+            assert_width(
+                arson_array!["1234567890", "1234567890"],
+                "(\"1234567890\" \"1234567890\")",
+                30,
+            );
+        }
     }
 }

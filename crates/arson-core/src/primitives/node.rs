@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::borrow::Borrow;
-use std::cell::Cell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::Wrapping;
@@ -783,8 +782,8 @@ impl fmt::Display for NodeValue {
 
         match self {
             Self::Integer(value) => Display::fmt(value, f),
-            Self::Float(value) => Display::fmt(value, f),
-            Self::String(value) => Display::fmt(value, f),
+            Self::Float(value) => write!(f, "{value:?}"),
+            Self::String(value) => write!(f, "\"{}\"", value.replace('\"', "\\q")),
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => Display::fmt(value, f),
 
@@ -973,10 +972,6 @@ impl Node {
 
     pub fn total_cmp(&self, other: &Self) -> Ordering {
         self.value.total_cmp(&other.value)
-    }
-
-    pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
-        NodeDisplay { context: Cell::new(Some(context)), node: self }
     }
 }
 
@@ -1284,24 +1279,84 @@ impl fmt::Display for Node {
     }
 }
 
-pub struct NodeDisplay<'a, S> {
-    context: Cell<Option<&'a mut Context<S>>>,
-    node: &'a Node,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl<S> fmt::Display for NodeDisplay<'_, S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.context.take() {
-            Some(context) => {
-                let result = match self.node.evaluate(context) {
-                    Ok(evaluated) => evaluated.fmt(f),
-                    Err(err) => write!(f, "<error: {err}>"),
-                };
-                // Re-store context to ensure repeated uses have the same result
-                self.context.set(Some(context));
-                result
-            },
-            None => self.node.unevaluated().fmt(f),
+    mod display {
+        use super::*;
+
+        #[test]
+        fn integer() {
+            assert_eq!(NodeValue::Integer(Wrapping(1)).to_string(), "1");
+            assert_eq!(NodeValue::Integer(Wrapping(458243)).to_string(), "458243");
+            assert_eq!(NodeValue::Integer(Wrapping(-235725)).to_string(), "-235725");
+            assert_eq!(NodeValue::Integer(Wrapping(i64::MAX)).to_string(), "9223372036854775807");
+            assert_eq!(NodeValue::Integer(Wrapping(i64::MIN)).to_string(), "-9223372036854775808");
+        }
+
+        #[test]
+        fn float() {
+            assert_eq!(NodeValue::Float(0.000_000_000_001).to_string(), "1e-12");
+            assert_eq!(NodeValue::Float(0.000_000_001).to_string(), "1e-9");
+            assert_eq!(NodeValue::Float(0.000_001).to_string(), "1e-6");
+            assert_eq!(NodeValue::Float(0.001).to_string(), "0.001");
+            assert_eq!(NodeValue::Float(1.0).to_string(), "1.0");
+            assert_eq!(NodeValue::Float(1_000.0).to_string(), "1000.0");
+            assert_eq!(NodeValue::Float(1_000_000.0).to_string(), "1000000.0");
+            assert_eq!(NodeValue::Float(1_000_000_000.0).to_string(), "1000000000.0");
+            assert_eq!(NodeValue::Float(1_000_000_000_000.0).to_string(), "1000000000000.0");
+        }
+
+        #[test]
+        fn string() {
+            assert_eq!(NodeValue::String("asdf".to_owned().into()).to_string(), "\"asdf\"");
+            assert_eq!(
+                NodeValue::String("\"asdf\"".to_owned().into()).to_string(),
+                "\"\\qasdf\\q\""
+            );
+            assert_eq!(NodeValue::String("asdf\n".to_owned().into()).to_string(), "\"asdf\n\"");
+        }
+
+        #[test]
+        fn symbol() {
+            let mut context = Context::new(());
+            let sym = context.add_symbol("sym");
+            let sym_space = context.add_symbol("sym with\nwhitespace");
+
+            assert_eq!(NodeValue::Symbol(sym).to_string(), "sym");
+            assert_eq!(NodeValue::Symbol(sym_space).to_string(), "'sym with\nwhitespace'");
+        }
+
+        #[test]
+        fn variable() {
+            let mut context = Context::new(());
+            let var = Variable::new("var", &mut context);
+            let dollar_var = Variable::new("$var", &mut context);
+
+            assert_eq!(NodeValue::Variable(var).to_string(), "$var");
+            assert_eq!(NodeValue::Variable(dollar_var).to_string(), "$$var");
+        }
+
+        #[test]
+        fn array() {
+            let mut context = Context::new(());
+            let sym = context.add_symbol("sym");
+
+            let base_array = arson_array![sym, 1, "text"];
+
+            let array = ArrayRef::new(base_array.clone());
+            let command = NodeCommand::from(base_array.clone()).into();
+            let property = NodeProperty::from(base_array.clone()).into();
+
+            assert_eq!(NodeValue::Array(array).to_string(), "(sym 1 \"text\")");
+            assert_eq!(NodeValue::Command(command).to_string(), "{sym 1 \"text\"}");
+            assert_eq!(NodeValue::Property(property).to_string(), "[sym 1 \"text\"]");
+        }
+
+        #[test]
+        fn unhandled() {
+            assert_eq!(NodeValue::Unhandled.to_string(), "kDataUnhandled");
         }
     }
 }

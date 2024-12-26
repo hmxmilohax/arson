@@ -108,7 +108,7 @@ make_tokens! {
         kind_display: "symbol",
         value_display: |f, value| {
             // Write without quotes where possible
-            if regex_is_match!(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, value) {
+            if regex_is_match!(r#"[^ \v\t\r\n\f\(\)\[\]\{\}\']+"#, value) {
                 f.write_str(value)
             } else {
                 write!(f, "'{}'", value)

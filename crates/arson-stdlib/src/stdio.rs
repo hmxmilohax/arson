@@ -12,7 +12,10 @@ pub fn print<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
         // to match the original `print`
         print!("> ");
         for arg in args {
-            print!("{}", arg.display_evaluated(context))
+            match arg.evaluate(context) {
+                Ok(evaluated) => print!("{}", evaluated),
+                Err(err) => print!("<error: {err}>"),
+            }
         }
         println!();
     }
