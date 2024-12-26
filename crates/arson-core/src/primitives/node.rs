@@ -447,10 +447,6 @@ impl NodeValue {
         }
     }
 
-    pub const fn is_unhandled(&self) -> bool {
-        matches!(self, NodeValue::Unhandled)
-    }
-
     pub const fn integer(&self) -> Option<Integer> {
         match self {
             Self::Integer(value) => Some(*value),
@@ -585,6 +581,57 @@ impl NodeValue {
             Self::Property(value) => Some(value),
             _ => None,
         }
+    }
+}
+
+// Quick 'n easy variant checks
+impl NodeValue {
+    pub const fn is_integer(&self) -> bool {
+        matches!(self, NodeValue::Integer(_))
+    }
+
+    pub const fn is_float(&self) -> bool {
+        matches!(self, NodeValue::Float(_))
+    }
+
+    pub const fn is_number(&self) -> bool {
+        matches!(self, NodeValue::Integer(_) | NodeValue::Float(_))
+    }
+
+    pub fn is_size_integer(&self) -> bool {
+        matches!(self, NodeValue::Integer(value) if matches!(usize::try_from(value.0), Ok(_)))
+    }
+
+    pub const fn is_string(&self) -> bool {
+        matches!(self, NodeValue::String(_))
+    }
+
+    pub const fn is_symbol(&self) -> bool {
+        matches!(self, NodeValue::Symbol(_))
+    }
+
+    pub const fn is_variable(&self) -> bool {
+        matches!(self, NodeValue::Variable(_))
+    }
+
+    pub const fn is_array(&self) -> bool {
+        matches!(self, NodeValue::Array(_))
+    }
+
+    pub const fn is_command(&self) -> bool {
+        matches!(self, NodeValue::Command(_))
+    }
+
+    pub const fn is_property(&self) -> bool {
+        matches!(self, NodeValue::Property(_))
+    }
+
+    pub const fn is_any_array(&self) -> bool {
+        self.is_array() || self.is_command() || self.is_property()
+    }
+
+    pub const fn is_unhandled(&self) -> bool {
+        matches!(self, NodeValue::Unhandled)
     }
 }
 
@@ -822,10 +869,6 @@ impl Node {
         self.value.get_kind()
     }
 
-    pub const fn is_unhandled(&self) -> bool {
-        matches!(self.unevaluated(), NodeValue::Unhandled)
-    }
-
     #[inline]
     pub const fn unevaluated(&self) -> &NodeValue {
         &self.value
@@ -934,6 +977,57 @@ impl Node {
 
     pub fn display_evaluated<'a, S>(&'a self, context: &'a mut Context<S>) -> NodeDisplay<'a, S> {
         NodeDisplay { context: Cell::new(Some(context)), node: self }
+    }
+}
+
+// Quick 'n easy variant checks
+impl Node {
+    pub const fn is_integer(&self) -> bool {
+        self.unevaluated().is_integer()
+    }
+
+    pub const fn is_float(&self) -> bool {
+        self.unevaluated().is_float()
+    }
+
+    pub const fn is_number(&self) -> bool {
+        self.unevaluated().is_number()
+    }
+
+    pub fn is_size_integer(&self) -> bool {
+        self.unevaluated().is_size_integer()
+    }
+
+    pub const fn is_string(&self) -> bool {
+        self.unevaluated().is_string()
+    }
+
+    pub const fn is_symbol(&self) -> bool {
+        self.unevaluated().is_symbol()
+    }
+
+    pub const fn is_variable(&self) -> bool {
+        self.unevaluated().is_variable()
+    }
+
+    pub const fn is_array(&self) -> bool {
+        self.unevaluated().is_array()
+    }
+
+    pub const fn is_command(&self) -> bool {
+        self.unevaluated().is_command()
+    }
+
+    pub const fn is_property(&self) -> bool {
+        self.unevaluated().is_property()
+    }
+
+    pub const fn is_any_array(&self) -> bool {
+        self.unevaluated().is_any_array()
+    }
+
+    pub const fn is_unhandled(&self) -> bool {
+        self.unevaluated().is_unhandled()
     }
 }
 
