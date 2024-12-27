@@ -177,11 +177,11 @@ fn thorough_errors() {
     };
 
     let expected = Vec::from_iter(errors.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-    let errors = match arson_parse::parse_text(&text) {
+    let error = match arson_parse::parse_text(&text) {
         Ok(ast) => {
             panic!("Expected parsing errors, got success instead: {ast:?}")
         },
-        Err(errors) => errors,
+        Err(error) => error,
     };
-    assert_eq!(errors, expected, "Unexpected result for '{text}'");
+    assert_eq!(error.diagnostics, expected, "Unexpected result for '{text}'");
 }

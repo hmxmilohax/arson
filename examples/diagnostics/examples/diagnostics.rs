@@ -35,12 +35,12 @@ fn print_parsed(mount_dir: &Path, file: &str) {
                 println!("- ({:?}) {:?}", expr.location, expr.value);
             }
         },
-        Err(diagnostics) => {
+        Err(error) => {
             let db = SimpleFile::new(file, text);
             let writer = StandardStream::stderr(ColorChoice::Auto);
             let config = codespan_reporting::term::Config { chars: Chars::ascii(), ..Default::default() };
 
-            for diagnostic in diagnostics {
+            for diagnostic in error.diagnostics {
                 term::emit(&mut writer.lock(), &config, &db, &diagnostic.to_codespan(()))
                     .expect("failed to emit diagnostic");
             }

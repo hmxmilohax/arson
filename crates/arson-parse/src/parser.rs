@@ -550,12 +550,24 @@ impl<'src> Preprocessor<'src> {
     }
 }
 
+/// An error result from file parsing.
+#[derive(Debug, PartialEq)]
+pub struct ParseError {
+    /// All diagnostics issued for the file.
+    pub diagnostics: Vec<Diagnostic>,
+    /// The number of unclosed arrays remaining when the end-of-file was reached.
+    pub unclosed_array_count: usize,
+}
+
 struct Parser<'src> {
-    array_stack: Vec<ArrayMarker>,
-    errors: Vec<Diagnostic>,
-    eof_checked: bool,
-    unexpected_eof: bool,
     phantom: PhantomData<&'src ()>,
+
+    array_stack: Vec<ArrayMarker>,
+    eof_checked: bool,
+
+    errors: Vec<Diagnostic>,
+    unexpected_eof: bool,
+    unclosed_array_count: usize,
 }
 
 impl<'src> Parser<'src> {
@@ -566,10 +578,11 @@ impl<'src> Parser<'src> {
             eof_checked: false,
             unexpected_eof: false,
             phantom: PhantomData,
+            unclosed_array_count: 0,
         }
     }
 
-    pub fn parse(&mut self, tokens: Tokenizer<'src>) -> Vec<Expression<'src>> {
+    pub fn parse(&mut self, tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src>>, ParseError> {
         // No items, Fox only, Final Destination.
         let final_location = {
             let text = tokens.source_text();
@@ -588,9 +601,15 @@ impl<'src> Parser<'src> {
             self.push_error(DiagnosticKind::UnexpectedEof, final_location);
         }
 
-        self.errors.sort_by(|left, right| left.sort_cmp(right));
-
-        ast
+        if self.errors.is_empty() {
+            Ok(ast)
+        } else {
+            self.errors.sort_by(|left, right| left.sort_cmp(right));
+            Err(ParseError {
+                diagnostics: std::mem::take(&mut self.errors),
+                unclosed_array_count: self.unclosed_array_count,
+            })
+        }
     }
 
     fn parse_exprs<I: Iterator<Item = PreprocessedToken<'src>>>(
@@ -840,20 +859,17 @@ impl<'src> Parser<'src> {
         }
 
         self.eof_checked = true;
+        self.unclosed_array_count = self.array_stack.len();
     }
 }
 
-pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
+pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, ParseError> {
     parse_tokens(Tokenizer::new(text))
 }
 
-pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, Vec<Diagnostic>> {
+pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, ParseError> {
     let mut parser = Parser::new();
-    let ast = parser.parse(tokens);
-    match parser.errors.is_empty() {
-        true => Ok(ast),
-        false => Err(parser.errors),
-    }
+    parser.parse(tokens)
 }
 
 #[cfg(test)]
@@ -1161,20 +1177,45 @@ mod tests {
         fn assert_parsed(text: &str, expected: Vec<Expression>) {
             let ast = match parse_text(text) {
                 Ok(ast) => ast,
-                Err(errs) => panic!("Errors encountered while parsing.\nText: {text}\nResult: {errs:?}"),
+                Err(error) => {
+                    panic!(
+                        "Errors encountered while parsing.\nText: {text}\nResult: {:?}",
+                        error.diagnostics
+                    )
+                },
             };
             assert_eq!(ast, expected, "Unexpected result for '{text}'");
         }
 
         fn assert_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
             let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-            let errors = match parse_text(text) {
+            let error = match parse_text(text) {
                 Ok(ast) => {
                     panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}")
                 },
-                Err(errors) => errors,
+                Err(err) => err,
             };
-            assert_eq!(errors, expected, "Unexpected result for '{text}'");
+            assert_eq!(error.diagnostics, expected, "Unexpected result for '{text}'");
+            assert_eq!(error.unclosed_array_count, 0, "Unexpected unclosed arrays for '{text}'");
+        }
+
+        fn assert_errors_and_unclosed(
+            text: &str,
+            diagnostics: Vec<(DiagnosticKind, Span)>,
+            unclosed_count: usize,
+        ) {
+            let expected = Vec::from_iter(diagnostics.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
+            let err = match parse_text(text) {
+                Ok(ast) => {
+                    panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}")
+                },
+                Err(err) => err,
+            };
+            assert_eq!(err.diagnostics, expected, "Unexpected result for '{text}'");
+            assert_eq!(
+                err.unclosed_array_count, unclosed_count,
+                "Wrong unclosed array count for '{text}'"
+            );
         }
 
         #[test]
@@ -1260,12 +1301,18 @@ mod tests {
                 if !eof_expected {
                     expected.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
                 }
+                let remaining_depth = !eof_expected as usize;
 
-                assert_errors(text, expected);
+                assert_errors_and_unclosed(text, expected, remaining_depth);
             }
 
             fn assert_array_mismatches(kind: ArrayKind) {
                 let (l, r) = kind.delimiters();
+
+                // ( ( )
+                // ) ( )
+                // ( ) (
+                // ( ) )
                 assert_array_mismatch(&format!("{l} {l} {r}"), kind, true, 0..1, false);
                 assert_array_mismatch(&format!("{r} {l} {r}"), kind, false, 0..1, true);
                 assert_array_mismatch(&format!("{l} {r} {l}"), kind, true, 4..5, false);
@@ -1276,6 +1323,12 @@ mod tests {
                 let (ml, mr) = matched_kind.delimiters();
                 let (ul, ur) = unmatched_kind.delimiters();
 
+                // { ( )
+                // } ( )
+                // ( { )
+                // ( } )
+                // ( ) {
+                // ( ) }
                 assert_array_mismatch(&format!("{ul} {ml} {mr}"), unmatched_kind, true, 0..1, false);
                 assert_array_mismatch(&format!("{ur} {ml} {mr}"), unmatched_kind, false, 0..1, true);
                 assert_array_mismatch(&format!("{ml} {ul} {mr}"), unmatched_kind, true, 2..3, true);
@@ -1294,6 +1347,19 @@ mod tests {
             assert_multi_array_mismatches(ArrayKind::Command, ArrayKind::Property);
             assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Array);
             assert_multi_array_mismatches(ArrayKind::Property, ArrayKind::Command);
+
+            assert_errors_and_unclosed(
+                "(((((",
+                vec![
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 0..1),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 1..2),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 2..3),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 3..4),
+                    (DiagnosticKind::UnmatchedBrace { kind: ArrayKind::Array, open: true }, 4..5),
+                    (DiagnosticKind::UnexpectedEof, 5..5),
+                ],
+                5,
+            );
         }
 
         #[test]

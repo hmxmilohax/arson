@@ -4,7 +4,7 @@ use std::io;
 
 #[cfg(feature = "file-loading")]
 use arson_fs::{AbsolutePath, VirtualPath};
-use arson_parse::{Diagnostic, Expression, ExpressionValue};
+use arson_parse::{Expression, ExpressionValue, ParseError};
 
 use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
@@ -20,7 +20,7 @@ pub enum LoadError {
     IO(#[from] io::Error),
 
     #[error("Failed to parse the given file")]
-    Parse(Vec<Diagnostic>),
+    Parse(ParseError),
 
     #[error("A required macro definition was not found")]
     MacroNotFound,
@@ -290,7 +290,7 @@ impl<'ctx, S> Loader<'ctx, S> {
     fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
         let ast = match arson_parse::parse_text(text) {
             Ok(ast) => ast,
-            Err(errors) => return Err(LoadError::Parse(errors)),
+            Err(error) => return Err(LoadError::Parse(error)),
         };
         self.load_array(ast)
     }
