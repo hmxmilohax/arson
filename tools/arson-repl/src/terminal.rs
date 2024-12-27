@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+#![allow(dead_code)]
+
 use std::io;
 
 #[macro_export]
@@ -28,6 +30,29 @@ pub fn prompt_question(question: &str) -> bool {
             return true;
         } else if answer.eq_ignore_ascii_case("n") || answer.eq_ignore_ascii_case("no") {
             return false;
+        }
+
+        print_flush!("Unrecognized answer, please try again: ");
+    }
+}
+
+pub fn prompt_option<R: Clone, const N: usize>(question: &str, options: [(&str, R); N]) -> Option<R> {
+    println!("{question}");
+    for (name, _) in &options {
+        println!("- {name}");
+    }
+    print_flush!("Selection (leave empty to skip): ");
+
+    loop {
+        let answer = read_line();
+        if answer.is_empty() {
+            return None;
+        }
+
+        for (name, value) in &options {
+            if answer == *name {
+                return Some(value.clone());
+            }
         }
 
         print_flush!("Unrecognized answer, please try again: ");

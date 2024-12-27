@@ -6,6 +6,7 @@ use arson::parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson::parse::reporting::term::{self, Chars};
 use arson::parse::DiagnosticKind;
 use arson::prelude::*;
+use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -19,45 +20,96 @@ impl StdlibState for State {
     }
 }
 
+/// The REPL for Arson's DTA implementation.
+#[derive(Debug, clap::Parser)]
+struct Arguments {
+    /// skip configuration prompts and use default settings
+    #[arg(long, short)]
+    skip_prompt: bool,
+
+    /// the directory to mount for scripting access
+    #[arg(long, short)]
+    mount_dir: Option<String>,
+
+    /// the text editing mode to use
+    #[arg(long, short)]
+    editor_mode: Option<EditorModeArgument>,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum EditorModeArgument {
+    Emacs,
+    Vi,
+}
+
 fn main() {
-    let mut context = make_context();
-    let mut editor = make_editor();
+    let args = Arguments::parse();
+
+    let mut context = make_context(&args);
+    let mut editor = make_editor(&args);
+
     run(&mut context, &mut editor);
 }
 
-fn make_context() -> Context<State> {
+fn make_context(args: &Arguments) -> Context<State> {
     let mut context = Context::new(State);
     arson::stdlib::register_funcs(&mut context);
 
-    if terminal::prompt_question("Mount a directory to be accessible from scripts?") {
-        println!("Note that all paths used in scripts will be relative to this directory.");
-
-        let driver = loop {
-            let directory = terminal::prompt_str("Enter a directory");
-            match BasicFileSystemDriver::new(&directory) {
-                Ok(driver) => break driver,
-                Err(error) => eprintln!("Could not create file driver: {error}"),
-            }
-        };
-
+    if let Some(ref directory) = args.mount_dir {
+        let driver = BasicFileSystemDriver::new(directory).expect("failed to create file driver");
         context = context.with_filesystem_driver(driver);
+    } else if !args.skip_prompt {
+        loop {
+            let directory = terminal::prompt_str("Script mount directory? (leave empty to skip)");
+            if directory.is_empty() {
+                break;
+            }
+
+            let driver = match BasicFileSystemDriver::new(&directory) {
+                Ok(driver) => driver,
+                Err(error) => {
+                    eprintln!("Could not create file driver: {error}");
+                    continue;
+                },
+            };
+            context = context.with_filesystem_driver(driver);
+
+            println!("Note that all paths used in scripts will be relative to this directory.");
+            break;
+        }
     }
 
     context
 }
 
-fn make_editor() -> DefaultEditor {
-    use rustyline::Config;
+fn make_editor(args: &Arguments) -> DefaultEditor {
+    use rustyline::config::Configurer;
+    use rustyline::{Config, EditMode};
 
     #[rustfmt::skip] // do not pack into the same line
     let config = Config::builder()
         .auto_add_history(true)
-        // .edit_mode(EditMode) // TODO
         .indent_size(3)
         .tab_stop(3)
         .build();
 
-    DefaultEditor::with_config(config).expect("failed to create text reader")
+    let mut editor = DefaultEditor::with_config(config).expect("failed to create text reader");
+
+    if let Some(ref mode) = args.editor_mode {
+        let mode = match mode {
+            EditorModeArgument::Emacs => EditMode::Emacs,
+            EditorModeArgument::Vi => EditMode::Vi,
+        };
+        editor.set_edit_mode(mode);
+    } else if !args.skip_prompt {
+        let mode =
+            terminal::prompt_option("Text editor mode?", [("emacs", EditMode::Emacs), ("vi", EditMode::Vi)]);
+        if let Some(mode) = mode {
+            editor.set_edit_mode(mode);
+        }
+    }
+
+    editor
 }
 
 fn run(context: &mut Context<State>, editor: &mut DefaultEditor) {
