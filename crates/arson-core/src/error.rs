@@ -29,6 +29,9 @@ pub enum ErrorKind {
     #[cfg(feature = "text-loading")]
     #[error("{0}")]
     LoadError(#[from] LoadError),
+
+    #[error("{0}")]
+    Custom(#[source] Box<dyn std::error::Error + Send>),
 }
 
 impl From<std::io::ErrorKind> for crate::ErrorKind {
@@ -60,6 +63,10 @@ impl self::Error {
         Self {
             data: Box::new(ErrorData { kind, location: Backtrace::capture() }),
         }
+    }
+
+    pub fn from_custom<E: std::error::Error + Send + 'static>(error: E) -> Self {
+        Self::new(ErrorKind::Custom(Box::new(error)))
     }
 
     pub fn kind(&self) -> &ErrorKind {

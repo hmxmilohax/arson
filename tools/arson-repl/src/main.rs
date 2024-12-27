@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::process::ExitCode;
+
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::parse::reporting::files::SimpleFile;
 use arson::parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson::parse::reporting::term::{self, Chars};
 use arson::parse::DiagnosticKind;
 use arson::prelude::*;
+use arson::stdlib::process::ExitError;
 use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -42,13 +45,13 @@ enum EditorModeArgument {
     Vi,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Arguments::parse();
 
     let mut context = make_context(&args);
     let mut editor = make_editor(&args);
 
-    run(&mut context, &mut editor);
+    run(&mut context, &mut editor)
 }
 
 fn make_context(args: &Arguments) -> Context<State> {
@@ -112,11 +115,11 @@ fn make_editor(args: &Arguments) -> DefaultEditor {
     editor
 }
 
-fn run(context: &mut Context<State>, editor: &mut DefaultEditor) {
+fn run(context: &mut Context<State>, editor: &mut DefaultEditor) -> ExitCode {
     loop {
         let array = match read_input(context, editor) {
             Some(array) => array,
-            None => return,
+            None => return ExitCode::SUCCESS,
         };
         if array.len() != 1 {
             continue;
@@ -125,6 +128,10 @@ fn run(context: &mut Context<State>, editor: &mut DefaultEditor) {
         match array.evaluate(context, 0) {
             Ok(evaluated) => println!("{evaluated}"),
             Err(error) => {
+                if let Some(exit) = ExitError::is_exit(&error) {
+                    return exit;
+                }
+
                 eprintln!("Evaluation error: {error}\n{}", error.backtrace())
             },
         };
