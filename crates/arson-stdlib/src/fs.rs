@@ -53,8 +53,18 @@ pub fn read_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> 
     Ok(array.into())
 }
 
-pub fn write_file<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
-    todo!("write_file")
+pub fn write_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
+
+    let path = args.string(context, 0)?;
+    let array = args.array(context, 1)?;
+
+    let mut file = context.file_system()?.create(path.as_ref())?;
+    for node in array.borrow()?.iter() {
+        writeln!(file, "{node:#}")?;
+    }
+
+    Ok(Node::HANDLED)
 }
 
 pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
