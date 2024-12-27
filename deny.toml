@@ -2,6 +2,7 @@
 unused-allowed-license = "allow"
 allow = [
     "Apache-2.0",
+    "BSL-1.0",
     "LGPL-3.0",
     "MIT",
     "Unicode-DFS-2016",

@@ -10,3 +10,5 @@ publish = false
 
 [dependencies]
 arson = { path = "../../crates/arson", features = ["parse-reporting"] }
+
+rustyline = "15.0.0"
