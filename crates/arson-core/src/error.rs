@@ -66,7 +66,7 @@ impl self::Error {
         &self.data.kind
     }
 
-    pub fn location(&self) -> &Backtrace {
+    pub fn backtrace(&self) -> &Backtrace {
         &self.data.location
     }
 }

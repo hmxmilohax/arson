@@ -22,8 +22,8 @@ impl BasicFileSystemDriver {
     /// # Errors
     ///
     /// Returns an error if the given path could not be canonicalized or is not a directory.
-    pub fn new(mount_dir: &Path) -> io::Result<Self> {
-        let mount_dir = mount_dir.canonicalize()?;
+    pub fn new<P: AsRef<Path>>(mount_dir: P) -> io::Result<Self> {
+        let mount_dir = mount_dir.as_ref().canonicalize()?;
         if !mount_dir.is_dir() {
             return Err(io::ErrorKind::NotADirectory.into());
         }

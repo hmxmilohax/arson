@@ -18,7 +18,7 @@ fn main() -> arson::Result {
 
     // Mount `run` directory for scripts
     let mount_dir = Path::new(file!()).join("../../run");
-    let driver = BasicFileSystemDriver::new(&mount_dir)?;
+    let driver = BasicFileSystemDriver::new(mount_dir)?;
 
     // Make context
     let mut context = Context::new(State).with_filesystem_driver(driver);

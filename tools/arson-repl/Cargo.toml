@@ -1,0 +1,12 @@
+[package]
+name = "arson-repl"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+publish = false
+
+[dependencies]
+arson = { path = "../../crates/arson", features = ["parse-reporting"] }
