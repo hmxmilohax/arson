@@ -7,7 +7,7 @@ mod array;
 mod flow;
 mod numeric;
 mod operator;
-mod value;
+mod variable;
 
 pub(crate) struct BuiltinState {
     pub unquote: Symbol,
@@ -30,5 +30,5 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
     flow::register_funcs(context);
     numeric::register_funcs(context);
     operator::register_funcs(context);
-    value::register_funcs(context);
+    variable::register_funcs(context);
 }

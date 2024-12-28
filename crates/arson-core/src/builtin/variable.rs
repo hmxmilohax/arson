@@ -21,10 +21,43 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
     context.add_macro("kDataUnhandled", arson_array![NodeKind::Unhandled]);
 
     context.register_func("type", self::r#type);
+
+    context.register_func("set", self::set);
+    context.register_func("set_var", self::set_var);
+    context.register_func("set_this", self::set_this);
+
+    context.register_func("var", self::var);
 }
 
 fn r#type<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
     let value = args.evaluate(context, 0)?;
     Ok(value.get_kind().into())
+}
+
+fn set<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
+    let value = args.evaluate(context, 1)?;
+    args.set_variable(context, 0, value.clone())?;
+    Ok(value.into())
+}
+
+fn set_var<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 2);
+
+    let name = args.force_symbol(context, 0)?;
+    let value = args.evaluate(context, 1)?;
+    context.set_variable(name, value.clone());
+
+    Ok(value.into())
+}
+
+fn set_this<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+    todo!("set_this")
+}
+
+fn var<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
+    let name = args.force_symbol(context, 0)?;
+    Ok(context.get_variable(name).into())
 }
