@@ -14,6 +14,7 @@ pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
 
     context.register_func("read_file", self::read_file);
     context.register_func("write_file", self::write_file);
+    context.register_func("run", self::run);
 
     context.register_func("file_exists", self::file_exists);
     context.register_func("file_read_only", self::file_read_only);
@@ -65,6 +66,19 @@ pub fn write_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) ->
     }
 
     Ok(Node::HANDLED)
+}
+
+pub fn run<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    arson_assert_len!(args, 1);
+
+    let path = args.string(context, 0)?;
+    match context.load_path(context.file_load_options(), path.as_ref()) {
+        Ok(array) => context.execute_block(&array),
+        Err(_err) => {
+            // TODO: log error
+            Ok(Node::HANDLED)
+        }
+    }
 }
 
 pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
