@@ -175,7 +175,7 @@ fn read_input(context: &mut Context<State>, editor: &mut DefaultEditor) -> Optio
                 }
 
                 emit_load_error(&text, error);
-                continue;
+                return Some(NodeArray::new());
             },
         }
     }
