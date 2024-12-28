@@ -121,20 +121,19 @@ fn run(context: &mut Context<State>, editor: &mut DefaultEditor) -> ExitCode {
             Some(array) => array,
             None => return ExitCode::SUCCESS,
         };
-        if array.len() != 1 {
-            continue;
+
+        for node in array {
+            match node.evaluate(context) {
+                Ok(evaluated) => println!("{evaluated}"),
+                Err(error) => {
+                    if let Some(exit) = ExitError::is_exit(&error) {
+                        return exit;
+                    }
+    
+                    eprintln!("Evaluation error: {error}\n{}", error.backtrace())
+                },
+            };
         }
-
-        match array.evaluate(context, 0) {
-            Ok(evaluated) => println!("{evaluated}"),
-            Err(error) => {
-                if let Some(exit) = ExitError::is_exit(&error) {
-                    return exit;
-                }
-
-                eprintln!("Evaluation error: {error}\n{}", error.backtrace())
-            },
-        };
     }
 }
 
