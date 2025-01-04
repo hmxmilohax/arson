@@ -596,24 +596,32 @@ mod tests {
         let sym_array1 = context.add_symbol("array1");
         let sym_array2 = context.add_symbol("array2");
 
+        // kDefine should not be set by default
+        assert_loaded(
+            &mut context,
+            "#ifdef kDefine (array1 10) #else (array2 5) #endif",
+            arson_array![arson_array![sym_array2.clone(), 5]],
+        );
+        assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![
+            arson_array![sym_array.clone(), 10]
+        ]);
+
+        // Setting it causes the true paths to be taken
         context.add_macro_define(&sym_define);
         assert_loaded(
             &mut context,
             "#ifdef kDefine (array1 10) #else (array2 5) #endif",
             arson_array![arson_array![sym_array1, 10]],
         );
+        assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
 
+        // Removing it causes the false paths to be taken
         context.remove_macro(&sym_define);
         assert_loaded(
             &mut context,
             "#ifdef kDefine (array1 10) #else (array2 5) #endif",
             arson_array![arson_array![sym_array2, 5]],
         );
-
-        context.add_macro_define(&sym_define);
-        assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![]);
-
-        context.remove_macro(&sym_define);
         assert_loaded(&mut context, "#ifndef kDefine (array 10) #endif", arson_array![
             arson_array![sym_array, 10]
         ]);
