@@ -14,7 +14,7 @@ pub struct StrExpression<'src> {
 }
 
 impl<'src> StrExpression<'src> {
-    fn new(text: &'src str, location: Span) -> Self {
+    pub fn new(text: &'src str, location: Span) -> Self {
         Self { text, location }
     }
 }
@@ -26,7 +26,7 @@ pub struct ArrayExpression<'src> {
 }
 
 impl<'src> ArrayExpression<'src> {
-    fn new(exprs: Vec<Expression<'src>>, location: Span) -> Self {
+    pub fn new(exprs: Vec<Expression<'src>>, location: Span) -> Self {
         Self { exprs, location }
     }
 }
@@ -197,7 +197,11 @@ impl ExpressionValue<'_> {
     }
 }
 
-impl Expression<'_> {
+impl<'src> Expression<'src> {
+    pub fn new(value: ExpressionValue<'src>, location: Span) -> Self {
+        Self { value, location }
+    }
+
     pub fn get_kind(&self) -> ExpressionKind {
         self.value.get_kind()
     }
@@ -315,7 +319,12 @@ impl<'src> Preprocessor<'src> {
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
         description: DirectiveArgumentDescription,
     ) -> ProcessResult<PreprocessedToken<'src>> {
+        // Note: comments between the directive and symbol will be emitted
+        // before the directive gets emitted. Trying to handle this more sanely
+        // is far more complex than I have the patience for currently lol, and
+        // it should impact very few scenarios in practice.
         self.skip_comments(tokens);
+
         let Some(name_token) = tokens.peek() else {
             self.unexpected_eof = true;
             return ProcessResult::Error(
@@ -462,7 +471,12 @@ impl<'src> Preprocessor<'src> {
         start: Span,
         positive: bool,
     ) -> ProcessResult<PreprocessedToken<'src>> {
+        // Note: comments between the directive and symbol will be emitted
+        // before the directive gets emitted. Trying to handle this more sanely
+        // is far more complex than I have the patience for currently lol, and
+        // it should impact very few scenarios in practice.
         self.skip_comments(tokens);
+
         let Some(define_token) = tokens.peek() else {
             self.unexpected_eof = true;
             self.push_error(DiagnosticKind::UnmatchedConditional, start.clone());
@@ -863,7 +877,12 @@ impl<'src> Parser<'src> {
                 ArrayKind::Property => TokenKind::PropertyOpen,
             };
 
+            // Note: comments between the directive and array will be emitted
+            // before the full directive gets emitted. Trying to handle this more sanely
+            // is far more complex than I have the patience for currently lol, and
+            // it should impact very few scenarios in practice.
             self.skip_comments(tokens);
+
             let Some(next) = tokens.peek() else {
                 self.unexpected_eof = true;
                 return Err((

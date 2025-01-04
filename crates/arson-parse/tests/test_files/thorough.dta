@@ -90,7 +90,7 @@ kDataUnhandled
 #undef kDefine
 #endif
 #ifndef kDefine
-#define kDefine
+#define kDefine (1)
 #else
 #autorun {action}
 #endif
@@ -139,3 +139,38 @@ block comment
     *****
 
 ***/
+
+; comments between directives
+#include_opt ; asdf
+    ../file.dta ; asdf
+#include ; asdf
+    ../file.dta ; asdf
+#merge ; asdf
+    ../file.dta ; asdf
+#ifdef ; asdf
+    kDefine ; asdf
+#undef ; asdf
+    kDefine ; asdf
+#endif ; asdf
+#ifndef ; asdf
+    kDefine ; asdf
+#define ; asdf
+    kDefine ; asdf
+    (1) ; asdf
+#else ; asdf
+#autorun ; asdf
+    {action} ; asdf
+#endif ; asdf
+
+; block comments between directives
+/* asdf */ #include_opt /* asdf */ ../file.dta /* asdf */
+/* asdf */ #include /* asdf */ ../file.dta /* asdf */
+/* asdf */ #merge /* asdf */ ../file.dta /* asdf */
+/* asdf */ #ifdef /* asdf */ kDefine /* asdf */
+/* asdf */ #undef /* asdf */ kDefine /* asdf */
+/* asdf */ #endif /* asdf */
+/* asdf */ #ifndef /* asdf */ kDefine /* asdf */
+/* asdf */ #define /* asdf */ kDefine /* asdf */ (1) /* asdf */
+/* asdf */ #else /* asdf */
+/* asdf */ #autorun /* asdf */ {action} /* asdf */
+/* asdf */ #endif /* asdf */

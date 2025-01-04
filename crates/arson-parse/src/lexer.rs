@@ -16,7 +16,11 @@ pub struct Token<'src> {
     pub location: Span,
 }
 
-impl Token<'_> {
+impl<'src> Token<'src> {
+    pub fn new(value: TokenValue<'src>, location: Span) -> Self {
+        Self { value, location }
+    }
+
     pub fn get_kind(&self) -> TokenKind {
         self.value.get_kind()
     }
