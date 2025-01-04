@@ -61,33 +61,39 @@ enum PreprocessedTokenValue<'src> {
         true_branch: (Vec<PreprocessedToken<'src>>, Span),
         false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
     },
+
+    Comment(&'src str),
+    BlockComment(&'src str),
 }
 
 impl PreprocessedTokenValue<'_> {
     fn get_kind(&self) -> TokenKind {
         match self {
-            PreprocessedTokenValue::Integer(_) => TokenKind::Integer,
-            PreprocessedTokenValue::Float(_) => TokenKind::Float,
-            PreprocessedTokenValue::String(_) => TokenKind::String,
-            PreprocessedTokenValue::Symbol(_) => TokenKind::Symbol,
-            PreprocessedTokenValue::Variable(_) => TokenKind::Variable,
-            PreprocessedTokenValue::Unhandled => TokenKind::Unhandled,
+            Self::Integer(_) => TokenKind::Integer,
+            Self::Float(_) => TokenKind::Float,
+            Self::String(_) => TokenKind::String,
+            Self::Symbol(_) => TokenKind::Symbol,
+            Self::Variable(_) => TokenKind::Variable,
+            Self::Unhandled => TokenKind::Unhandled,
 
-            PreprocessedTokenValue::ArrayOpen => TokenKind::ArrayOpen,
-            PreprocessedTokenValue::ArrayClose => TokenKind::ArrayClose,
-            PreprocessedTokenValue::CommandOpen => TokenKind::CommandOpen,
-            PreprocessedTokenValue::CommandClose => TokenKind::CommandClose,
-            PreprocessedTokenValue::PropertyOpen => TokenKind::PropertyOpen,
-            PreprocessedTokenValue::PropertyClose => TokenKind::PropertyClose,
+            Self::ArrayOpen => TokenKind::ArrayOpen,
+            Self::ArrayClose => TokenKind::ArrayClose,
+            Self::CommandOpen => TokenKind::CommandOpen,
+            Self::CommandClose => TokenKind::CommandClose,
+            Self::PropertyOpen => TokenKind::PropertyOpen,
+            Self::PropertyClose => TokenKind::PropertyClose,
 
-            PreprocessedTokenValue::Define(_) => TokenKind::Define,
-            PreprocessedTokenValue::Undefine(_) => TokenKind::Undefine,
-            PreprocessedTokenValue::Include(_) => TokenKind::Include,
-            PreprocessedTokenValue::IncludeOptional(_) => TokenKind::IncludeOptional,
-            PreprocessedTokenValue::Merge(_) => TokenKind::Merge,
-            PreprocessedTokenValue::Autorun => TokenKind::Autorun,
+            Self::Define(_) => TokenKind::Define,
+            Self::Undefine(_) => TokenKind::Undefine,
+            Self::Include(_) => TokenKind::Include,
+            Self::IncludeOptional(_) => TokenKind::IncludeOptional,
+            Self::Merge(_) => TokenKind::Merge,
+            Self::Autorun => TokenKind::Autorun,
 
-            PreprocessedTokenValue::Conditional { .. } => TokenKind::Ifdef,
+            Self::Conditional { .. } => TokenKind::Ifdef,
+
+            Self::Comment(_) => TokenKind::Comment,
+            Self::BlockComment(_) => TokenKind::BlockComment,
         }
     }
 }
@@ -125,6 +131,9 @@ pub enum ExpressionValue<'src> {
         true_branch: ArrayExpression<'src>,
         false_branch: Option<ArrayExpression<'src>>,
     },
+
+    Comment(&'src str),
+    BlockComment(&'src str),
 }
 
 pub enum ExpressionKind {
@@ -148,6 +157,9 @@ pub enum ExpressionKind {
     Autorun,
 
     Conditional,
+
+    Comment,
+    BlockComment,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -159,26 +171,29 @@ pub struct Expression<'src> {
 impl ExpressionValue<'_> {
     pub fn get_kind(&self) -> ExpressionKind {
         match self {
-            ExpressionValue::Integer(_) => ExpressionKind::Integer,
-            ExpressionValue::Float(_) => ExpressionKind::Float,
-            ExpressionValue::String(_) => ExpressionKind::String,
+            Self::Integer(_) => ExpressionKind::Integer,
+            Self::Float(_) => ExpressionKind::Float,
+            Self::String(_) => ExpressionKind::String,
 
-            ExpressionValue::Symbol(_) => ExpressionKind::Symbol,
-            ExpressionValue::Variable(_) => ExpressionKind::Variable,
-            ExpressionValue::Unhandled => ExpressionKind::Unhandled,
+            Self::Symbol(_) => ExpressionKind::Symbol,
+            Self::Variable(_) => ExpressionKind::Variable,
+            Self::Unhandled => ExpressionKind::Unhandled,
 
-            ExpressionValue::Array(_) => ExpressionKind::Array,
-            ExpressionValue::Command(_) => ExpressionKind::Command,
-            ExpressionValue::Property(_) => ExpressionKind::Property,
+            Self::Array(_) => ExpressionKind::Array,
+            Self::Command(_) => ExpressionKind::Command,
+            Self::Property(_) => ExpressionKind::Property,
 
-            ExpressionValue::Define(_, _) => ExpressionKind::Define,
-            ExpressionValue::Undefine(_) => ExpressionKind::Undefine,
-            ExpressionValue::Include(_) => ExpressionKind::Include,
-            ExpressionValue::IncludeOptional(_) => ExpressionKind::IncludeOptional,
-            ExpressionValue::Merge(_) => ExpressionKind::Merge,
-            ExpressionValue::Autorun(_) => ExpressionKind::Autorun,
+            Self::Define(_, _) => ExpressionKind::Define,
+            Self::Undefine(_) => ExpressionKind::Undefine,
+            Self::Include(_) => ExpressionKind::Include,
+            Self::IncludeOptional(_) => ExpressionKind::IncludeOptional,
+            Self::Merge(_) => ExpressionKind::Merge,
+            Self::Autorun(_) => ExpressionKind::Autorun,
 
-            ExpressionValue::Conditional { .. } => ExpressionKind::Conditional,
+            Self::Conditional { .. } => ExpressionKind::Conditional,
+
+            Self::Comment(_) => ExpressionKind::Comment,
+            Self::BlockComment(_) => ExpressionKind::BlockComment,
         }
     }
 }
@@ -241,7 +256,6 @@ struct ConditionalMarker<'src> {
 enum ProcessResult<T> {
     Result(T),
     BlockEnd(Span),
-    SkipToken,
     Error(DiagnosticKind, Span),
     Eof,
 }
@@ -274,7 +288,6 @@ impl<'src> Preprocessor<'src> {
             match self.process_token(tokens) {
                 ProcessResult::Result(node) => processed.push(node),
                 ProcessResult::BlockEnd(end_location) => return (processed, end_location),
-                ProcessResult::SkipToken => continue,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
@@ -425,8 +438,8 @@ impl<'src> Preprocessor<'src> {
                 None => return ProcessResult::Error(DiagnosticKind::UnexpectedConditional, token.location),
             },
 
-            TokenValue::Comment(_) => return ProcessResult::SkipToken,
-            TokenValue::BlockComment(_) => return ProcessResult::SkipToken,
+            TokenValue::Comment(text) => PreprocessedTokenValue::Comment(text),
+            TokenValue::BlockComment(text) => PreprocessedTokenValue::BlockComment(text),
 
             TokenValue::Error(error) => match error {
                 DiagnosticKind::UnclosedBlockComment => {
@@ -622,7 +635,6 @@ impl<'src> Parser<'src> {
             match self.parse_node(tokens) {
                 ProcessResult::Result(node) => exprs.push(node),
                 ProcessResult::BlockEnd(end_location) => return (exprs, end_location),
-                ProcessResult::SkipToken => continue,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
@@ -770,6 +782,11 @@ impl<'src> Parser<'src> {
                     Ok((body, location)) => (ExpressionValue::Autorun(body), location),
                     Err((kind, location)) => return ProcessResult::Error(kind, location),
                 }
+            },
+
+            PreprocessedTokenValue::Comment(text) => (ExpressionValue::Comment(text), token.location),
+            PreprocessedTokenValue::BlockComment(text) => {
+                (ExpressionValue::BlockComment(text), token.location)
             },
         };
 
@@ -1029,8 +1046,14 @@ mod tests {
 
         #[test]
         fn comments() {
-            assert_tokens("; comment", vec![]);
-            assert_tokens("/* block comment */", vec![]);
+            assert_tokens("; comment", vec![new_pretoken(
+                PreprocessedTokenValue::Comment(" comment"),
+                0..9,
+            )]);
+            assert_tokens("/* block comment */", vec![new_pretoken(
+                PreprocessedTokenValue::BlockComment("/* block comment */"),
+                0..19,
+            )]);
             assert_tokens("/*symbol*/", vec![new_pretoken(
                 PreprocessedTokenValue::Symbol("/*symbol*/"),
                 0..10,

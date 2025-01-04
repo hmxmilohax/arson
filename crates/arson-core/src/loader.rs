@@ -245,6 +245,9 @@ impl<'ctx, S> Loader<'ctx, S> {
 
                 return Ok(NodeResult::IncludeFile(array));
             },
+
+            ExpressionValue::Comment(_) => return Ok(NodeResult::Skip),
+            ExpressionValue::BlockComment(_) => return Ok(NodeResult::Skip),
         };
 
         Ok(NodeResult::Value(node))
