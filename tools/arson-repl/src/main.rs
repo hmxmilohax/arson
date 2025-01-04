@@ -129,7 +129,7 @@ fn run(context: &mut Context<State>, editor: &mut DefaultEditor) -> ExitCode {
                     if let Some(exit) = ExitError::is_exit(&error) {
                         return exit;
                     }
-    
+
                     eprintln!("Evaluation error: {error}\n{}", error.backtrace())
                 },
             };

@@ -77,7 +77,7 @@ pub fn run<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> Execut
         Err(_err) => {
             // TODO: log error
             Ok(Node::HANDLED)
-        }
+        },
     }
 }
 
