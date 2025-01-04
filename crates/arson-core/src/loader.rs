@@ -293,7 +293,7 @@ impl<'ctx, S> Loader<'ctx, S> {
     fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
         let ast = match arson_parse::parse_text(text) {
             Ok(ast) => ast,
-            Err(error) => return Err(LoadError::Parse(error)),
+            Err(error) => return Err(LoadError::Parse(error.into())),
         };
         self.load_array(ast)
     }

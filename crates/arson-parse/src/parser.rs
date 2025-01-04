@@ -600,6 +600,26 @@ pub struct ParseError {
     pub unclosed_array_count: usize,
 }
 
+/// An error result from file parsing, with recovered AST information.
+#[derive(Debug, PartialEq)]
+pub struct ParseRecoveryError<'src> {
+    /// The recovered AST of the file.
+    pub recovered: Vec<Expression<'src>>,
+    /// All diagnostics issued for the file.
+    pub diagnostics: Vec<Diagnostic>,
+    /// The number of unclosed arrays remaining when the end-of-file was reached.
+    pub unclosed_array_count: usize,
+}
+
+impl From<ParseRecoveryError<'_>> for ParseError {
+    fn from(value: ParseRecoveryError<'_>) -> Self {
+        Self {
+            diagnostics: value.diagnostics,
+            unclosed_array_count: value.unclosed_array_count,
+        }
+    }
+}
+
 struct Parser<'src> {
     expressions: Vec<Expression<'src>>,
 
@@ -625,7 +645,10 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn parse(&mut self, tokens: Tokenizer<'src>) -> Result<Vec<Expression<'src>>, ParseError> {
+    pub fn parse(
+        &mut self,
+        tokens: Tokenizer<'src>,
+    ) -> Result<Vec<Expression<'src>>, ParseRecoveryError<'src>> {
         // No items, Fox only, Final Destination.
         let final_location = {
             let text = tokens.source_text();
@@ -648,7 +671,8 @@ impl<'src> Parser<'src> {
             Ok(ast)
         } else {
             self.errors.sort_by(|left, right| left.sort_cmp(right));
-            Err(ParseError {
+            Err(ParseRecoveryError {
+                recovered: ast,
                 diagnostics: std::mem::take(&mut self.errors),
                 unclosed_array_count: self.unclosed_array_count,
             })
@@ -937,11 +961,11 @@ impl<'src> Parser<'src> {
     }
 }
 
-pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, ParseError> {
+pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
     parse_tokens(Tokenizer::new(text))
 }
 
-pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, ParseError> {
+pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
     let mut parser = Parser::new();
     parser.parse(tokens)
 }
