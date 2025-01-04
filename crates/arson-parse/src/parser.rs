@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::iter::Peekable;
-use std::marker::PhantomData;
 
 use logos::Span;
 
@@ -261,7 +260,9 @@ enum ProcessResult<T> {
 }
 
 struct Preprocessor<'src> {
+    expressions: Vec<PreprocessedToken<'src>>,
     conditional_stack: Vec<ConditionalMarker<'src>>,
+
     errors: Vec<Diagnostic>,
     eof_checked: bool,
     unexpected_eof: bool,
@@ -270,7 +271,9 @@ struct Preprocessor<'src> {
 impl<'src> Preprocessor<'src> {
     pub fn new() -> Self {
         Self {
+            expressions: Vec::new(),
             conditional_stack: Vec::new(),
+
             errors: Vec::new(),
             eof_checked: false,
             unexpected_eof: false,
@@ -282,28 +285,27 @@ impl<'src> Preprocessor<'src> {
     }
 
     fn preprocess_loop(&mut self, tokens: &mut Tokenizer<'src>) -> (Vec<PreprocessedToken<'src>>, Span) {
-        let mut processed = Vec::new();
+        let prev_exprs = std::mem::take(&mut self.expressions);
 
-        loop {
+        let last_location = loop {
             match self.process_token(tokens) {
-                ProcessResult::Result(node) => processed.push(node),
-                ProcessResult::BlockEnd(end_location) => return (processed, end_location),
+                ProcessResult::Result(node) => self.expressions.push(node),
+                ProcessResult::BlockEnd(end_location) => break end_location,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
                 },
                 ProcessResult::Eof => {
                     self.verify_eof();
-                    match processed.last().cloned() {
-                        Some(last) => {
-                            let last_location = last.location.clone();
-                            return (processed, last_location);
-                        },
-                        None => return (processed, 0..0),
+                    match self.expressions.last().cloned() {
+                        Some(last) => break last.location.clone(),
+                        None => break 0..0,
                     }
                 },
             };
-        }
+        };
+
+        return (std::mem::replace(&mut self.expressions, prev_exprs), last_location);
     }
 
     fn symbol_directive(
@@ -313,6 +315,7 @@ impl<'src> Preprocessor<'src> {
         kind: impl Fn(StrExpression<'src>) -> PreprocessedTokenValue<'src>,
         description: DirectiveArgumentDescription,
     ) -> ProcessResult<PreprocessedToken<'src>> {
+        self.skip_comments(tokens);
         let Some(name_token) = tokens.peek() else {
             self.unexpected_eof = true;
             return ProcessResult::Error(
@@ -459,6 +462,7 @@ impl<'src> Preprocessor<'src> {
         start: Span,
         positive: bool,
     ) -> ProcessResult<PreprocessedToken<'src>> {
+        self.skip_comments(tokens);
         let Some(define_token) = tokens.peek() else {
             self.unexpected_eof = true;
             self.push_error(DiagnosticKind::UnmatchedConditional, start.clone());
@@ -538,6 +542,30 @@ impl<'src> Preprocessor<'src> {
         (exprs, location)
     }
 
+    fn skip_comments(&mut self, tokens: &mut Tokenizer<'src>) {
+        while let Some(token) = tokens.peek() {
+            match token.value {
+                TokenValue::Comment(text) => {
+                    let token = PreprocessedToken {
+                        value: PreprocessedTokenValue::Comment(text),
+                        location: token.location.clone(),
+                    };
+                    self.expressions.push(token);
+                    tokens.next();
+                },
+                TokenValue::BlockComment(text) => {
+                    let token = PreprocessedToken {
+                        value: PreprocessedTokenValue::BlockComment(text),
+                        location: token.location.clone(),
+                    };
+                    self.expressions.push(token);
+                    tokens.next();
+                },
+                _ => break,
+            }
+        }
+    }
+
     fn verify_eof(&mut self) {
         // Without this check, end-of-file will be checked repeatedly
         // if we end while still nested inside arrays
@@ -573,7 +601,7 @@ pub struct ParseError {
 }
 
 struct Parser<'src> {
-    phantom: PhantomData<&'src ()>,
+    expressions: Vec<Expression<'src>>,
 
     array_stack: Vec<ArrayMarker>,
     eof_checked: bool,
@@ -586,11 +614,13 @@ struct Parser<'src> {
 impl<'src> Parser<'src> {
     pub fn new() -> Self {
         Self {
+            expressions: Vec::new(),
+
             array_stack: Vec::new(),
-            errors: Vec::new(),
             eof_checked: false,
+
+            errors: Vec::new(),
             unexpected_eof: false,
-            phantom: PhantomData,
             unclosed_array_count: 0,
         }
     }
@@ -629,28 +659,30 @@ impl<'src> Parser<'src> {
         &mut self,
         tokens: &mut Peekable<I>,
     ) -> (Vec<Expression<'src>>, Span) {
-        let mut exprs = Vec::new();
+        let prev_exprs = std::mem::take(&mut self.expressions);
 
-        loop {
+        let last_location = loop {
             match self.parse_node(tokens) {
-                ProcessResult::Result(node) => exprs.push(node),
-                ProcessResult::BlockEnd(end_location) => return (exprs, end_location),
+                ProcessResult::Result(node) => self.expressions.push(node),
+                ProcessResult::BlockEnd(end_location) => break end_location,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
                 },
                 ProcessResult::Eof => {
                     self.verify_eof();
-                    match exprs.last() {
+                    match self.expressions.last() {
                         Some(last) => {
                             let last_location = last.location.clone();
-                            return (exprs, last_location);
+                            break last_location;
                         },
-                        None => return (exprs, 0..0),
+                        None => break 0..0,
                     }
                 },
             };
-        }
+        };
+
+        return (std::mem::replace(&mut self.expressions, prev_exprs), last_location);
     }
 
     fn parse_array<I: Iterator<Item = PreprocessedToken<'src>>>(
@@ -807,6 +839,7 @@ impl<'src> Parser<'src> {
                 ArrayKind::Property => TokenKind::PropertyOpen,
             };
 
+            self.skip_comments(tokens);
             let Some(next) = tokens.peek() else {
                 self.unexpected_eof = true;
                 return Err((
@@ -855,6 +888,30 @@ impl<'src> Parser<'src> {
         ArrayExpression::new(branch, location)
     }
 
+    fn skip_comments<I: Iterator<Item = PreprocessedToken<'src>>>(&mut self, tokens: &mut Peekable<I>) {
+        while let Some(token) = tokens.peek() {
+            match token.value {
+                PreprocessedTokenValue::Comment(text) => {
+                    let token = Expression {
+                        value: ExpressionValue::Comment(text),
+                        location: token.location.clone(),
+                    };
+                    self.expressions.push(token);
+                    tokens.next();
+                },
+                PreprocessedTokenValue::BlockComment(text) => {
+                    let token = Expression {
+                        value: ExpressionValue::BlockComment(text),
+                        location: token.location.clone(),
+                    };
+                    self.expressions.push(token);
+                    tokens.next();
+                },
+                _ => break,
+            }
+        }
+    }
+
     fn push_error(&mut self, kind: DiagnosticKind, location: Span) {
         self.errors.push(Diagnostic::new(kind, location));
     }
@@ -898,16 +955,28 @@ mod tests {
         description: DirectiveArgumentDescription,
         assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
     ) {
-        let text = directive.to_owned() + " 1";
-        assert_errors(&text, vec![(
-            DiagnosticKind::IncorrectDirectiveArgument {
-                expected: TokenKind::Symbol,
-                expected_description: description,
-                actual: TokenKind::Integer,
-                expecting_location: 0..directive.len(),
-            },
-            text.len() - 1..text.len(),
-        )]);
+        fn assert_symbol_error(
+            directive: &str,
+            suffix: &str,
+            description: DirectiveArgumentDescription,
+            assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
+        ) {
+            let text = directive.to_owned() + suffix;
+            assert_errors(&text, vec![(
+                DiagnosticKind::IncorrectDirectiveArgument {
+                    expected: TokenKind::Symbol,
+                    expected_description: description,
+                    actual: TokenKind::Integer,
+                    expecting_location: 0..directive.len(),
+                },
+                text.len() - 1..text.len(),
+            )]);
+        }
+
+        assert_symbol_error(directive, " 1", description, assert_errors);
+        // Ensure comments are properly ignored
+        assert_symbol_error(directive, " ;asdf\n 1", description, assert_errors);
+        assert_symbol_error(directive, " /* asdf */ 1", description, assert_errors);
     }
 
     fn assert_conditional_symbol_error(
@@ -915,23 +984,34 @@ mod tests {
         eof: bool,
         assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
     ) {
-        let text = directive.to_owned() + " 1";
-        let mut errors = vec![
-            (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
-            (
-                DiagnosticKind::IncorrectDirectiveArgument {
-                    expected: TokenKind::Symbol,
-                    expected_description: DirectiveArgumentDescription::MacroName,
-                    actual: TokenKind::Integer,
-                    expecting_location: 0..directive.len(),
-                },
-                text.len() - 1..text.len(),
-            ),
-        ];
-        if eof {
-            errors.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
+        fn assert_symbol_error(
+            directive: &str,
+            suffix: &str,
+            eof: bool,
+            assert_errors: fn(&str, Vec<(DiagnosticKind, Span)>),
+        ) {
+            let text = directive.to_owned() + suffix;
+            let mut errors = vec![
+                (DiagnosticKind::UnmatchedConditional, 0..directive.len()),
+                (
+                    DiagnosticKind::IncorrectDirectiveArgument {
+                        expected: TokenKind::Symbol,
+                        expected_description: DirectiveArgumentDescription::MacroName,
+                        actual: TokenKind::Integer,
+                        expecting_location: 0..directive.len(),
+                    },
+                    text.len() - 1..text.len(),
+                ),
+            ];
+            if eof {
+                errors.push((DiagnosticKind::UnexpectedEof, text.len()..text.len()));
+            }
+            assert_errors(&text, errors);
         }
-        assert_errors(&text, errors);
+
+        assert_symbol_error(directive, " 1", eof, assert_errors);
+        assert_symbol_error(directive, " ;asdf\n 1", eof, assert_errors);
+        assert_symbol_error(directive, " /* asdf */ 1", eof, assert_errors);
     }
 
     mod preprocessor {
@@ -1113,11 +1193,11 @@ mod tests {
             assert_directive_symbol_error("#merge", DirectiveArgumentDescription::FilePath, assert_errors);
 
             // tested in super::parser
-            // assert_directive_eof_error("#define", assert_errors);
-            // assert_directive_eof_error("#undef", assert_errors);
-            // assert_directive_eof_error("#include", assert_errors);
-            // assert_directive_eof_error("#include_opt", assert_errors);
-            // assert_directive_eof_error("#merge", assert_errors);
+            // assert_directive_incomplete_error("#define", assert_errors);
+            // assert_directive_incomplete_error("#undef", assert_errors);
+            // assert_directive_incomplete_error("#include", assert_errors);
+            // assert_directive_incomplete_error("#include_opt", assert_errors);
+            // assert_directive_incomplete_error("#merge", assert_errors);
 
             assert_errors("#bad", vec![(DiagnosticKind::BadDirective, 0..4)]);
         }
@@ -1387,8 +1467,14 @@ mod tests {
 
         #[test]
         fn comments() {
-            assert_parsed("; comment", vec![]);
-            assert_parsed("/* block comment */", vec![]);
+            assert_parsed("; comment", vec![new_expression(
+                ExpressionValue::Comment(" comment"),
+                0..9,
+            )]);
+            assert_parsed("/* block comment */", vec![new_expression(
+                ExpressionValue::BlockComment("/* block comment */"),
+                0..19,
+            )]);
             assert_parsed("/*symbol*/", vec![new_expression(
                 ExpressionValue::Symbol("/*symbol*/"),
                 0..10,
@@ -1446,13 +1532,26 @@ mod tests {
                 expected_token: TokenKind,
                 description: DirectiveArgumentDescription,
             ) {
-                assert_errors(directive, vec![
-                    (
-                        DiagnosticKind::MissingDirectiveArgument { missing: expected_token, description },
-                        0..directive.len(),
-                    ),
-                    (DiagnosticKind::UnexpectedEof, directive.len()..directive.len()),
-                ]);
+                fn assert_incomplete_error(
+                    directive: &str,
+                    suffix: &str,
+                    expected_token: TokenKind,
+                    description: DirectiveArgumentDescription,
+                ) {
+                    let text = directive.to_owned() + suffix;
+                    assert_errors(&text, vec![
+                        (
+                            DiagnosticKind::MissingDirectiveArgument { missing: expected_token, description },
+                            0..directive.len(),
+                        ),
+                        (DiagnosticKind::UnexpectedEof, text.len()..text.len()),
+                    ]);
+                }
+
+                assert_incomplete_error(directive, "", expected_token, description);
+                assert_incomplete_error(directive, " ; asdf", expected_token, description);
+                assert_incomplete_error(directive, " ; asdf\n", expected_token, description);
+                assert_incomplete_error(directive, " /* asdf */", expected_token, description);
             }
 
             assert_directive_symbol_error("#define", DirectiveArgumentDescription::MacroName, assert_errors);
