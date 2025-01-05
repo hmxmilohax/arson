@@ -21,6 +21,34 @@ struct Arguments {
     output_file: Option<String>,
 }
 
+/*
+/// A formatter for DTA files.
+#[derive(clap::Parser, Debug)]
+struct Arguments {
+    /// the input file to be formatted
+    #[command(subcommand)]
+    mode: InputMode,
+}
+
+#[derive(clap::Parser, Debug)]
+enum InputMode {
+    File {
+        /// the input file to be formatted
+        input_file: String,
+
+        /// the text editing mode to use
+        #[arg(long = "output", short)]
+        output_file: Option<String>,
+    },
+    Stdio,
+}
+
+#[derive(clap::Parser, Debug)]
+enum IndentMode {
+
+}
+*/
+
 fn main() -> ExitCode {
     let args = Arguments::parse();
     let file_text = std::fs::read_to_string(&args.input_file).unwrap();
