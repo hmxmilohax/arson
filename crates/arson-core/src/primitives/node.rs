@@ -196,6 +196,21 @@ macro_rules! define_node_types {
                     }
                 }
 
+                impl TryFrom<NodeValue> for $variant_type$(<$variant_gen>)? {
+                    type Error = crate::Error;
+
+                    fn try_from(value: NodeValue) -> Result<Self, Self::Error> {
+                        match value {
+                            NodeValue::$variant(value) => Ok(value),
+                            _ => Err(EvaluationError::TypeMismatch {
+                                expected: NodeKind::$variant,
+                                actual: value.get_kind(),
+                            }
+                            .into()),
+                        }
+                    }
+                }
+
                 // additional conversions from `from:`
                 $( // options block
                     $( // `from`
