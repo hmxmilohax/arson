@@ -5,22 +5,13 @@ use arson_fs::FileSystem;
 
 use crate::builtin::BuiltinState;
 use crate::prelude::*;
-use crate::{FindDataPredicate, SymbolTable};
+use crate::{ExecutionError, FindDataPredicate, SymbolTable};
 
 /// A function which is callable from script.
 pub type HandleFn<State> = fn(context: &mut Context<State>, args: &NodeSlice) -> ExecuteResult;
 
 /// The result of a script execution.
 pub type ExecuteResult = crate::Result<Node>;
-
-#[derive(thiserror::Error, Debug)]
-pub enum ExecutionError {
-    #[error("no function registered for name '{0}'")]
-    FunctionNotFound(String),
-
-    #[error("{0}")]
-    Failure(String),
-}
 
 #[allow(
     clippy::partial_pub_fields,

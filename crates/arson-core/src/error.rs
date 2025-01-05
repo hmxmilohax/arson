@@ -1,50 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::backtrace::Backtrace;
+use std::ops::Range;
 
 #[cfg(feature = "text-loading")]
 use crate::LoadError;
-use crate::{ArrayError, EvaluationError, ExecutionError, NumericError};
+use crate::{NodeKind, NumericError};
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
-
-#[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
-pub enum ErrorKind {
-    #[error("{0}")]
-    EvaluationError(#[from] EvaluationError),
-
-    #[error("{0}")]
-    ExecutionError(#[from] ExecutionError),
-
-    #[error("{0}")]
-    NumericError(#[source] NumericError),
-
-    #[error("{0}")]
-    ArrayError(#[from] ArrayError),
-
-    #[error("{0}")]
-    IoError(#[from] std::io::Error),
-
-    #[cfg(feature = "text-loading")]
-    #[error("{0}")]
-    LoadError(#[from] LoadError),
-
-    #[error("{0}")]
-    Custom(#[source] Box<dyn std::error::Error + Send>),
-}
-
-impl From<std::io::ErrorKind> for crate::ErrorKind {
-    fn from(value: std::io::ErrorKind) -> Self {
-        Self::IoError(value.into())
-    }
-}
-
-impl<E: Into<NumericError>> From<E> for crate::ErrorKind {
-    fn from(value: E) -> Self {
-        Self::NumericError(value.into())
-    }
-}
 
 /// Data is separated out and boxed to keep the size of [`Error`] down,
 /// and consequently the size of [`Result`].
@@ -103,6 +66,83 @@ impl<E: Into<ErrorKind>> From<E> for self::Error {
     }
 }
 
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+pub enum ErrorKind {
+    #[error("{0}")]
+    EvaluationError(#[from] EvaluationError),
+
+    #[error("{0}")]
+    ExecutionError(#[from] ExecutionError),
+
+    #[error("{0}")]
+    NumericError(#[source] NumericError),
+
+    #[error("{0}")]
+    IoError(#[from] std::io::Error),
+
+    #[cfg(feature = "text-loading")]
+    #[error("{0}")]
+    LoadError(#[from] LoadError),
+
+    #[error("{0}")]
+    Custom(#[source] Box<dyn std::error::Error + Send>),
+}
+
+impl From<std::io::ErrorKind> for crate::ErrorKind {
+    fn from(value: std::io::ErrorKind) -> Self {
+        Self::IoError(value.into())
+    }
+}
+
+impl<E: Into<NumericError>> From<E> for crate::ErrorKind {
+    fn from(value: E) -> Self {
+        Self::NumericError(value.into())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum EvaluationError {
+    #[error("expected value of type {expected:?}, got {actual:?} instead")]
+    TypeMismatch { expected: NodeKind, actual: NodeKind },
+
+    #[error("value of type {src:?} is not convertible to {dest:?}")]
+    NotConvertible { src: NodeKind, dest: NodeKind },
+
+    #[error("value of type {0:?} is not a number")]
+    NotNumber(NodeKind),
+
+    #[error("value of type {0:?} is not convertible to a boolean")]
+    NotBoolean(NodeKind),
+
+    #[error("value of type {0:?} is not a valid array tag")]
+    NotArrayTag(NodeKind),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ExecutionError {
+    #[error("bad length {actual}, expected {expected}")]
+    LengthMismatch { expected: usize, actual: usize },
+
+    #[error("index outside of range {0:?}")]
+    IndexOutOfRange(Range<usize>),
+
+    #[error("requested data for {0} was not found")]
+    NotFound(String),
+
+    #[error("no function registered for name '{0}'")]
+    FunctionNotFound(String),
+
+    #[error("value already mutably borrowed")]
+    BadBorrow(#[from] std::cell::BorrowError),
+
+    #[error("value already immutably borrowed")]
+    BadMutBorrow(#[from] std::cell::BorrowMutError),
+
+    #[error("{0}")]
+    Failure(String),
+}
+
 #[macro_export]
 macro_rules! arson_assert {
     ($cond:expr $(,)?) => {
@@ -130,7 +170,7 @@ macro_rules! arson_fail {
 macro_rules! arson_assert_len {
     ($array:ident, $len:expr) => {
         if $array.len() != $len {
-            return Err($crate::ArrayError::LengthMismatch {
+            return Err($crate::ExecutionError::LengthMismatch {
                 expected: $len,
                 actual: $array.len(),
             }.into());

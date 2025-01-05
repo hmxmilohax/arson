@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::slice::SliceIndex;
 
 use crate::prelude::*;
-use crate::{FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
+use crate::{ExecutionError, FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
 
 #[macro_export]
 macro_rules! arson_array {
@@ -21,24 +21,6 @@ macro_rules! arson_array {
     ($($x:expr),+ $(,)?) => (
         $crate::NodeArray::from(vec![$($x.into()),+])
     );
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum ArrayError {
-    #[error("bad array length {actual}, expected {expected}")]
-    LengthMismatch { expected: usize, actual: usize },
-
-    #[error("array index outside of range {0:?}")]
-    OutOfRange(Range<usize>),
-
-    #[error("requested data for {0} was not found")]
-    NotFound(String),
-
-    #[error("array already mutably borrowed: {0:?}")]
-    BadBorrow(#[from] std::cell::BorrowError),
-
-    #[error("array already immutably borrowed: {0:?}")]
-    BadMutBorrow(#[from] std::cell::BorrowMutError),
 }
 
 #[derive(PartialEq, PartialOrd, Clone)]
@@ -55,11 +37,13 @@ impl ArrayRef {
     }
 
     pub fn borrow(&self) -> crate::Result<std::cell::Ref<'_, NodeArray>> {
-        self.inner.try_borrow().map_err(|e| ArrayError::BadBorrow(e).into())
+        self.inner.try_borrow().map_err(|e| ExecutionError::BadBorrow(e).into())
     }
 
     pub fn borrow_mut(&self) -> crate::Result<std::cell::RefMut<'_, NodeArray>> {
-        self.inner.try_borrow_mut().map_err(|e| ArrayError::BadMutBorrow(e).into())
+        self.inner
+            .try_borrow_mut()
+            .map_err(|e| ExecutionError::BadMutBorrow(e).into())
     }
 
     pub fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -109,7 +93,7 @@ impl NodeSlice {
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         match self.nodes.get(index) {
             Some(value) => Ok(Self::new(value)),
-            None => Err(ArrayError::OutOfRange(0..self.nodes.len()).into()),
+            None => Err(ExecutionError::IndexOutOfRange(0..self.nodes.len()).into()),
         }
     }
 
@@ -120,14 +104,14 @@ impl NodeSlice {
         let len = self.nodes.len(); // borrow checker workaround
         match self.nodes.get_mut(index) {
             Some(value) => Ok(Self::from_mut(value)),
-            None => Err(ArrayError::OutOfRange(0..len).into()),
+            None => Err(ExecutionError::IndexOutOfRange(0..len).into()),
         }
     }
 
     pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
         match self.nodes.get(index) {
             Some(value) => Ok(value),
-            None => Err(ArrayError::OutOfRange(0..self.nodes.len()).into()),
+            None => Err(ExecutionError::IndexOutOfRange(0..self.nodes.len()).into()),
         }
     }
 
@@ -139,7 +123,7 @@ impl NodeSlice {
         let len = self.nodes.len(); // borrow checker workaround
         match self.nodes.get_mut(index) {
             Some(value) => Ok(value),
-            None => Err(ArrayError::OutOfRange(0..len).into()),
+            None => Err(ExecutionError::IndexOutOfRange(0..len).into()),
         }
     }
 
@@ -907,7 +891,7 @@ impl NodeSlice {
             };
         }
 
-        Err(ArrayError::NotFound(predicate.err_string()).into())
+        Err(ExecutionError::NotFound(predicate.err_string()).into())
     }
 
     pub fn find_data(&self, predicate: impl IntoDataPredicate) -> crate::Result<Node> {
@@ -1571,7 +1555,7 @@ where
     if start <= end && end <= length {
         Ok(start..end)
     } else {
-        Err(ArrayError::OutOfRange(0..length).into())
+        Err(ExecutionError::IndexOutOfRange(0..length).into())
     }
 }
 
