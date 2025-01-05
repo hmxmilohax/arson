@@ -129,7 +129,7 @@ impl<'ctx, S> Loader<'ctx, S> {
         let node = match expr.value {
             ExpressionValue::Integer(value) => value.into(),
             ExpressionValue::Float(value) => value.into(),
-            ExpressionValue::String(value) => value.into(),
+            ExpressionValue::String(value) => value.replace("\\q", "\"").replace("\\n", "\n").into(),
 
             ExpressionValue::Symbol(value) => {
                 let symbol = self.context.add_symbol(value);
