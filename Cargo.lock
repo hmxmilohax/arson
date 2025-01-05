@@ -96,6 +96,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arson-fmt"
+version = "0.1.0"
+dependencies = [
+ "arson-parse",
+ "clap",
+ "thiserror",
+]
+
+[[package]]
 name = "arson-fs"
 version = "0.1.0"
 dependencies = [
