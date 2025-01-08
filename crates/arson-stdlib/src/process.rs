@@ -27,17 +27,17 @@ impl std::fmt::Display for ExitError {
 
 impl std::error::Error for ExitError {}
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.register_func("exit", self::exit);
     context.register_func("abort", self::abort);
 }
 
-pub fn exit<S>(_context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn exit(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 0);
     Err(arson_core::Error::from_custom(ExitError(ExitCode::SUCCESS)))
 }
 
-pub fn abort<S>(_context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn abort(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 0);
     Err(arson_core::Error::from_custom(ExitError(ExitCode::FAILURE)))
 }

@@ -5,7 +5,7 @@ use std::ops::{Div, Rem};
 use crate::prelude::*;
 use crate::{FloatValue, Integer, Number};
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     arithmetic::register_funcs(context);
     bitwise::register_funcs(context);
     logical::register_funcs(context);
@@ -16,7 +16,7 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
 mod arithmetic {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("++", self::increment);
         context.register_func("--", self::decrement);
 
@@ -35,7 +35,7 @@ mod arithmetic {
         context.register_func("div_rem", self::divide_remainder);
     }
 
-    fn increment<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn increment(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         // Forward to addition operator
@@ -45,7 +45,7 @@ mod arithmetic {
         Ok(result)
     }
 
-    fn decrement<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn decrement(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
 
         // Forward to subtraction operator
@@ -55,11 +55,11 @@ mod arithmetic {
         Ok(result)
     }
 
-    fn add<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn add(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(context, |left, right| Ok(left + right), |left, right| Ok(left + right))
     }
 
-    fn subtract<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn subtract(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if args.len() == 1 {
             // unary negate
             match args.number(context, 0)? {
@@ -71,11 +71,11 @@ mod arithmetic {
         args.number_chain(context, |left, right| Ok(left - right), |left, right| Ok(left - right))
     }
 
-    fn multiply<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn multiply(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(context, |left, right| Ok(left * right), |left, right| Ok(left * right))
     }
 
-    fn divide<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn divide(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(
             context,
             |left, right| {
@@ -86,7 +86,7 @@ mod arithmetic {
         )
     }
 
-    fn modulo<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn modulo(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(
             context,
             |left, right| {
@@ -97,37 +97,37 @@ mod arithmetic {
         )
     }
 
-    fn add_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn add_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::add(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn subtract_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn subtract_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::subtract(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn multiply_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn multiply_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::multiply(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn divide_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn divide_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::divide(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn modulo_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn modulo_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::modulo(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn divide_remainder<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn divide_remainder(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
 
         fn div_rem<T: Copy + Div + Rem>(left: T, right: T) -> ExecuteResult
@@ -154,7 +154,7 @@ mod arithmetic {
 mod bitwise {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("&", self::and);
         context.register_func("&=", self::and_assign);
         context.register_func("|", self::or);
@@ -166,8 +166,8 @@ mod bitwise {
         context.register_func("mask_eq", self::mask_assign);
     }
 
-    fn bitwise_op<S>(
-        context: &mut Context<S>,
+    fn bitwise_op(
+        context: &mut Context,
         args: &NodeSlice,
         f: fn(Integer, Integer) -> Integer,
     ) -> ExecuteResult {
@@ -180,45 +180,45 @@ mod bitwise {
         Ok(result.into())
     }
 
-    fn and<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn and(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         bitwise_op(context, args, |current, value| current & value)
     }
 
-    fn or<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn or(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         bitwise_op(context, args, |current, value| current | value)
     }
 
-    fn xor<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn xor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? ^ args.integer(context, 1)?;
         Ok(result.into())
     }
 
-    fn and_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn and_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::and(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn or_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn or_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::or(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn xor_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn xor_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::xor(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn not<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn not(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = !args.integer(context, 0)?;
         Ok(result.into())
     }
 
-    fn mask_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn mask_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.integer(context, 0)? & !args.integer(context, 1)?;
         args.set_variable(context, 0, result)?;
@@ -229,14 +229,14 @@ mod bitwise {
 mod logical {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("&&", self::and);
         context.register_func("||", self::or);
         context.register_func("^^", self::xor);
         context.register_func("!", self::not);
     }
 
-    fn and<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn and(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         for node in args {
             if !node.boolean(context)? {
                 return Ok(Node::FALSE);
@@ -246,7 +246,7 @@ mod logical {
         Ok(Node::TRUE)
     }
 
-    fn or<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn or(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         for node in args {
             if node.boolean(context)? {
                 return Ok(Node::TRUE);
@@ -256,13 +256,13 @@ mod logical {
         Ok(Node::FALSE)
     }
 
-    fn xor<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn xor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.boolean(context, 0)? ^ args.boolean(context, 1)?;
         Ok(result.into())
     }
 
-    fn not<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn not(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = !args.boolean(context, 0)?;
         Ok(result.into())
@@ -272,7 +272,7 @@ mod logical {
 mod compare {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("==", self::equal);
         context.register_func("!=", self::not_equal);
         context.register_func(">", self::greater_than);
@@ -281,37 +281,37 @@ mod compare {
         context.register_func("<=", self::less_equal);
     }
 
-    fn equal<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? == args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    fn not_equal<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn not_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? != args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    fn greater_than<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn greater_than(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? > args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    fn greater_equal<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn greater_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? >= args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    fn less_than<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn less_than(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? < args.evaluate(context, 1)?;
         Ok(result.into())
     }
 
-    fn less_equal<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn less_equal(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let result = args.evaluate(context, 0)? <= args.evaluate(context, 1)?;
         Ok(result.into())
@@ -321,7 +321,7 @@ mod compare {
 pub mod escape {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("quote", self::quote);
         context.register_func("quasiquote", self::quasiquote);
         context.register_func("unquote", self::unquote);
@@ -332,16 +332,16 @@ pub mod escape {
         context.register_func(",", self::unquote);
     }
 
-    pub fn quote<S>(_context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn quote(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         args.get(1).cloned()
     }
 
-    pub fn quasiquote<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn quasiquote(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         return do_quasiquote(context, args.get(1)?);
 
-        fn do_quasiquote<S>(context: &mut Context<S>, value: &Node) -> ExecuteResult {
+        fn do_quasiquote(context: &mut Context, value: &Node) -> ExecuteResult {
             match value.unevaluated() {
                 NodeValue::Array(array) => {
                     let borrow = array.borrow()?;
@@ -364,7 +364,7 @@ pub mod escape {
             }
         }
 
-        fn quote_array<S>(context: &mut Context<S>, array: &NodeArray) -> crate::Result<NodeArray> {
+        fn quote_array(context: &mut Context, array: &NodeArray) -> crate::Result<NodeArray> {
             let mut quoted = NodeArray::with_capacity(array.len());
             for value in array {
                 let value = do_quasiquote(context, value)?;
@@ -374,12 +374,12 @@ pub mod escape {
         }
     }
 
-    pub fn unquote<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn unquote(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.evaluate(context, 1)?.into())
     }
 
-    pub fn eval<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn eval(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value: Node = args.evaluate(context, 1)?.into();
         Ok(value.evaluate(context)?.into())

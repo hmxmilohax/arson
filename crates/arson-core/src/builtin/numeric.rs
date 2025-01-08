@@ -3,7 +3,7 @@
 use crate::prelude::*;
 use crate::{FloatValue, Integer, IntegerValue, Number};
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.add_macro("TRUE", arson_array![1]);
     context.add_macro("FALSE", arson_array![0]);
 
@@ -17,7 +17,7 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
 mod bits {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("highest_bit", self::highest_bit);
         context.register_func("lowest_bit", self::lowest_bit);
         context.register_func("count_bits", self::count_bits);
@@ -30,21 +30,21 @@ mod bits {
         }
     }
 
-    fn highest_bit<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn highest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, (0..IntegerValue::BITS).rev());
         Ok(result.into())
     }
 
-    fn lowest_bit<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn lowest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
         let result = first_active_bit(value.0, 0..IntegerValue::BITS);
         Ok(result.into())
     }
 
-    fn count_bits<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn count_bits(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let result = args.integer(context, 0)?.0.count_ones() as IntegerValue;
         Ok(result.into())
@@ -54,12 +54,12 @@ mod bits {
 mod sign {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("abs", self::abs);
         context.register_func("sign", self::sign);
     }
 
-    fn abs<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn abs(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
             Number::Integer(value) => Ok(value.0.saturating_abs().into()),
@@ -67,7 +67,7 @@ mod sign {
         }
     }
 
-    fn sign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn sign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
             Number::Integer(value) => Ok(value.0.signum().into()),
@@ -79,7 +79,7 @@ mod sign {
 mod limit {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("min", self::min);
         context.register_func("max", self::max);
         context.register_func("clamp", self::clamp);
@@ -89,7 +89,7 @@ mod limit {
         context.register_func("clamp_eq", self::clamp_assign);
     }
 
-    fn min<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn min(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(
             context,
             |left, right| Ok(left.min(right)),
@@ -97,7 +97,7 @@ mod limit {
         )
     }
 
-    fn max<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn max(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         args.number_chain(
             context,
             |left, right| Ok(left.max(right)),
@@ -105,7 +105,7 @@ mod limit {
         )
     }
 
-    fn clamp<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn clamp(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
 
         let min = args.number(context, 0)?;
@@ -115,19 +115,19 @@ mod limit {
         do_clamp(min, max, value)
     }
 
-    fn min_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn min_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::min(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn max_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn max_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let result = self::max(context, args)?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
 
-    fn clamp_assign<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn clamp_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
 
         let value = args.number(context, 0)?;
@@ -183,29 +183,29 @@ mod limit {
 mod round {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("ceil", self::ceiling);
         context.register_func("floor", self::floor);
         context.register_func("trunc", self::truncate);
         context.register_func("round", self::round);
     }
 
-    fn ceiling<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn ceiling(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.ceil().into())
     }
 
-    fn floor<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn floor(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.floor().into())
     }
 
-    fn truncate<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn truncate(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.trunc().into())
     }
 
-    fn round<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn round(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.round().into())
     }
@@ -214,12 +214,12 @@ mod round {
 mod convert {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("int", self::int);
         context.register_func("float", self::float);
     }
 
-    fn int<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.evaluate(context, 0)? {
             NodeValue::Integer(value) => Ok(value.into()),
@@ -231,7 +231,7 @@ mod convert {
         }
     }
 
-    fn float<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn float(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.evaluate(context, 0)? {
             NodeValue::Integer(value) => Ok((value.0 as FloatValue).into()),

@@ -65,8 +65,8 @@ impl From<std::io::ErrorKind> for LoadError {
     }
 }
 
-struct Loader<'ctx, S> {
-    context: &'ctx mut Context<S>,
+struct Loader<'ctx> {
+    context: &'ctx mut Context,
     options: LoadOptions,
     #[cfg(feature = "file-loading")]
     include_stack: Vec<AbsolutePath>,
@@ -82,8 +82,8 @@ enum NodeResult<'define> {
     Skip,
 }
 
-impl<'ctx, S> Loader<'ctx, S> {
-    fn new(context: &'ctx mut Context<S>, options: LoadOptions) -> Self {
+impl<'ctx> Loader<'ctx> {
+    fn new(context: &'ctx mut Context, options: LoadOptions) -> Self {
         Self {
             context,
             options,
@@ -300,24 +300,20 @@ impl<'ctx, S> Loader<'ctx, S> {
 }
 
 #[cfg(feature = "file-loading")]
-pub fn load_path<S, P: AsRef<VirtualPath>>(
-    context: &mut Context<S>,
+pub fn load_path<P: AsRef<VirtualPath>>(
+    context: &mut Context,
     options: LoadOptions,
     path: P,
 ) -> Result<NodeArray, LoadError> {
     Loader::new(context, options).load_path(path)
 }
 
-pub fn load_text<S>(
-    context: &mut Context<S>,
-    options: LoadOptions,
-    text: &str,
-) -> Result<NodeArray, LoadError> {
+pub fn load_text(context: &mut Context, options: LoadOptions, text: &str) -> Result<NodeArray, LoadError> {
     Loader::new(context, options).load_text(text)
 }
 
-pub fn load_ast<'src, S>(
-    context: &mut Context<S>,
+pub fn load_ast<'src>(
+    context: &mut Context,
     options: LoadOptions,
     ast: impl IntoIterator<Item = Expression<'src>>,
 ) -> Result<NodeArray, LoadError> {
@@ -332,7 +328,7 @@ mod tests {
     use super::*;
     use crate::prelude::*;
 
-    fn assert_loaded<S>(context: &mut Context<S>, text: &str, expected: NodeArray) {
+    fn assert_loaded(context: &mut Context, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let array = match load_text(context, options, text) {
             Ok(array) => array,
@@ -342,7 +338,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn assert_error<S>(context: &mut Context<S>, text: &str, expected: LoadError) {
+    fn assert_error(context: &mut Context, text: &str, expected: LoadError) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
         let errors = match load_text(context, options, text) {
             Ok(ast) => panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}"),
@@ -353,25 +349,25 @@ mod tests {
 
     #[test]
     fn integer() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
         assert_loaded(&mut context, "1 2 3", arson_array![1, 2, 3]);
     }
 
     #[test]
     fn float() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
         assert_loaded(&mut context, "1.0 2.0 3.0", arson_array![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn string() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
         assert_loaded(&mut context, "\"a\" \"b\" \"c\"", arson_array!["a", "b", "c"]);
     }
 
     #[test]
     fn symbol() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         let sym_asdf = context.add_symbol("asdf");
         let sym_plus = context.add_symbol("+");
@@ -382,7 +378,7 @@ mod tests {
 
     #[test]
     fn variable() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         let var_asdf = Variable::new("asdf", &mut context);
         let var_this = Variable::new("this", &mut context);
@@ -392,13 +388,13 @@ mod tests {
 
     #[test]
     fn unhandled() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
         assert_loaded(&mut context, "kDataUnhandled", arson_array![Node::UNHANDLED])
     }
 
     #[test]
     fn arrays() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         {
             let sym_asdf = context.add_symbol("asdf");
@@ -434,7 +430,7 @@ mod tests {
 
     #[test]
     fn defines() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         #[allow(non_snake_case)]
         let sym_kDefine = context.add_symbol("kDefine");
@@ -466,7 +462,7 @@ mod tests {
             ",
         );
 
-        let mut context = Context::new(()).with_filesystem_driver(driver);
+        let mut context = Context::new().with_filesystem_driver(driver);
 
         // Includes
         assert_loaded(&mut context, "#include empty.dta", arson_array![]);
@@ -530,7 +526,7 @@ mod tests {
     #[cfg(feature = "file-loading")]
     #[test]
     fn includes_no_fs() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
@@ -549,7 +545,7 @@ mod tests {
     #[cfg(not(feature = "file-loading"))]
     #[test]
     fn includes() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
@@ -571,10 +567,14 @@ mod tests {
             autorun_str: String,
         }
 
-        let mut context = Context::new(TestState { autorun_str: String::new() });
+        impl ContextState for TestState {}
+
+        let mut context = Context::new();
+        context.register_state(TestState { autorun_str: String::new() });
 
         context.register_func("autorun_func", |context, args| {
-            context.state.autorun_str = args.string(context, 0)?.as_ref().clone();
+            let text = args.string(context, 0)?.as_ref().clone();
+            context.get_state_mut::<TestState>().unwrap().autorun_str = text;
             Ok(Node::HANDLED)
         });
 
@@ -583,12 +583,13 @@ mod tests {
             "#autorun {autorun_func \"Auto-run was run\"}",
             arson_array![],
         );
-        assert_eq!(context.state.autorun_str, "Auto-run was run");
+        let state = context.get_state::<TestState>().unwrap();
+        assert_eq!(state.autorun_str, "Auto-run was run");
     }
 
     #[test]
     fn conditionals() {
-        let mut context = Context::new(());
+        let mut context = Context::new();
 
         let sym_define = context.add_symbol("kDefine");
 
@@ -695,7 +696,7 @@ mod tests {
             "#merge merge_loop_long_1.dta",
         );
 
-        let mut context = Context::new(()).with_filesystem_driver(driver);
+        let mut context = Context::new().with_filesystem_driver(driver);
         let options = LoadOptions { allow_include: true, allow_autorun: true };
 
         let mut assert_recursion_error = |path: &str, depth: usize| {

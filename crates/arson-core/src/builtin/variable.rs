@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.add_macro("kDataInt", arson_array![NodeKind::Integer]);
     context.add_macro("kDataFloat", arson_array![NodeKind::Float]);
     context.add_macro("kDataString", arson_array![NodeKind::String]);
@@ -29,20 +29,20 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
     context.register_func("var", self::var);
 }
 
-fn r#type<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+fn r#type(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
     let value = args.evaluate(context, 0)?;
     Ok(value.get_kind().into())
 }
 
-fn set<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+fn set(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 2);
     let value = args.evaluate(context, 1)?;
     args.set_variable(context, 0, value.clone())?;
     Ok(value.into())
 }
 
-fn set_var<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+fn set_var(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 2);
 
     let name = args.force_symbol(context, 0)?;
@@ -52,11 +52,11 @@ fn set_var<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
     Ok(value.into())
 }
 
-fn set_this<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+fn set_this(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
     todo!("set_this")
 }
 
-fn var<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+fn var(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
     let name = args.force_symbol(context, 0)?;
     Ok(context.get_variable(name).into())

@@ -5,14 +5,6 @@ use std::path::Path;
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::prelude::*;
 
-struct State;
-
-impl StdlibState for State {
-    fn file_load_options(&self) -> LoadOptions {
-        LoadOptions { allow_include: true, allow_autorun: true }
-    }
-}
-
 fn main() -> arson::Result {
     println!("> Hello from native!");
 
@@ -21,7 +13,10 @@ fn main() -> arson::Result {
     let driver = BasicFileSystemDriver::new(mount_dir)?;
 
     // Make context
-    let mut context = Context::new(State).with_filesystem_driver(driver);
+    let mut context = Context::new().with_filesystem_driver(driver);
+    context.register_state(StdlibOptions {
+        file_load_options: LoadOptions { allow_include: true, allow_autorun: true },
+    });
     arson::stdlib::register_funcs(&mut context);
     println!("Created context.");
 

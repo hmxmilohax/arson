@@ -37,7 +37,7 @@ pub use error::*;
 pub use loader::*;
 
 pub mod prelude {
-    pub use super::context::{Context, ExecuteResult};
+    pub use super::context::{Context, ContextState, ExecuteResult};
     #[cfg(feature = "text-loading")]
     pub use super::loader::{LoadError, LoadOptions};
     pub use super::primitives::{

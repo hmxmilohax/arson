@@ -130,6 +130,9 @@ pub enum ExecutionError {
     #[error("requested data for {0} was not found")]
     NotFound(String),
 
+    #[error("no state registered for name '{0}'")]
+    StateNotFound(&'static str),
+
     #[error("no function registered for name '{0}'")]
     FunctionNotFound(String),
 

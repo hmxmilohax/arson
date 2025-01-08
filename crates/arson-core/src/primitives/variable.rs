@@ -11,7 +11,7 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new<S>(name: &str, context: &mut Context<S>) -> Self {
+    pub fn new(name: &str, context: &mut Context) -> Self {
         let symbol = context.add_symbol(name);
         Self { symbol }
     }
@@ -24,11 +24,11 @@ impl Variable {
         self.symbol.name()
     }
 
-    pub fn get<S>(&self, context: &mut Context<S>) -> Node {
+    pub fn get(&self, context: &mut Context) -> Node {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set<S>(&self, context: &mut Context<S>, value: impl Into<Node>) {
+    pub fn set(&self, context: &mut Context, value: impl Into<Node>) {
         context.set_variable(&self.symbol, value)
     }
 }
@@ -51,17 +51,17 @@ struct VariableEntry {
     value: Node,
 }
 
-pub struct VariableStack<'ctx, S> {
-    context: &'ctx mut Context<S>,
+pub struct VariableStack<'ctx> {
+    context: &'ctx mut Context,
     stack: Vec<VariableEntry>,
 }
 
-impl<'ctx, S> VariableStack<'ctx, S> {
-    pub fn new(context: &'ctx mut Context<S>) -> Self {
+impl<'ctx> VariableStack<'ctx> {
+    pub fn new(context: &'ctx mut Context) -> Self {
         Self { context, stack: Vec::new() }
     }
 
-    pub fn context(&mut self) -> &mut Context<S> {
+    pub fn context(&mut self) -> &mut Context {
         self.context
     }
 
@@ -117,7 +117,7 @@ impl<'ctx, S> VariableStack<'ctx, S> {
     }
 }
 
-impl<S> Drop for VariableStack<'_, S> {
+impl Drop for VariableStack<'_> {
     fn drop(&mut self) {
         for entry in self.stack.iter() {
             entry.variable.set(self.context, entry.value.clone());

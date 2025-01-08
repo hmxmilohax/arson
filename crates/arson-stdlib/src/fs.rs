@@ -6,9 +6,9 @@ use arson_core::prelude::*;
 use arson_fs::prelude::*;
 use arson_fs::Metadata;
 
-use crate::StdlibState;
+use crate::StdlibOptions;
 
-pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.register_func("basename", self::basename);
     context.register_func("dirname", self::dirname);
 
@@ -22,7 +22,7 @@ pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
     context.register_func("file_list_paths", self::file_list_paths);
 }
 
-pub fn basename<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn basename(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path_str = args.string(context, 0)?;
@@ -34,7 +34,7 @@ pub fn basename<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> E
     }
 }
 
-pub fn dirname<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn dirname(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path_str = args.string(context, 0)?;
@@ -46,15 +46,17 @@ pub fn dirname<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> Ex
     }
 }
 
-pub fn read_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn read_file(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
+    let options = context.get_state::<StdlibOptions>().map(|s| s.file_load_options.clone())?;
+
     let path = args.string(context, 0)?;
-    let array = context.load_path(context.file_load_options(), path.as_ref())?;
+    let array = context.load_path(options, path.as_ref())?;
     Ok(array.into())
 }
 
-pub fn write_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn write_file(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 2);
 
     let path = args.string(context, 0)?;
@@ -68,11 +70,13 @@ pub fn write_file<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) ->
     Ok(Node::HANDLED)
 }
 
-pub fn run<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn run(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
+    let options = context.get_state::<StdlibOptions>().map(|s| s.file_load_options.clone())?;
+
     let path = args.string(context, 0)?;
-    match context.load_path(context.file_load_options(), path.as_ref()) {
+    match context.load_path(options, path.as_ref()) {
         Ok(array) => context.execute_block(&array),
         Err(_err) => {
             // TODO: log error
@@ -81,7 +85,7 @@ pub fn run<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> Execut
     }
 }
 
-pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn file_exists(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
@@ -89,7 +93,7 @@ pub fn file_exists<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -
     Ok(exists.into())
 }
 
-pub fn file_read_only<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+pub fn file_read_only(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
     let path = args.string(context, 0)?;
@@ -99,10 +103,10 @@ pub fn file_read_only<S: StdlibState>(context: &mut Context<S>, args: &NodeSlice
     }
 }
 
-pub fn file_list<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+pub fn file_list(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
     todo!("file_list")
 }
 
-pub fn file_list_paths<S: StdlibState>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+pub fn file_list_paths(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
     todo!("file_list_paths")
 }

@@ -7,10 +7,15 @@ pub mod math;
 pub mod process;
 pub mod stdio;
 
-mod state;
-pub use state::*;
+mod options;
+pub use options::*;
 
-pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
+    assert!(
+        context.get_state::<StdlibOptions>().is_ok(),
+        "StdlibOptions state must be registered before registering stdlib"
+    );
+
     fs::register_funcs(context);
     math::register_funcs(context);
     process::register_funcs(context);
@@ -18,5 +23,5 @@ pub fn register_funcs<S: StdlibState>(context: &mut Context<S>) {
 }
 
 pub mod prelude {
-    pub use super::state::*;
+    pub use super::options::*;
 }

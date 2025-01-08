@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     control::register_funcs(context);
     r#loop::register_funcs(context);
     scope::register_funcs(context);
@@ -11,13 +11,13 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
 mod control {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("if", self::r#if);
         context.register_func("if_else", self::if_else);
         context.register_func("unless", self::unless);
     }
 
-    fn r#if<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn r#if(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -27,7 +27,7 @@ mod control {
         Ok(Node::HANDLED)
     }
 
-    fn if_else<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn if_else(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
         if args.boolean(context, 0)? {
             args.command(1)?.execute(context)
@@ -36,7 +36,7 @@ mod control {
         }
     }
 
-    fn unless<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn unless(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         if !args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -50,13 +50,13 @@ mod control {
 mod r#loop {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("while", self::r#while);
         context.register_func("foreach", self::foreach);
         context.register_func("foreach_int", self::foreach_int);
     }
 
-    fn r#while<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn r#while(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         while args.boolean(context, 0)? {
             for node in args.get(1..)? {
                 node.command()?.execute(context)?;
@@ -66,7 +66,7 @@ mod r#loop {
         Ok(Node::HANDLED)
     }
 
-    fn foreach<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    fn foreach(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let variable = args.variable(0)?;
 
         for node in args.array(context, 1)?.borrow()?.iter() {
@@ -80,9 +80,9 @@ mod r#loop {
         Ok(Node::HANDLED)
     }
 
-    fn foreach_int<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
-        fn run_loop<S>(
-            context: &mut Context<S>,
+    fn foreach_int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        fn run_loop(
+            context: &mut Context,
             args: &NodeSlice,
             variable: &Variable,
             values: impl Iterator<Item = i64>,
@@ -113,12 +113,12 @@ mod r#loop {
 mod scope {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("do", self::r#do);
         context.register_func("with", self::with_block);
     }
 
-    fn r#do<S>(context: &mut Context<S>, mut args: &NodeSlice) -> ExecuteResult {
+    fn r#do(context: &mut Context, mut args: &NodeSlice) -> ExecuteResult {
         let mut saved_variables = VariableStack::new(context);
         saved_variables.push_initializers(&mut args)?;
 
@@ -127,7 +127,7 @@ mod scope {
         result
     }
 
-    fn with_block<S>(_context: &mut Context<S>, _args: &NodeSlice) -> ExecuteResult {
+    fn with_block(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
         todo!("`with` func")
     }
 }

@@ -15,14 +15,6 @@ use rustyline::DefaultEditor;
 
 mod terminal;
 
-struct State;
-
-impl StdlibState for State {
-    fn file_load_options(&self) -> LoadOptions {
-        LoadOptions { allow_include: true, allow_autorun: true }
-    }
-}
-
 /// The REPL for Arson's DTA implementation.
 #[derive(Debug, clap::Parser)]
 struct Arguments {
@@ -54,8 +46,11 @@ fn main() -> ExitCode {
     run(&mut context, &mut editor)
 }
 
-fn make_context(args: &Arguments) -> Context<State> {
-    let mut context = Context::new(State);
+fn make_context(args: &Arguments) -> Context {
+    let mut context = Context::new();
+    context.register_state(StdlibOptions {
+        file_load_options: LoadOptions { allow_include: true, allow_autorun: true },
+    });
     arson::stdlib::register_funcs(&mut context);
 
     if let Some(ref directory) = args.mount_dir {
@@ -115,7 +110,7 @@ fn make_editor(args: &Arguments) -> DefaultEditor {
     editor
 }
 
-fn run(context: &mut Context<State>, editor: &mut DefaultEditor) -> ExitCode {
+fn run(context: &mut Context, editor: &mut DefaultEditor) -> ExitCode {
     loop {
         let array = match read_input(context, editor) {
             Some(array) => array,
@@ -137,7 +132,7 @@ fn run(context: &mut Context<State>, editor: &mut DefaultEditor) -> ExitCode {
     }
 }
 
-fn read_input(context: &mut Context<State>, editor: &mut DefaultEditor) -> Option<NodeArray> {
+fn read_input(context: &mut Context, editor: &mut DefaultEditor) -> Option<NodeArray> {
     let mut prompt = ">>> ";
     let mut text = String::new();
     loop {
@@ -154,7 +149,7 @@ fn read_input(context: &mut Context<State>, editor: &mut DefaultEditor) -> Optio
 
         text.push_str(&line);
 
-        let options = context.state.file_load_options();
+        let options = LoadOptions { allow_include: true, allow_autorun: true };
         match context.load_text(options, &text) {
             Ok(array) => return Some(array),
             Err(error) => {

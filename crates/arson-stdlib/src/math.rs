@@ -3,7 +3,7 @@
 use arson_core::prelude::*;
 use arson_core::Number;
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.add_macro("PI", arson_array![std::f64::consts::PI]);
     context.add_macro("TAU", arson_array![std::f64::consts::TAU]);
     context.add_macro("EULER", arson_array![std::f64::consts::E]);
@@ -15,7 +15,7 @@ pub fn register_funcs<S>(context: &mut Context<S>) {
 pub mod exponential {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("pow", self::power);
         context.register_func("sqrt", self::square_root);
         context.register_func("cbrt", self::cube_root);
@@ -29,7 +29,7 @@ pub mod exponential {
         context.register_func("log2", self::logarithm_base_2);
     }
 
-    pub fn power<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn power(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         match args.number(context, 0)? {
             Number::Integer(left) => Ok(left.0.pow(args.integer(context, 1)?.0 as u32).into()),
@@ -40,51 +40,51 @@ pub mod exponential {
         }
     }
 
-    pub fn square_root<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn square_root(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sqrt().into())
     }
 
-    pub fn cube_root<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn cube_root(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cbrt().into())
     }
 
-    pub fn hypotenuse<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn hypotenuse(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.hypot(y).into())
     }
 
-    pub fn power_of_e<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn power_of_e(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp().into())
     }
 
-    pub fn power_of_2<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn power_of_2(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp2().into())
     }
 
-    pub fn power_of_e_minus_one<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn power_of_e_minus_one(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.exp_m1().into())
     }
 
-    pub fn logarithm_natural<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn logarithm_natural(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.log(y).into())
     }
 
-    pub fn logarithm_base_10<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn logarithm_base_10(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.log10().into())
     }
 
-    pub fn logarithm_base_2<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn logarithm_base_2(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.log2().into())
     }
@@ -93,7 +93,7 @@ pub mod exponential {
 pub mod trigonometry {
     use super::*;
 
-    pub fn register_funcs<S>(context: &mut Context<S>) {
+    pub fn register_funcs(context: &mut Context) {
         context.register_func("sin", self::sine);
         context.register_func("cos", self::cosine);
         context.register_func("tan", self::tangent);
@@ -110,69 +110,69 @@ pub mod trigonometry {
         context.register_func("atanh", self::arc_tangent_hyperbolic);
     }
 
-    pub fn sine<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn sine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sin().into())
     }
 
-    pub fn cosine<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn cosine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cos().into())
     }
 
-    pub fn tangent<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn tangent(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.tan().into())
     }
 
-    pub fn arc_sine<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_sine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.asin().into())
     }
 
-    pub fn arc_cosine<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_cosine(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.acos().into())
     }
 
-    pub fn arc_tangent<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_tangent(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.atan().into())
     }
 
-    pub fn arc_tangent_quadrant<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_tangent_quadrant(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         let x = args.float(context, 0)?;
         let y = args.float(context, 1)?;
         Ok(x.atan2(y).into())
     }
 
-    pub fn sine_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.sinh().into())
     }
 
-    pub fn cosine_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.cosh().into())
     }
 
-    pub fn tangent_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.tanh().into())
     }
 
-    pub fn arc_sine_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_sine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.asinh().into())
     }
 
-    pub fn arc_cosine_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_cosine_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.acosh().into())
     }
 
-    pub fn arc_tangent_hyperbolic<S>(context: &mut Context<S>, args: &NodeSlice) -> ExecuteResult {
+    pub fn arc_tangent_hyperbolic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         Ok(args.float(context, 0)?.atanh().into())
     }

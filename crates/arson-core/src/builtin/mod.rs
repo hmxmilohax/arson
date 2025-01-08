@@ -23,7 +23,7 @@ impl BuiltinState {
     }
 }
 
-pub fn register_funcs<S>(context: &mut Context<S>) {
+pub fn register_funcs(context: &mut Context) {
     context.add_macro_define("ARSON");
 
     array::register_funcs(context);
