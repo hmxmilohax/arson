@@ -793,8 +793,11 @@ impl fmt::Display for NodeValue {
 
         match self {
             Self::Integer(value) => Display::fmt(value, f),
-            Self::Float(value) => write!(f, "{value:?}"),
-            Self::String(value) => write!(f, "\"{}\"", value.replace('\"', "\\q")),
+            Self::Float(value) => {
+                // Debug display used to always display decimal points
+                write!(f, "{value:?}")
+            },
+            Self::String(value) => Display::fmt(value, f),
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => Display::fmt(value, f),
 
@@ -1299,12 +1302,9 @@ mod tests {
 
         #[test]
         fn string() {
-            assert_eq!(NodeValue::String("asdf".to_owned().into()).to_string(), "\"asdf\"");
-            assert_eq!(
-                NodeValue::String("\"asdf\"".to_owned().into()).to_string(),
-                "\"\\qasdf\\q\""
-            );
-            assert_eq!(NodeValue::String("asdf\n".to_owned().into()).to_string(), "\"asdf\n\"");
+            assert_eq!(NodeValue::String("asdf".to_owned().into()).to_string(), "asdf");
+            assert_eq!(NodeValue::String("\"asdf\"".to_owned().into()).to_string(), "\"asdf\"");
+            assert_eq!(NodeValue::String("asdf\n".to_owned().into()).to_string(), "asdf\n");
         }
 
         #[test]

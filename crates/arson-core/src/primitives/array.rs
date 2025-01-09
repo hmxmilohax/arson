@@ -2026,14 +2026,39 @@ impl<'a> ArrayDisplay<'a> {
 
     fn write_array_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if !self.nodes.is_empty() {
-            fmt::Display::fmt(&self.nodes[0], f)?;
+            Self::write_node_compact(&self.nodes[0], f)?;
             for node in &self.nodes[1..] {
                 f.write_char(' ')?;
-                fmt::Display::fmt(node, f)?;
+                Self::write_node_compact(node, f)?;
             }
         }
 
         Ok(())
+    }
+
+    fn write_node_compact(node: &Node, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::fmt::Display;
+
+        match node.unevaluated() {
+            NodeValue::Integer(value) => Display::fmt(value, f),
+            NodeValue::Float(value) => {
+                // Debug display used to always display decimal points
+                write!(f, "{value:?}")
+            },
+            NodeValue::String(value) => {
+                // Apply escapes where necessary
+                let value = value.replace('\"', "\\q").replace('\n', "\\n");
+                write!(f, "\"{value}\"")
+            },
+            NodeValue::Symbol(value) => Display::fmt(value, f),
+            NodeValue::Variable(value) => Display::fmt(value, f),
+
+            NodeValue::Array(array) => Display::fmt(array, f),
+            NodeValue::Command(array) => Display::fmt(array, f),
+            NodeValue::Property(array) => Display::fmt(array, f),
+
+            NodeValue::Unhandled => write!(f, "kDataUnhandled"),
+        }
     }
 
     fn write_array_pretty(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -2043,7 +2068,7 @@ impl<'a> ArrayDisplay<'a> {
 
         // If there is only one element, and it is not an array itself, always print it as-is
         if self.nodes.len() == 1 && !self.nodes[0].is_any_array() {
-            return fmt::Display::fmt(&self.nodes[0], f);
+            return Self::write_node_compact(&self.nodes[0], f);
         }
 
         // Attempt compact array first, so long as there is no more than one inner array
@@ -2052,9 +2077,17 @@ impl<'a> ArrayDisplay<'a> {
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
 
-            write!(limit_buffer, "{}", &self.nodes[0])?;
+            struct NodeWrap<'a>(&'a Node);
+
+            impl std::fmt::Display for NodeWrap<'_> {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    ArrayDisplay::write_node_compact(self.0, f)
+                }
+            }
+
+            write!(limit_buffer, "{}", NodeWrap(&self.nodes[0]))?;
             for node in &self.nodes[1..] {
-                write!(limit_buffer, " {node}")?;
+                write!(limit_buffer, " {}", NodeWrap(node))?;
                 if limit_buffer.len() > max_len {
                     break;
                 }
@@ -2103,7 +2136,10 @@ impl<'a> ArrayDisplay<'a> {
             },
             NodeValue::Command(array) => self.write_inner_array_pretty(array, ArrayKind::Command, f),
             NodeValue::Property(array) => self.write_inner_array_pretty(array, ArrayKind::Property, f),
-            node => writeln!(f, "{node}"),
+            _ => {
+                Self::write_node_compact(node, f)?;
+                writeln!(f)
+            },
         }
     }
 
@@ -2342,18 +2378,64 @@ mod tests {
             assert_eq!(format!("{array:#}"), pretty);
         }
 
+        fn assert_display_node(node: NodeValue, expected: &str) {
+            assert_display(arson_array![node], expected, expected)
+        }
+
         #[test]
-        fn general() {
+        fn integer() {
+            use std::num::Wrapping;
+
+            assert_display_node(NodeValue::Integer(Wrapping(1)), "(1)");
+            assert_display_node(NodeValue::Integer(Wrapping(458243)), "(458243)");
+            assert_display_node(NodeValue::Integer(Wrapping(-235725)), "(-235725)");
+            assert_display_node(NodeValue::Integer(Wrapping(i64::MAX)), "(9223372036854775807)");
+            assert_display_node(NodeValue::Integer(Wrapping(i64::MIN)), "(-9223372036854775808)");
+        }
+
+        #[test]
+        fn float() {
+            assert_display_node(NodeValue::Float(0.000_000_000_001), "(1e-12)");
+            assert_display_node(NodeValue::Float(0.000_000_001), "(1e-9)");
+            assert_display_node(NodeValue::Float(0.000_001), "(1e-6)");
+            assert_display_node(NodeValue::Float(0.001), "(0.001)");
+            assert_display_node(NodeValue::Float(1.0), "(1.0)");
+            assert_display_node(NodeValue::Float(1_000.0), "(1000.0)");
+            assert_display_node(NodeValue::Float(1_000_000.0), "(1000000.0)");
+            assert_display_node(NodeValue::Float(1_000_000_000.0), "(1000000000.0)");
+            assert_display_node(NodeValue::Float(1_000_000_000_000.0), "(1000000000000.0)");
+        }
+
+        #[test]
+        fn string() {
+            assert_display_node(NodeValue::String("asdf".to_owned().into()), "(\"asdf\")");
+            assert_display_node(NodeValue::String("\"asdf\"".to_owned().into()), "(\"\\qasdf\\q\")");
+            assert_display_node(NodeValue::String("asdf\n".to_owned().into()), "(\"asdf\\n\")");
+        }
+
+        #[test]
+        fn symbol() {
             let mut context = Context::new();
             let sym = context.add_symbol("sym");
-            let var = Variable::new("var", &mut context);
+            let sym_space = context.add_symbol("sym with\nwhitespace");
 
-            assert_display(arson_array![5], "(5)", "(5)");
-            assert_display(arson_array![10.0], "(10.0)", "(10.0)");
-            assert_display(arson_array!["asdf"], "(\"asdf\")", "(\"asdf\")");
-            assert_display(arson_array![sym], "(sym)", "(sym)");
-            assert_display(arson_array![var], "($var)", "($var)");
-            assert_display(arson_array![Node::UNHANDLED], "(kDataUnhandled)", "(kDataUnhandled)");
+            assert_display_node(NodeValue::Symbol(sym), "(sym)");
+            assert_display_node(NodeValue::Symbol(sym_space), "('sym with\nwhitespace')");
+        }
+
+        #[test]
+        fn variable() {
+            let mut context = Context::new();
+            let var = Variable::new("var", &mut context);
+            let dollar_var = Variable::new("$var", &mut context);
+
+            assert_display_node(NodeValue::Variable(var), "($var)");
+            assert_display_node(NodeValue::Variable(dollar_var), "($$var)");
+        }
+
+        #[test]
+        fn unhandled() {
+            assert_display_node(NodeValue::Unhandled, "(kDataUnhandled)");
         }
 
         #[test]
