@@ -2,6 +2,7 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[cfg(feature = "file-system")]
 use arson_fs::FileSystem;
@@ -21,6 +22,7 @@ pub struct Context {
     macros: SymbolMap<NodeArray>,
     variables: SymbolMap<Node>,
     functions: SymbolMap<HandleFn>,
+    objects: SymbolMap<ObjectRef>,
 
     #[cfg(feature = "file-system")]
     file_system: Option<FileSystem>,
@@ -40,6 +42,7 @@ impl Context {
             macros: SymbolMap::new(),
             variables: SymbolMap::new(),
             functions: SymbolMap::new(),
+            objects: SymbolMap::new(),
 
             #[cfg(feature = "file-system")]
             file_system: None,
@@ -136,6 +139,16 @@ impl Context {
         self.variables.insert(name, value.into());
     }
 
+    pub fn register_object<O>(&mut self, name: impl IntoSymbol, object: O) -> ObjectRef
+    where
+        O: Object + 'static,
+    {
+        let name = name.into_symbol(self);
+        let object = Rc::new(object);
+        self.objects.insert(name, object.clone());
+        object
+    }
+
     pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
     where
         // note: mutable closures are not allowed due to the out-to-in execution model, which causes
@@ -148,10 +161,21 @@ impl Context {
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
         let result = match command.evaluate(self, 0)? {
-            NodeValue::Symbol(symbol) => match self.functions.get(&symbol).cloned() {
-                // TODO: cache function/object lookups
-                Some(func) => func.call(self, command.slice(1..)?)?,
-                None => return Err(ExecutionError::FunctionNotFound(symbol.name().to_string()).into()),
+            NodeValue::Symbol(symbol) => {
+                let args = command.slice(1..)?;
+                if let Some(func) = self.functions.get(&symbol).cloned() {
+                    func.call(self, args)?
+                } else if let Some(obj) = self.objects.get(&symbol) {
+                    obj.clone().handle(self, args)?
+                } else {
+                    return Err(ExecutionError::HandlerNotFound(symbol.name().to_string()).into());
+                }
+            },
+            NodeValue::String(name) => {
+                match self.get_symbol(name.as_ref()).and_then(|name| self.objects.get(&name)) {
+                    Some(obj) => obj.clone().handle(self, command.slice(1..)?)?,
+                    None => return Err(ExecutionError::HandlerNotFound(name.as_ref().clone()).into()),
+                }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
             _ => Node::UNHANDLED,

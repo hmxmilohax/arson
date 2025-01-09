@@ -50,6 +50,8 @@ pub mod prelude {
         NodeProperty,
         NodeSlice,
         NodeValue,
+        Object,
+        ObjectRef,
         Symbol,
         SymbolMap,
         Variable,

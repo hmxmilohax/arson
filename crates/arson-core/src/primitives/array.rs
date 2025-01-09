@@ -270,6 +270,10 @@ impl NodeSlice {
         self.get(index)?.set_variable(context, value)
     }
 
+    pub fn object(&self, context: &mut Context, index: usize) -> crate::Result<ObjectRef> {
+        self.get(index)?.object(context)
+    }
+
     pub fn array(&self, context: &mut Context, index: usize) -> crate::Result<ArrayRef> {
         self.get(index)?.array(context)
     }
@@ -337,6 +341,10 @@ impl NodeSlice {
         if let Some(node) = self.get_opt(index) {
             node.set_variable_opt(context, value);
         }
+    }
+
+    pub fn object_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<ObjectRef>> {
+        self.get_opt(index)?.object_opt(context)
     }
 
     pub fn array_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<ArrayRef>> {
@@ -444,6 +452,15 @@ impl NodeSlice {
 
     pub fn variable_or(&self, index: usize, default: &Variable) -> Variable {
         index_value_or!(self, index, Node::variable_or, default)
+    }
+
+    pub fn object_or(
+        &self,
+        context: &mut Context,
+        index: usize,
+        default: &ObjectRef,
+    ) -> crate::Result<ObjectRef> {
+        index_value_or!(self, context, index, Node::object_or, default)
     }
 
     pub fn array_or(
@@ -563,6 +580,15 @@ impl NodeSlice {
 
     pub fn variable_or_else(&self, index: usize, default: impl FnOnce() -> Variable) -> Variable {
         index_value_or_else!(self, index, Node::variable_or_else, default)
+    }
+
+    pub fn object_or_else(
+        &self,
+        context: &mut Context,
+        index: usize,
+        default: impl FnOnce() -> ObjectRef,
+    ) -> crate::Result<ObjectRef> {
+        index_value_or_else!(self, context, index, Node::object_or_else, default)
     }
 
     pub fn array_or_else(
@@ -946,6 +972,14 @@ impl NodeSlice {
         self.find_data(predicate)?.variable().cloned()
     }
 
+    pub fn find_object(
+        &self,
+        context: &mut Context,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> crate::Result<ObjectRef> {
+        self.find_data(predicate.into_predicate(context))?.object(context)
+    }
+
     pub fn find_array(
         &self,
         context: &mut Context,
@@ -1074,6 +1108,14 @@ impl NodeSlice {
         self.find_data_opt(predicate)?.variable_opt().cloned()
     }
 
+    pub fn find_object_opt(
+        &self,
+        context: &mut Context,
+        predicate: impl IntoIntoDataPredicate,
+    ) -> Option<crate::Result<ObjectRef>> {
+        self.find_data_opt(predicate.into_predicate(context))?.object_opt(context)
+    }
+
     pub fn find_array_opt(
         &self,
         context: &mut Context,
@@ -1184,6 +1226,15 @@ impl NodeSlice {
 
     pub fn find_variable_or(&self, predicate: impl IntoDataPredicate, default: &Variable) -> Variable {
         predicate_value_or!(self, predicate, Node::variable_or, default)
+    }
+
+    pub fn find_object_or(
+        &self,
+        context: &mut Context,
+        predicate: impl IntoIntoDataPredicate,
+        default: &ObjectRef,
+    ) -> crate::Result<ObjectRef> {
+        predicate_value_or!(self, context, predicate, Node::object_or, default)
     }
 
     pub fn find_array_or(
@@ -1314,6 +1365,15 @@ impl NodeSlice {
         default: impl FnOnce() -> Variable,
     ) -> Variable {
         predicate_value_or_else!(self, predicate, Node::variable_or_else, default)
+    }
+
+    pub fn find_object_or_else(
+        &self,
+        context: &mut Context,
+        predicate: impl IntoIntoDataPredicate,
+        default: impl FnOnce() -> ObjectRef,
+    ) -> crate::Result<ObjectRef> {
+        predicate_value_or_else!(self, context, predicate, Node::object_or_else, default)
     }
 
     pub fn find_array_or_else(
@@ -2054,6 +2114,7 @@ impl<'a> ArrayDisplay<'a> {
             NodeValue::Variable(value) => Display::fmt(value, f),
 
             NodeValue::Function(value) => Display::fmt(value, f),
+            NodeValue::Object(value) => write!(f, "<object {value}>"),
 
             NodeValue::Array(array) => Display::fmt(array, f),
             NodeValue::Command(array) => Display::fmt(array, f),

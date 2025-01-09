@@ -26,6 +26,8 @@ pub enum NodeKind {
 
     /// See [`NodeValue::Function`].
     Function,
+    /// See [`NodeValue::Object`].
+    Object,
 
     /// See [`NodeValue::Array`].
     Array,
@@ -414,6 +416,14 @@ define_node_types! {
         cmp: |_left, _right| None,
         total_cmp: |left, right| left.total_cmp(right),
     },
+    Object(ObjectRef) {
+        eq: |left, right| Rc::ptr_eq(left, right),
+        cmp: |_left, _right| None,
+        total_cmp: |left, right| left.total_cmp(right.as_ref()),
+        type_eq: {
+            dyn Object => |left, right| left == right,
+        },
+    },
 
     /// An array of values (see [`NodeArray`]).
     Array(ArrayRef) {
@@ -457,6 +467,12 @@ define_node_types! {
     Unhandled,
 }
 
+impl<O: Object + Sized> From<O> for NodeValue {
+    fn from(value: O) -> Self {
+        Self::Object(Rc::new(value))
+    }
+}
+
 impl NodeValue {
     /// Generic value to be returned when a script call has been handled,
     /// but no specific value is returned from the method handling the call.
@@ -476,6 +492,7 @@ impl NodeValue {
             Self::Variable(_) => NodeKind::Variable,
 
             Self::Function(_) => NodeKind::Function,
+            Self::Object(_) => NodeKind::Object,
 
             Self::Array(_) => NodeKind::Array,
             Self::Command(_) => NodeKind::Command,
@@ -540,7 +557,9 @@ impl NodeValue {
             NodeValue::Symbol(value) => Some(!value.name().is_empty()),
             NodeValue::Variable(_) => None,
 
+            // TODO: can these be handled better?
             NodeValue::Function(_) => Some(true),
+            NodeValue::Object(_) => Some(true),
 
             NodeValue::Array(value) => Some(ArrayRef::borrow(value).map_or(false, |a| !a.is_empty())),
             NodeValue::Command(_) => None,
@@ -584,6 +603,13 @@ impl NodeValue {
     pub const fn variable(&self) -> Option<&Variable> {
         match self {
             Self::Variable(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub const fn object(&self) -> Option<&ObjectRef> {
+        match self {
+            Self::Object(value) => Some(value),
             _ => None,
         }
     }
@@ -652,6 +678,10 @@ impl NodeValue {
 
     pub const fn is_variable(&self) -> bool {
         matches!(self, NodeValue::Variable(_))
+    }
+
+    pub const fn is_object(&self) -> bool {
+        matches!(self, NodeValue::Object(_))
     }
 
     pub const fn is_array(&self) -> bool {
@@ -732,6 +762,10 @@ impl NodeValue {
         self.variable().cloned().unwrap_or_else(|| default.clone())
     }
 
+    pub fn object_or(&self, default: &ObjectRef) -> ObjectRef {
+        self.object().cloned().unwrap_or_else(|| default.clone())
+    }
+
     pub fn array_or(&self, default: &ArrayRef) -> ArrayRef {
         self.array().cloned().unwrap_or_else(|| default.clone())
     }
@@ -784,6 +818,10 @@ impl NodeValue {
         self.variable().cloned().unwrap_or_else(default)
     }
 
+    pub fn object_or_else(&self, default: impl FnOnce() -> ObjectRef) -> ObjectRef {
+        self.object().cloned().unwrap_or_else(default)
+    }
+
     pub fn array_or_else(&self, default: impl FnOnce() -> ArrayRef) -> ArrayRef {
         self.array().cloned().unwrap_or_else(default)
     }
@@ -824,6 +862,7 @@ impl fmt::Display for NodeValue {
             Self::Variable(value) => Display::fmt(value, f),
 
             Self::Function(value) => Display::fmt(value, f),
+            Self::Object(value) => Display::fmt(value, f),
 
             Self::Array(value) => Display::fmt(value, f),
             Self::Command(value) => Display::fmt(value, f),
@@ -902,6 +941,7 @@ impl Node {
             NodeValue::Variable(variable) => variable.get(context).value,
 
             NodeValue::Function(value) => NodeValue::Function(value.clone()),
+            NodeValue::Object(value) => NodeValue::Object(value.clone()),
 
             NodeValue::Array(value) => NodeValue::from(value),
             NodeValue::Command(value) => context.execute(value)?.value,
@@ -980,6 +1020,10 @@ impl Node {
         Ok(())
     }
 
+    pub fn object(&self, context: &mut Context) -> crate::Result<ObjectRef> {
+        match_value!(self.evaluate(context)?, Object(value) => value)
+    }
+
     pub fn array(&self, context: &mut Context) -> crate::Result<ArrayRef> {
         match_value!(self.evaluate(context)?, Array(value) => value)
     }
@@ -1025,6 +1069,10 @@ impl Node {
 
     pub const fn is_variable(&self) -> bool {
         self.unevaluated().is_variable()
+    }
+
+    pub const fn is_object(&self) -> bool {
+        self.unevaluated().is_object()
     }
 
     pub const fn is_array(&self) -> bool {
@@ -1098,6 +1146,10 @@ impl Node {
         }
     }
 
+    pub fn object_opt(&self, context: &mut Context) -> Option<crate::Result<ObjectRef>> {
+        self.evaluate(context).map(|n| n.object().cloned()).transpose()
+    }
+
     pub fn array_opt(&self, context: &mut Context) -> Option<crate::Result<ArrayRef>> {
         self.evaluate(context).map(|n| n.array().cloned()).transpose()
     }
@@ -1151,6 +1203,10 @@ impl Node {
 
     pub fn variable_or(&self, default: &Variable) -> Variable {
         self.unevaluated().variable_or(default)
+    }
+
+    pub fn object_or(&self, context: &mut Context, default: &ObjectRef) -> crate::Result<ObjectRef> {
+        self.evaluate(context).map(|v| v.object_or(default))
     }
 
     pub fn array_or(&self, context: &mut Context, default: &ArrayRef) -> crate::Result<ArrayRef> {
@@ -1239,6 +1295,14 @@ impl Node {
 
     pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
         self.unevaluated().variable_or_else(default)
+    }
+
+    pub fn object_or_else(
+        &self,
+        context: &mut Context,
+        default: impl FnOnce() -> ObjectRef,
+    ) -> crate::Result<ObjectRef> {
+        self.evaluate(context).map(|v| v.object_or_else(default))
     }
 
     pub fn array_or_else(

@@ -13,12 +13,14 @@ rust-version.workspace = true
 publish = false
 
 [features]
-default = ["text-loading"]
+default = ["text-loading", "dynamic-typenames"]
 
 file-system = ["dep:arson-fs"]
 
 text-loading = ["dep:arson-parse"]
 file-loading = ["text-loading", "file-system"]
+
+dynamic-typenames = []
 
 [dependencies]
 arson-parse = { path = "../arson-parse", optional = true }

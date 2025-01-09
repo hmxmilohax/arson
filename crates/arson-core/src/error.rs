@@ -133,14 +133,22 @@ pub enum ExecutionError {
     #[error("no state registered for name '{0}'")]
     StateNotFound(&'static str),
 
-    #[error("no function registered for name '{0}'")]
-    FunctionNotFound(String),
+    #[error("no handler registered for name '{0}'")]
+    HandlerNotFound(String),
 
     #[error("value already mutably borrowed")]
     BadBorrow(#[from] std::cell::BorrowError),
 
     #[error("value already immutably borrowed")]
     BadMutBorrow(#[from] std::cell::BorrowMutError),
+
+    #[cfg(feature = "dynamic-typenames")]
+    #[error("cannot cast from {actual} to {expected}")]
+    BadObjectCast { expected: &'static str, actual: &'static str },
+
+    #[cfg(not(feature = "dynamic-typenames"))]
+    #[error("cannot perform the requested typecast")]
+    BadObjectCast,
 
     #[error("{0}")]
     Failure(String),
