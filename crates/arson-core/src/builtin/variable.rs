@@ -9,8 +9,8 @@ pub fn register_funcs(context: &mut Context) {
     context.add_macro("kDataSymbol", arson_array![NodeKind::Symbol]);
     context.add_macro("kDataVar", arson_array![NodeKind::Variable]);
 
+    context.add_macro("kDataFunc", arson_array![NodeKind::Function]);
     // TODO: Not yet implemented
-    // context.add_macro("kDataFunc", arson_array![NodeKind::Function]);
     // context.add_macro("kDataObject", arson_array![NodeKind::Object]);
 
     context.add_macro("kDataArray", arson_array![NodeKind::Array]);

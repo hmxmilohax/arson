@@ -2053,6 +2053,8 @@ impl<'a> ArrayDisplay<'a> {
             NodeValue::Symbol(value) => Display::fmt(value, f),
             NodeValue::Variable(value) => Display::fmt(value, f),
 
+            NodeValue::Function(value) => Display::fmt(value, f),
+
             NodeValue::Array(array) => Display::fmt(array, f),
             NodeValue::Command(array) => Display::fmt(array, f),
             NodeValue::Property(array) => Display::fmt(array, f),

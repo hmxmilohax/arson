@@ -42,6 +42,7 @@ pub mod prelude {
     pub use super::loader::{LoadError, LoadOptions};
     pub use super::primitives::{
         ArrayRef,
+        HandleFn,
         Node,
         NodeArray,
         NodeCommand,

@@ -24,6 +24,9 @@ pub enum NodeKind {
     /// See [`NodeValue::Variable`].
     Variable,
 
+    /// See [`NodeValue::Function`].
+    Function,
+
     /// See [`NodeValue::Array`].
     Array,
     /// See [`NodeValue::Command`].
@@ -196,6 +199,12 @@ macro_rules! define_node_types {
                     }
                 }
 
+                impl From<&$variant_type$(<$variant_gen>)?> for NodeValue {
+                    fn from(value: &$variant_type$(<$variant_gen>)?) -> Self {
+                        Self::from(value.clone())
+                    }
+                }
+
                 impl TryFrom<NodeValue> for $variant_type$(<$variant_gen>)? {
                     type Error = crate::Error;
 
@@ -218,6 +227,12 @@ macro_rules! define_node_types {
                             impl From<$from_type> for NodeValue {
                                 fn from($from_value: $from_type) -> Self {
                                     Self::$variant($from_expr)
+                                }
+                            }
+
+                            impl From<&$from_type> for NodeValue {
+                                fn from(value: &$from_type) -> Self {
+                                    Self::from(value.clone())
                                 }
                             }
                         )+
@@ -393,6 +408,13 @@ define_node_types! {
         total_cmp: |left, right| left.symbol().cmp(right.symbol()),
     },
 
+    /// A callable function (see [`HandleFn`]).
+    Function(HandleFn) {
+        eq: |left, right| left == right,
+        cmp: |_left, _right| None,
+        total_cmp: |left, right| left.total_cmp(right),
+    },
+
     /// An array of values (see [`NodeArray`]).
     Array(ArrayRef) {
         from: {
@@ -452,6 +474,8 @@ impl NodeValue {
             Self::String(_) => NodeKind::String,
             Self::Symbol(_) => NodeKind::Symbol,
             Self::Variable(_) => NodeKind::Variable,
+
+            Self::Function(_) => NodeKind::Function,
 
             Self::Array(_) => NodeKind::Array,
             Self::Command(_) => NodeKind::Command,
@@ -515,6 +539,8 @@ impl NodeValue {
             NodeValue::String(value) => Some(!value.is_empty()),
             NodeValue::Symbol(value) => Some(!value.name().is_empty()),
             NodeValue::Variable(_) => None,
+
+            NodeValue::Function(_) => Some(true),
 
             NodeValue::Array(value) => Some(ArrayRef::borrow(value).map_or(false, |a| !a.is_empty())),
             NodeValue::Command(_) => None,
@@ -777,12 +803,8 @@ impl Default for NodeValue {
     }
 }
 
-impl<T> From<&T> for NodeValue
-where
-    T: Clone,
-    NodeValue: From<T>,
-{
-    fn from(value: &T) -> Self {
+impl From<&NodeValue> for NodeValue {
+    fn from(value: &NodeValue) -> Self {
         Self::from(value.clone())
     }
 }
@@ -800,6 +822,8 @@ impl fmt::Display for NodeValue {
             Self::String(value) => Display::fmt(value, f),
             Self::Symbol(value) => Display::fmt(value, f),
             Self::Variable(value) => Display::fmt(value, f),
+
+            Self::Function(value) => Display::fmt(value, f),
 
             Self::Array(value) => Display::fmt(value, f),
             Self::Command(value) => Display::fmt(value, f),
@@ -874,14 +898,16 @@ impl Node {
             NodeValue::Integer(value) => NodeValue::Integer(*value),
             NodeValue::Float(value) => NodeValue::Float(*value),
             NodeValue::String(value) => NodeValue::String(value.clone()),
-
             NodeValue::Symbol(value) => NodeValue::Symbol(value.clone()),
             NodeValue::Variable(variable) => variable.get(context).value,
-            NodeValue::Unhandled => NodeValue::Unhandled,
+
+            NodeValue::Function(value) => NodeValue::Function(value.clone()),
 
             NodeValue::Array(value) => NodeValue::from(value),
             NodeValue::Command(value) => context.execute(value)?.value,
             NodeValue::Property(_property) => todo!("property node evaluation"),
+
+            NodeValue::Unhandled => NodeValue::Unhandled,
         };
         Ok(evaluated)
     }

@@ -10,9 +10,6 @@ use crate::builtin::BuiltinState;
 use crate::prelude::*;
 use crate::{ExecutionError, FindDataPredicate, SymbolTable};
 
-/// A function which is callable from script.
-pub type HandleFn = fn(context: &mut Context, args: &NodeSlice) -> ExecuteResult;
-
 /// The result of a script execution.
 pub type ExecuteResult = crate::Result<Node>;
 
@@ -139,18 +136,24 @@ impl Context {
         self.variables.insert(name, value.into());
     }
 
-    pub fn register_func(&mut self, name: impl IntoSymbol, func: HandleFn) -> bool {
+    pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
+    where
+        // note: mutable closures are not allowed due to the out-to-in execution model, which causes
+        // problems when a command argument to a function calls the very same function again
+        F: Fn(&mut Context, &NodeSlice) -> ExecuteResult + 'static,
+    {
         let name = name.into_symbol(self);
-        self.functions.insert(name, func).is_none()
+        self.functions.insert(name, HandleFn::new(func)).is_none()
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
         let result = match command.evaluate(self, 0)? {
-            NodeValue::Symbol(symbol) => match self.functions.get(&symbol) {
+            NodeValue::Symbol(symbol) => match self.functions.get(&symbol).cloned() {
                 // TODO: cache function/object lookups
-                Some(func) => func(self, command.slice(1..)?)?,
+                Some(func) => func.call(self, command.slice(1..)?)?,
                 None => return Err(ExecutionError::FunctionNotFound(symbol.name().to_string()).into()),
             },
+            NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
             _ => Node::UNHANDLED,
         };
 
