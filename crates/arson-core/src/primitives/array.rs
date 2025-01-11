@@ -313,10 +313,6 @@ impl NodeSlice {
         self.get_opt(index).and_then(|n| n.size_integer_opt(context))
     }
 
-    pub fn boolean_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<bool>> {
-        self.get_opt(index).and_then(|n| n.boolean_opt(context))
-    }
-
     pub fn string_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Rc<String>>> {
         self.get_opt(index).and_then(|n| n.string_opt(context))
     }
@@ -408,10 +404,6 @@ impl NodeSlice {
         default: usize,
     ) -> crate::Result<usize> {
         index_value_or!(self, context, index, Node::size_integer_or, default)
-    }
-
-    pub fn boolean_or(&self, context: &mut Context, index: usize, default: bool) -> crate::Result<bool> {
-        index_value_or!(self, context, index, Node::boolean_or, default)
     }
 
     pub fn string_or(
@@ -531,15 +523,6 @@ impl NodeSlice {
         default: impl FnOnce() -> usize,
     ) -> crate::Result<usize> {
         index_value_or_else!(self, context, index, Node::size_integer_or_else, default)
-    }
-
-    pub fn boolean_or_else(
-        &self,
-        context: &mut Context,
-        index: usize,
-        default: impl FnOnce() -> bool,
-    ) -> crate::Result<bool> {
-        index_value_or_else!(self, context, index, Node::boolean_or_else, default)
     }
 
     pub fn string_or_else(
@@ -1062,14 +1045,6 @@ impl NodeSlice {
             .size_integer_opt(context)
     }
 
-    pub fn find_boolean_opt(
-        &self,
-        context: &mut Context,
-        predicate: impl IntoIntoDataPredicate,
-    ) -> Option<crate::Result<bool>> {
-        self.find_data_opt(predicate.into_predicate(context))?.boolean_opt(context)
-    }
-
     pub fn find_string_opt(
         &self,
         context: &mut Context,
@@ -1177,15 +1152,6 @@ impl NodeSlice {
         default: usize,
     ) -> crate::Result<usize> {
         predicate_value_or!(self, context, predicate, Node::size_integer_or, default)
-    }
-
-    pub fn find_boolean_or(
-        &self,
-        context: &mut Context,
-        predicate: impl IntoIntoDataPredicate,
-        default: bool,
-    ) -> crate::Result<bool> {
-        predicate_value_or!(self, context, predicate, Node::boolean_or, default)
     }
 
     pub fn find_string_or(
@@ -1312,15 +1278,6 @@ impl NodeSlice {
         default: impl FnOnce() -> usize,
     ) -> crate::Result<usize> {
         predicate_value_or_else!(self, context, predicate, Node::size_integer_or_else, default)
-    }
-
-    pub fn find_boolean_or_else(
-        &self,
-        context: &mut Context,
-        predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> bool,
-    ) -> crate::Result<bool> {
-        predicate_value_or_else!(self, context, predicate, Node::boolean_or_else, default)
     }
 
     pub fn find_string_or_else(

@@ -112,9 +112,6 @@ pub enum EvaluationError {
     #[error("value of type {0:?} is not a number")]
     NotNumber(NodeKind),
 
-    #[error("value of type {0:?} is not convertible to a boolean")]
-    NotBoolean(NodeKind),
-
     #[error("value of type {0:?} is not a valid array tag")]
     NotArrayTag(NodeKind),
 }

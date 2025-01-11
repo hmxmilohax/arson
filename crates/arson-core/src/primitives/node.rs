@@ -549,23 +549,22 @@ impl NodeValue {
         }
     }
 
-    pub fn boolean(&self) -> Option<bool> {
+    pub fn boolean(&self) -> bool {
         match self {
-            NodeValue::Integer(value) => Some(value.0 != 0),
-            NodeValue::Float(value) => Some(*value != 0.0),
-            NodeValue::String(value) => Some(!value.is_empty()),
-            NodeValue::Symbol(value) => Some(!value.name().is_empty()),
-            NodeValue::Variable(_) => None,
+            NodeValue::Integer(value) => value.0 != 0,
+            NodeValue::Float(value) => *value != 0.0,
+            NodeValue::String(value) => !value.is_empty(),
+            NodeValue::Symbol(value) => !value.name().is_empty(),
+            NodeValue::Variable(_) => false,
 
-            // TODO: can these be handled better?
-            NodeValue::Function(_) => Some(true),
-            NodeValue::Object(_) => Some(true),
+            NodeValue::Function(_) => true,
+            NodeValue::Object(_) => true,
 
-            NodeValue::Array(value) => Some(ArrayRef::borrow(value).map_or(false, |a| !a.is_empty())),
-            NodeValue::Command(_) => None,
-            NodeValue::Property(_) => None,
+            NodeValue::Array(value) => ArrayRef::borrow(value).map_or(false, |a| !a.is_empty()),
+            NodeValue::Command(value) => !value.is_empty(),
+            NodeValue::Property(value) => !value.is_empty(),
 
-            NodeValue::Unhandled => Some(false),
+            NodeValue::Unhandled => false,
         }
     }
 
@@ -738,10 +737,6 @@ impl NodeValue {
         self.size_integer_opt().unwrap_or(default)
     }
 
-    pub fn boolean_or(&self, default: bool) -> bool {
-        self.boolean().unwrap_or(default)
-    }
-
     pub fn string_or(&self, default: &Rc<String>) -> Rc<String> {
         self.string().cloned().unwrap_or_else(|| default.clone())
     }
@@ -792,10 +787,6 @@ impl NodeValue {
 
     pub fn size_integer_or_else(&self, default: impl FnOnce() -> usize) -> usize {
         self.size_integer_opt().unwrap_or_else(default)
-    }
-
-    pub fn boolean_or_else(&self, default: impl FnOnce() -> bool) -> bool {
-        self.boolean().unwrap_or_else(default)
     }
 
     pub fn string_or_else(&self, default: impl FnOnce() -> Rc<String>) -> Rc<String> {
@@ -980,11 +971,7 @@ impl Node {
     }
 
     pub fn boolean(&self, context: &mut Context) -> crate::Result<bool> {
-        match_option_with_err!(
-            self.evaluate(context)?,
-            |value| value.boolean(),
-            EvaluationError::NotBoolean(value.get_kind())
-        )
+        Ok(self.evaluate(context)?.boolean())
     }
 
     pub fn string(&self, context: &mut Context) -> crate::Result<Rc<String>> {
@@ -1114,10 +1101,6 @@ impl Node {
         self.evaluate(context).map(|n| n.size_integer_opt()).transpose()
     }
 
-    pub fn boolean_opt(&self, context: &mut Context) -> Option<crate::Result<bool>> {
-        self.evaluate(context).map(|n| n.boolean()).transpose()
-    }
-
     pub fn string_opt(&self, context: &mut Context) -> Option<crate::Result<Rc<String>>> {
         self.evaluate(context).map(|n| n.string().cloned()).transpose()
     }
@@ -1179,10 +1162,6 @@ impl Node {
 
     pub fn size_integer_or(&self, context: &mut Context, default: usize) -> crate::Result<usize> {
         self.evaluate(context).map(|v| v.size_integer_or(default))
-    }
-
-    pub fn boolean_or(&self, context: &mut Context, default: bool) -> crate::Result<bool> {
-        self.evaluate(context).map(|v| v.boolean_or(default))
     }
 
     pub fn string_or(&self, context: &mut Context, default: &Rc<String>) -> crate::Result<Rc<String>> {
@@ -1251,14 +1230,6 @@ impl Node {
         default: impl FnOnce() -> usize,
     ) -> crate::Result<usize> {
         self.evaluate(context).map(|v| v.size_integer_or_else(default))
-    }
-
-    pub fn boolean_or_else(
-        &self,
-        context: &mut Context,
-        default: impl FnOnce() -> bool,
-    ) -> crate::Result<bool> {
-        self.evaluate(context).map(|v| v.boolean_or_else(default))
     }
 
     pub fn string_or_else(
