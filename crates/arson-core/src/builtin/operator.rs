@@ -128,23 +128,36 @@ mod arithmetic {
     fn divide_remainder(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
 
-        fn div_rem<T: Copy + Div + Rem>(left: T, right: T) -> ExecuteResult
+        fn div_rem<T: Copy + Div + Rem>(
+            context: &mut Context,
+            args: &NodeSlice,
+            left: T,
+            right: T,
+        ) -> ExecuteResult
         where
             NodeValue: From<<T as Div>::Output> + From<<T as Rem>::Output>,
         {
             let quotient = left / right;
             let remainder = left % right;
-            Ok(NodeArray::from_iter([NodeValue::from(quotient), NodeValue::from(remainder)]).into())
+
+            args.set_variable(context, 2, quotient)?;
+            args.set_variable(context, 3, remainder)?;
+
+            Ok(Node::HANDLED)
         }
 
         let left = args.number(context, 0)?;
         let right = args.number(context, 1)?;
 
         match (left, right) {
-            (Number::Integer(left), Number::Integer(right)) => div_rem(left, right),
-            (Number::Float(left), Number::Float(right)) => div_rem(left, right),
-            (Number::Integer(left), Number::Float(right)) => div_rem(left.0 as FloatValue, right),
-            (Number::Float(left), Number::Integer(right)) => div_rem(left, right.0 as FloatValue),
+            (Number::Integer(left), Number::Integer(right)) => div_rem(context, args, left, right),
+            (Number::Float(left), Number::Float(right)) => div_rem(context, args, left, right),
+            (Number::Integer(left), Number::Float(right)) => {
+                div_rem(context, args, left.0 as FloatValue, right)
+            },
+            (Number::Float(left), Number::Integer(right)) => {
+                div_rem(context, args, left, right.0 as FloatValue)
+            },
         }
     }
 }
