@@ -24,11 +24,15 @@ impl Variable {
         self.symbol.name()
     }
 
-    pub fn get(&self, context: &mut Context) -> Node {
+    pub fn get(&self, context: &mut Context) -> Option<Node> {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set(&self, context: &mut Context, value: impl Into<Node>) -> Node {
+    pub fn get_or_unhandled(&self, context: &mut Context) -> Node {
+        context.get_variable_or_unhandled(&self.symbol)
+    }
+
+    pub fn set(&self, context: &mut Context, value: impl Into<Node>) -> Option<Node> {
         context.set_variable(&self.symbol, value)
     }
 
@@ -57,7 +61,7 @@ pub struct VariableSave {
 
 impl VariableSave {
     pub fn new(context: &mut Context, variable: &Variable) -> Self {
-        let value = variable.get(context);
+        let value = variable.get_or_unhandled(context);
         Self { variable: variable.clone(), value }
     }
 
@@ -126,7 +130,7 @@ impl<'ctx> VariableStack<'ctx> {
                 let value = value.evaluate(self.context)?;
                 self.push(variable, value);
             } else {
-                self.push(variable, Node::default());
+                self.push(variable, Node::UNHANDLED);
             }
         }
 

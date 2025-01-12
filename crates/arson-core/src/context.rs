@@ -86,7 +86,7 @@ impl Context {
     //     self.symbol_table.remove(name);
     // }
 
-    pub fn get_symbol(&mut self, name: &str) -> Option<Symbol> {
+    pub fn get_symbol(&self, name: &str) -> Option<Symbol> {
         self.symbol_table.get(name)
     }
 
@@ -104,9 +104,8 @@ impl Context {
         self.macros.remove(&name);
     }
 
-    pub fn get_macro(&mut self, name: impl IntoSymbol) -> Option<&NodeArray> {
-        let name = name.into_symbol(self);
-        self.macros.get(&name)
+    pub fn get_macro(&self, name: impl IntoSymbol) -> Option<&NodeArray> {
+        name.get_symbol(self).and_then(|name| self.macros.get(&name))
     }
 
     pub fn find_macro(&self, prefix: &str, predicate: impl FindDataPredicate) -> Option<&NodeArray> {
@@ -122,21 +121,17 @@ impl Context {
         None
     }
 
-    pub fn get_variable(&mut self, name: impl IntoSymbol) -> Node {
-        let name = name.into_symbol(self);
-        match self.variables.get(&name) {
-            Some(value) => value.clone(),
-            None => {
-                let value = Node::from(0);
-                self.variables.insert(name, value.clone());
-                value
-            },
-        }
+    pub fn get_variable(&self, name: impl IntoSymbol) -> Option<Node> {
+        name.get_symbol(self).and_then(|name| self.variables.get(&name).cloned())
     }
 
-    pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Node {
+    pub fn get_variable_or_unhandled(&self, name: impl IntoSymbol) -> Node {
+        self.get_variable(name).unwrap_or_else(|| Node::UNHANDLED)
+    }
+
+    pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Option<Node> {
         let name = name.into_symbol(self);
-        self.variables.insert(name, value.into()).unwrap_or_default()
+        self.variables.insert(name, value.into())
     }
 
     pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
@@ -149,9 +144,8 @@ impl Context {
         self.functions.insert(name, HandleFn::new(func)).is_none()
     }
 
-    pub fn get_func(&mut self, name: impl IntoSymbol) -> Option<HandleFn> {
-        let name = name.into_symbol(self);
-        self.functions.get(&name).cloned()
+    pub fn get_func(&self, name: impl IntoSymbol) -> Option<HandleFn> {
+        name.get_symbol(self).and_then(|name| self.functions.get(&name).cloned())
     }
 
     pub fn register_object<O>(&mut self, name: impl IntoSymbol, object: O) -> ObjectRef
@@ -164,9 +158,8 @@ impl Context {
         object
     }
 
-    pub fn get_object(&mut self, name: impl IntoSymbol) -> Option<ObjectRef> {
-        let name = name.into_symbol(self);
-        self.objects.get(&name).cloned()
+    pub fn get_object(&self, name: impl IntoSymbol) -> Option<ObjectRef> {
+        name.get_symbol(self).and_then(|name| self.objects.get(&name).cloned())
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
@@ -247,18 +240,23 @@ impl Default for Context {
 ///
 /// let symbol = context.add_symbol("text");
 /// do_something_with_symbol(&mut context, &symbol);
-/// assert_eq!(context.get_variable(&symbol), "some text".into());
+/// assert_eq!(context.get_variable(&symbol), Some("some text".into()));
 ///
 /// do_something_with_symbol(&mut context, "text2");
-/// assert_eq!(context.get_variable("text2"), "some text".into());
+/// assert_eq!(context.get_variable("text2"), Some("some text".into()));
 /// ```
 pub trait IntoSymbol {
     fn into_symbol(self, context: &mut Context) -> Symbol;
+    fn get_symbol(self, context: &Context) -> Option<Symbol>;
 }
 
 impl<N: AsRef<str>> IntoSymbol for N {
     fn into_symbol(self, context: &mut Context) -> Symbol {
         context.add_symbol(self.as_ref())
+    }
+
+    fn get_symbol(self, context: &Context) -> Option<Symbol> {
+        context.get_symbol(self.as_ref())
     }
 }
 
@@ -266,11 +264,19 @@ impl IntoSymbol for Symbol {
     fn into_symbol(self, _context: &mut Context) -> Symbol {
         self
     }
+
+    fn get_symbol(self, _context: &Context) -> Option<Symbol> {
+        Some(self)
+    }
 }
 
 impl IntoSymbol for &Symbol {
     fn into_symbol(self, _context: &mut Context) -> Symbol {
         self.clone()
+    }
+
+    fn get_symbol(self, _context: &Context) -> Option<Symbol> {
+        Some(self.clone())
     }
 }
 

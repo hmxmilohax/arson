@@ -269,7 +269,12 @@ impl NodeSlice {
         self.get(index)?.variable()
     }
 
-    pub fn set_variable(&self, context: &mut Context, index: usize, value: impl Into<Node>) -> crate::Result {
+    pub fn set_variable(
+        &self,
+        context: &mut Context,
+        index: usize,
+        value: impl Into<Node>,
+    ) -> crate::Result<Option<Node>> {
         self.get(index)?.set_variable(context, value)
     }
 

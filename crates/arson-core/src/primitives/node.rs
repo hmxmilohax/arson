@@ -929,7 +929,7 @@ impl Node {
             NodeValue::Float(value) => NodeValue::Float(*value),
             NodeValue::String(value) => NodeValue::String(value.clone()),
             NodeValue::Symbol(value) => NodeValue::Symbol(value.clone()),
-            NodeValue::Variable(variable) => variable.get(context).value,
+            NodeValue::Variable(variable) => variable.get_or_unhandled(context).value,
 
             NodeValue::Function(value) => NodeValue::Function(value.clone()),
             NodeValue::Object(value) => NodeValue::Object(value.clone()),
@@ -998,13 +998,13 @@ impl Node {
         match_value!(self.unevaluated(), Variable(value) => value)
     }
 
-    pub fn set_variable(&self, context: &mut Context, value: impl Into<Node>) -> crate::Result {
-        match self.unevaluated() {
+    pub fn set_variable(&self, context: &mut Context, value: impl Into<Node>) -> crate::Result<Option<Node>> {
+        let old = match self.unevaluated() {
             NodeValue::Variable(var) => var.set(context, value),
             NodeValue::Property(_prop) => todo!("op_assign property access"),
             unhandled => arson_fail!("Cannot set non-variable value {:?}", unhandled),
         };
-        Ok(())
+        Ok(old)
     }
 
     pub fn object(&self, context: &mut Context) -> crate::Result<ObjectRef> {
