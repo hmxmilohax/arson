@@ -121,9 +121,6 @@ pub enum ExecutionError {
     #[error("bad length {actual}, expected {expected}")]
     LengthMismatch { expected: usize, actual: usize },
 
-    #[error("index outside of range {0:?}")]
-    IndexOutOfRange(Range<usize>),
-
     #[error("requested data for {0} was not found")]
     NotFound(String),
 

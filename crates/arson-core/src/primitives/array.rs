@@ -5,8 +5,8 @@ use std::cell::{Cell, RefCell};
 use std::fmt::{self, Write};
 use std::ops::Range;
 use std::rc::Rc;
-use std::slice::SliceIndex;
 
+use super::NodeSliceIndex;
 use crate::prelude::*;
 use crate::{ExecutionError, FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
 
@@ -107,45 +107,31 @@ impl NodeSlice {
         unsafe { &mut *(nodes as *mut [Node] as *mut NodeSlice) }
     }
 
-    pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
-        match self.nodes.get(index) {
-            Some(value) => Ok(Self::from(value)),
-            None => Err(ExecutionError::IndexOutOfRange(0..self.nodes.len()).into()),
-        }
+    pub fn slice<I: NodeSliceIndex<Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
+        index.get(&self.nodes).map(|value| Self::from(value))
     }
 
-    pub fn slice_mut<I: SliceIndex<[Node], Output = [Node]>>(
+    pub fn slice_mut<I: NodeSliceIndex<Output = [Node]>>(
         &mut self,
         index: I,
     ) -> crate::Result<&mut NodeSlice> {
-        let len = self.nodes.len(); // borrow checker workaround
-        match self.nodes.get_mut(index) {
-            Some(value) => Ok(Self::from_mut(value)),
-            None => Err(ExecutionError::IndexOutOfRange(0..len).into()),
-        }
+        index.get_mut(&mut self.nodes).map(|value| Self::from_mut(value))
     }
 
-    pub fn get<I: SliceIndex<[Node]>>(&self, index: I) -> crate::Result<&I::Output> {
-        match self.nodes.get(index) {
-            Some(value) => Ok(value),
-            None => Err(ExecutionError::IndexOutOfRange(0..self.nodes.len()).into()),
-        }
+    pub fn get<I: NodeSliceIndex>(&self, index: I) -> crate::Result<&I::Output> {
+        index.get(&self.nodes)
     }
 
-    pub fn get_opt<I: SliceIndex<[Node]>>(&self, index: I) -> Option<&I::Output> {
-        self.nodes.get(index)
+    pub fn get_opt<I: NodeSliceIndex>(&self, index: I) -> Option<&I::Output> {
+        index.get_opt(&self.nodes)
     }
 
-    pub fn get_mut<I: SliceIndex<[Node]>>(&mut self, index: I) -> crate::Result<&mut I::Output> {
-        let len = self.nodes.len(); // borrow checker workaround
-        match self.nodes.get_mut(index) {
-            Some(value) => Ok(value),
-            None => Err(ExecutionError::IndexOutOfRange(0..len).into()),
-        }
+    pub fn get_mut<I: NodeSliceIndex>(&mut self, index: I) -> crate::Result<&mut I::Output> {
+        index.get_mut(&mut self.nodes)
     }
 
-    pub fn get_mut_opt<I: SliceIndex<[Node]>>(&mut self, index: I) -> Option<&mut I::Output> {
-        self.nodes.get_mut(index)
+    pub fn get_mut_opt<I: NodeSliceIndex>(&mut self, index: I) -> Option<&mut I::Output> {
+        index.get_mut_opt(&mut self.nodes)
     }
 
     pub fn sort(&mut self) {
@@ -1539,6 +1525,7 @@ impl NodeArray {
     }
 }
 
+// TODO: replace with std::slice::range when that stabilizes
 fn check_range<R>(range: R, length: usize) -> crate::Result<Range<usize>>
 where
     R: std::ops::RangeBounds<usize>,
@@ -1566,7 +1553,12 @@ where
     if start <= end && end <= length {
         Ok(start..end)
     } else {
-        Err(ExecutionError::IndexOutOfRange(0..length).into())
+        Err(NumericError::SliceOutOfRange {
+            slice_start: range.start_bound().cloned(),
+            slice_end: range.end_bound().cloned(),
+            actual_range: 0..length,
+        }
+        .into())
     }
 }
 
