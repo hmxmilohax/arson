@@ -57,5 +57,5 @@ pub mod prelude {
         Variable,
         VariableStack,
     };
-    pub use super::{arson_array, arson_assert, arson_assert_len, arson_fail};
+    pub use super::{arson_array, arson_assert, arson_assert_len, arson_fail, arson_slice};
 }

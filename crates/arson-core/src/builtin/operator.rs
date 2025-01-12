@@ -39,8 +39,7 @@ mod arithmetic {
         arson_assert_len!(args, 1);
 
         // Forward to addition operator
-        let add_args = [args.get(0)?.clone(), Node::from(1)];
-        let result = self::add(context, NodeSlice::new(&add_args))?;
+        let result = self::add(context, arson_slice![args.get(0)?, 1])?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }
@@ -49,8 +48,7 @@ mod arithmetic {
         arson_assert_len!(args, 1);
 
         // Forward to subtraction operator
-        let subtract_args = [args.get(0)?.clone(), Node::from(-1)];
-        let result = self::subtract(context, NodeSlice::new(&subtract_args))?;
+        let result = self::subtract(context, arson_slice![args.get(0)?, -1])?;
         args.set_variable(context, 0, result.clone())?;
         Ok(result)
     }

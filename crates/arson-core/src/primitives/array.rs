@@ -23,6 +23,19 @@ macro_rules! arson_array {
     );
 }
 
+#[macro_export]
+macro_rules! arson_slice {
+    () => (
+        $crate::NodeSlice::new()
+    );
+    ($elem:expr; $n:expr) => (
+        $crate::NodeSlice::from(&std::array::from_fn::<_, $n, _>(|_| $elem.into()))
+    );
+    ($($x:expr),+ $(,)?) => (
+        $crate::NodeSlice::from(&[$($x.into()),+])
+    );
+}
+
 #[derive(PartialEq, PartialOrd, Clone)]
 pub struct ArrayRef {
     inner: Rc<RefCell<NodeArray>>,
@@ -36,11 +49,11 @@ impl ArrayRef {
         Self { inner: Rc::new(RefCell::new(array)) }
     }
 
-    pub fn borrow(&self) -> crate::Result<std::cell::Ref<'_, NodeArray>> {
+    pub fn borrow(&self) -> crate::Result<ArrayBorrow<'_>> {
         self.inner.try_borrow().map_err(|e| ExecutionError::BadBorrow(e).into())
     }
 
-    pub fn borrow_mut(&self) -> crate::Result<std::cell::RefMut<'_, NodeArray>> {
+    pub fn borrow_mut(&self) -> crate::Result<ArrayBorrowMut<'_>> {
         self.inner
             .try_borrow_mut()
             .map_err(|e| ExecutionError::BadMutBorrow(e).into())
@@ -80,7 +93,11 @@ pub struct NodeSlice {
 }
 
 impl NodeSlice {
-    pub fn new(nodes: &[Node]) -> &NodeSlice {
+    pub fn empty() -> &'static NodeSlice {
+        Self::from(&[])
+    }
+
+    pub fn from(nodes: &[Node]) -> &NodeSlice {
         // SAFETY: NodeSlice transparently contains a [Node], so its layout is identical
         unsafe { &*(nodes as *const [Node] as *const NodeSlice) }
     }
@@ -92,7 +109,7 @@ impl NodeSlice {
 
     pub fn slice<I: SliceIndex<[Node], Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
         match self.nodes.get(index) {
-            Some(value) => Ok(Self::new(value)),
+            Some(value) => Ok(Self::from(value)),
             None => Err(ExecutionError::IndexOutOfRange(0..self.nodes.len()).into()),
         }
     }
@@ -1469,6 +1486,14 @@ where
     }
 }
 
+impl ToOwned for NodeSlice {
+    type Owned = NodeArray;
+
+    fn to_owned(&self) -> Self::Owned {
+        self.nodes.to_owned().into()
+    }
+}
+
 impl<'slice> IntoIterator for &'slice NodeSlice {
     type Item = <&'slice [Node] as IntoIterator>::Item;
     type IntoIter = <&'slice [Node] as IntoIterator>::IntoIter;
@@ -1748,13 +1773,25 @@ impl std::ops::Deref for NodeArray {
     type Target = NodeSlice;
 
     fn deref(&self) -> &Self::Target {
-        NodeSlice::new(&self.nodes)
+        NodeSlice::from(&self.nodes)
     }
 }
 
 impl std::ops::DerefMut for NodeArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
         NodeSlice::from_mut(&mut self.nodes)
+    }
+}
+
+impl std::borrow::Borrow<NodeSlice> for NodeArray {
+    fn borrow(&self) -> &NodeSlice {
+        self
+    }
+}
+
+impl std::borrow::BorrowMut<NodeSlice> for NodeArray {
+    fn borrow_mut(&mut self) -> &mut NodeSlice {
+        self
     }
 }
 
