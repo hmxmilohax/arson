@@ -106,40 +106,6 @@ mod limit {
     }
 
     fn clamp(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        arson_assert_len!(args, 3);
-
-        let min = args.number(context, 0)?;
-        let max = args.number(context, 1)?;
-        let value = args.number(context, 2)?;
-
-        do_clamp(min, max, value)
-    }
-
-    fn min_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        let result = self::min(context, args)?;
-        args.set_variable(context, 0, result.clone())?;
-        Ok(result)
-    }
-
-    fn max_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        let result = self::max(context, args)?;
-        args.set_variable(context, 0, result.clone())?;
-        Ok(result)
-    }
-
-    fn clamp_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        arson_assert_len!(args, 3);
-
-        let value = args.number(context, 0)?;
-        let min = args.number(context, 1)?;
-        let max = args.number(context, 2)?;
-
-        let result = do_clamp(min, max, value)?;
-        args.set_variable(context, 0, result.clone())?;
-        Ok(result)
-    }
-
-    fn do_clamp(min: Number, max: Number, value: Number) -> ExecuteResult {
         fn integer_clamp(min: Integer, max: Integer, value: Integer) -> ExecuteResult {
             arson_assert!(min <= max, "Invalid clamp range: min ({min}) is greater than max ({max})");
             Ok(value.clamp(min, max).into())
@@ -166,6 +132,12 @@ mod limit {
             Ok(value.clamp(min, max).into())
         }
 
+        arson_assert_len!(args, 3);
+
+        let value = args.number(context, 0)?;
+        let min = args.number(context, 1)?;
+        let max = args.number(context, 2)?;
+
         let Number::Integer(min) = min else {
             return float_clamp(min.float(), max.float(), value.float());
         };
@@ -177,6 +149,26 @@ mod limit {
         };
 
         integer_clamp(min, max, value)
+    }
+
+    fn min_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        let result = self::min(context, args)?;
+        args.set_variable(context, 0, result.clone())?;
+        Ok(result)
+    }
+
+    fn max_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        let result = self::max(context, args)?;
+        args.set_variable(context, 0, result.clone())?;
+        Ok(result)
+    }
+
+    fn clamp_assign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 3);
+
+        let result = clamp(context, args)?;
+        args.set_variable(context, 0, result.clone())?;
+        Ok(result)
     }
 }
 
