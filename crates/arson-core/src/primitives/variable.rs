@@ -28,8 +28,12 @@ impl Variable {
         context.get_variable(&self.symbol)
     }
 
-    pub fn set(&self, context: &mut Context, value: impl Into<Node>) {
+    pub fn set(&self, context: &mut Context, value: impl Into<Node>) -> Node {
         context.set_variable(&self.symbol, value)
+    }
+
+    pub fn save(&self, context: &mut Context) -> VariableSave {
+        VariableSave::new(context, self)
     }
 }
 
@@ -45,15 +49,26 @@ impl std::fmt::Display for Variable {
     }
 }
 
-#[derive(Debug)]
-struct VariableEntry {
-    variable: Variable,
-    value: Node,
+#[derive(Debug, Clone)]
+pub struct VariableSave {
+    pub variable: Variable,
+    pub value: Node,
+}
+
+impl VariableSave {
+    pub fn new(context: &mut Context, variable: &Variable) -> Self {
+        let value = variable.get(context);
+        Self { variable: variable.clone(), value }
+    }
+
+    pub fn restore(&self, context: &mut Context) {
+        self.variable.set(context, self.value.clone());
+    }
 }
 
 pub struct VariableStack<'ctx> {
     context: &'ctx mut Context,
-    stack: Vec<VariableEntry>,
+    stack: Vec<VariableSave>,
 }
 
 impl<'ctx> VariableStack<'ctx> {
@@ -65,17 +80,20 @@ impl<'ctx> VariableStack<'ctx> {
         self.context
     }
 
-    pub fn push(&mut self, variable: &Variable) {
-        self.stack.push(VariableEntry {
-            variable: variable.clone(),
-            value: variable.get(self.context),
-        })
+    pub fn push(&mut self, variable: &Variable, value: impl Into<Node>) {
+        let old = variable.save(self.context);
+        self.stack.push(old);
+        variable.set(self.context, value);
     }
 
     pub fn pop(&mut self) -> Option<Variable> {
         let entry = self.stack.pop()?;
-        entry.variable.set(self.context, entry.value);
+        entry.restore(self.context);
         Some(entry.variable)
+    }
+
+    pub fn clear(&mut self) {
+        while let Some(_) = self.pop() {}
     }
 
     pub fn push_args(&mut self, script: &mut &NodeSlice, args: &NodeSlice) -> crate::Result {
@@ -83,14 +101,12 @@ impl<'ctx> VariableStack<'ctx> {
             *script = script.slice(1..)?;
 
             let parameters = parameters.borrow()?;
-            arson_assert_len!(parameters, args.len(), "script parameter list has the wrong size");
+            arson_assert_len!(args, parameters.len(), "script parameter list has the wrong size");
 
             for i in 0..parameters.len() {
                 let variable = parameters.variable(i)?;
-                self.push(variable);
-
                 let value = args.evaluate(self.context, i)?;
-                variable.set(self.context, value);
+                self.push(variable, value);
             }
         }
 
@@ -103,26 +119,29 @@ impl<'ctx> VariableStack<'ctx> {
 
             let var_decl = var_decl.borrow()?;
             let variable = var_decl.variable(0)?;
-            self.push(variable);
 
             let initializer = var_decl.slice(1..)?;
             if let Some(value) = initializer.get_opt(0) {
                 arson_assert_len!(initializer, 1, "too many values in initializer for {variable}");
                 let value = value.evaluate(self.context)?;
-                variable.set(self.context, value);
+                self.push(variable, value);
+            } else {
+                self.push(variable, Node::default());
             }
         }
 
         Ok(())
     }
+
+    pub fn push_saved(&mut self, saved: &[VariableSave]) {
+        for saved in saved {
+            self.push(&saved.variable, saved.value.clone());
+        }
+    }
 }
 
 impl Drop for VariableStack<'_> {
     fn drop(&mut self) {
-        for entry in self.stack.iter() {
-            entry.variable.set(self.context, entry.value.clone());
-        }
-
-        self.stack.clear();
+        self.clear();
     }
 }

@@ -55,6 +55,7 @@ pub mod prelude {
         Symbol,
         SymbolMap,
         Variable,
+        VariableSave,
         VariableStack,
     };
     pub use super::{arson_array, arson_assert, arson_assert_len, arson_fail, arson_slice};

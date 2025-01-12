@@ -134,9 +134,24 @@ impl Context {
         }
     }
 
-    pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) {
+    pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Node {
         let name = name.into_symbol(self);
-        self.variables.insert(name, value.into());
+        self.variables.insert(name, value.into()).unwrap_or_default()
+    }
+
+    pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
+    where
+        // note: mutable closures are not allowed due to the out-to-in execution model, which causes
+        // problems when a command argument to a function calls the very same function again
+        F: Fn(&mut Context, &NodeSlice) -> ExecuteResult + 'static,
+    {
+        let name = name.into_symbol(self);
+        self.functions.insert(name, HandleFn::new(func)).is_none()
+    }
+
+    pub fn get_func(&mut self, name: impl IntoSymbol) -> Option<HandleFn> {
+        let name = name.into_symbol(self);
+        self.functions.get(&name).cloned()
     }
 
     pub fn register_object<O>(&mut self, name: impl IntoSymbol, object: O) -> ObjectRef
@@ -149,14 +164,9 @@ impl Context {
         object
     }
 
-    pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
-    where
-        // note: mutable closures are not allowed due to the out-to-in execution model, which causes
-        // problems when a command argument to a function calls the very same function again
-        F: Fn(&mut Context, &NodeSlice) -> ExecuteResult + 'static,
-    {
+    pub fn get_object(&mut self, name: impl IntoSymbol) -> Option<ObjectRef> {
         let name = name.into_symbol(self);
-        self.functions.insert(name, HandleFn::new(func)).is_none()
+        self.objects.get(&name).cloned()
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {

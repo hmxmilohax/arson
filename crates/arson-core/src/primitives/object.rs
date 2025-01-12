@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::any::Any;
+
 use crate::{Context, ExecuteResult, ExecutionError, NodeSlice};
 
 pub type ObjectRef = std::rc::Rc<dyn Object>;
 
-pub trait Object: std::any::Any + std::fmt::Debug {
+pub trait Object: Any + std::fmt::Debug {
     /// Gets the name for this object, if any.
     fn name(&self) -> Option<&String>;
 
@@ -38,7 +40,7 @@ pub trait Object: std::any::Any + std::fmt::Debug {
     /// }
     /// # }
     /// ```
-    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any(&self) -> &dyn Any;
 
     /// Gets the type name for this object.
     ///
@@ -50,7 +52,11 @@ pub trait Object: std::any::Any + std::fmt::Debug {
 }
 
 impl dyn Object {
-    pub fn downcast<T: 'static>(&self) -> crate::Result<&T> {
+    pub fn is<T: Any>(&self) -> bool {
+        self.as_any().is::<T>()
+    }
+
+    pub fn downcast<T: Any>(&self) -> crate::Result<&T> {
         self.downcast_opt().ok_or_else(|| {
             #[cfg(feature = "dynamic-typenames")]
             return ExecutionError::BadObjectCast {
@@ -64,7 +70,7 @@ impl dyn Object {
         })
     }
 
-    pub fn downcast_opt<T: 'static>(&self) -> Option<&T> {
+    pub fn downcast_opt<T: Any>(&self) -> Option<&T> {
         self.as_any().downcast_ref()
     }
 

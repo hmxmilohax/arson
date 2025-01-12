@@ -5,6 +5,7 @@ use crate::SymbolTable;
 
 mod array;
 mod flow;
+mod function;
 mod numeric;
 mod operator;
 mod variable;
@@ -28,6 +29,7 @@ pub fn register_funcs(context: &mut Context) {
 
     array::register_funcs(context);
     flow::register_funcs(context);
+    function::register_funcs(context);
     numeric::register_funcs(context);
     operator::register_funcs(context);
     variable::register_funcs(context);

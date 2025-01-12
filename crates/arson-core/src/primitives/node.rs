@@ -1123,7 +1123,7 @@ impl Node {
 
     pub fn set_variable_opt(&self, context: &mut Context, value: impl Into<Node>) {
         match self.unevaluated() {
-            NodeValue::Variable(var) => var.set(context, value),
+            NodeValue::Variable(var) => _ = var.set(context, value),
             NodeValue::Property(_prop) => todo!("op_assign property access"),
             _ => (),
         }
