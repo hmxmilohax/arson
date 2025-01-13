@@ -80,6 +80,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "arson-dtb"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "arson-fs"
 version = "0.1.0"
 dependencies = [
