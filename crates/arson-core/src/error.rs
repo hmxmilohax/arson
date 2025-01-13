@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::backtrace::Backtrace;
-use std::ops::Range;
 
 #[cfg(feature = "text-loading")]
 use crate::LoadError;

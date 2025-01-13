@@ -126,7 +126,7 @@ impl Context {
     }
 
     pub fn get_variable_or_unhandled(&self, name: impl IntoSymbol) -> Node {
-        self.get_variable(name).unwrap_or_else(|| Node::UNHANDLED)
+        self.get_variable(name).unwrap_or(Node::UNHANDLED)
     }
 
     pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Option<Node> {

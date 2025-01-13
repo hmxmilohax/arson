@@ -108,14 +108,14 @@ impl NodeSlice {
     }
 
     pub fn slice<I: NodeSliceIndex<Output = [Node]>>(&self, index: I) -> crate::Result<&NodeSlice> {
-        index.get(&self.nodes).map(|value| Self::from(value))
+        index.get(&self.nodes).map(Self::from)
     }
 
     pub fn slice_mut<I: NodeSliceIndex<Output = [Node]>>(
         &mut self,
         index: I,
     ) -> crate::Result<&mut NodeSlice> {
-        index.get_mut(&mut self.nodes).map(|value| Self::from_mut(value))
+        index.get_mut(&mut self.nodes).map(Self::from_mut)
     }
 
     pub fn get<I: NodeSliceIndex>(&self, index: I) -> crate::Result<&I::Output> {

@@ -309,7 +309,7 @@ impl<'src> Preprocessor<'src> {
             };
         };
 
-        return (std::mem::replace(&mut self.expressions, prev_exprs), last_location);
+        (std::mem::replace(&mut self.expressions, prev_exprs), last_location)
     }
 
     fn symbol_directive(
@@ -720,7 +720,7 @@ impl<'src> Parser<'src> {
             };
         };
 
-        return (std::mem::replace(&mut self.expressions, prev_exprs), last_location);
+        (std::mem::replace(&mut self.expressions, prev_exprs), last_location)
     }
 
     fn parse_array<I: Iterator<Item = PreprocessedToken<'src>>>(

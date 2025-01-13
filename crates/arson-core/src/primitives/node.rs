@@ -834,7 +834,7 @@ impl Default for NodeValue {
 
 impl From<&NodeValue> for NodeValue {
     fn from(value: &NodeValue) -> Self {
-        Self::from(value.clone())
+        value.clone()
     }
 }
 

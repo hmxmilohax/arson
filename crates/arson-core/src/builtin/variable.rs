@@ -58,5 +58,5 @@ fn set_this(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
 fn var(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
     let name = args.force_symbol(context, 0)?;
-    Ok(context.get_variable_or_unhandled(name).into())
+    Ok(context.get_variable_or_unhandled(name))
 }

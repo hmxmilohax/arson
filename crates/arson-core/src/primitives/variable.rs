@@ -97,7 +97,7 @@ impl<'ctx> VariableStack<'ctx> {
     }
 
     pub fn clear(&mut self) {
-        while let Some(_) = self.pop() {}
+        while self.pop().is_some() {}
     }
 
     pub fn push_args(&mut self, script: &mut &NodeSlice, args: &NodeSlice) -> crate::Result {

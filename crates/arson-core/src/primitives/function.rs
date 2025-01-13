@@ -4,8 +4,15 @@ use std::rc::Rc;
 
 use crate::{Context, ExecuteResult, NodeSlice};
 
+// TODO once stabilized: https://github.com/rust-lang/rust/issues/41517
+// trait HandleFnInner = Fn(&mut Context, &NodeSlice) -> ExecuteResult;
+
 /// A function which is callable from script.
 #[derive(Clone)]
+#[allow(
+    clippy::type_complexity,
+    reason = "no benefit due to inability to use trait object types as generics bounds"
+)]
 pub struct HandleFn(Rc<dyn Fn(&mut Context, &NodeSlice) -> ExecuteResult>);
 
 impl HandleFn {

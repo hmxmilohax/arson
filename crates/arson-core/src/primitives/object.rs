@@ -82,7 +82,7 @@ impl dyn Object {
         match self.as_ptr() == other.as_ptr() {
             true => std::cmp::Ordering::Equal,
             #[cfg(feature = "dynamic-typenames")]
-            false => match self.type_name().cmp(&other.type_name()) {
+            false => match self.type_name().cmp(other.type_name()) {
                 std::cmp::Ordering::Equal => self.name().cmp(&other.name()),
                 result => result,
             },
