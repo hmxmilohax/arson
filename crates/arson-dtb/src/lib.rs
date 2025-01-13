@@ -2,6 +2,8 @@
 
 use std::ffi::OsString;
 
+pub mod crypt;
+
 #[repr(u32)]
 pub enum DataKind {
     Integer = 0,
