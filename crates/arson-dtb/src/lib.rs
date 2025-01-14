@@ -2,8 +2,10 @@
 
 mod crypt;
 mod read;
+mod write;
 
 pub use read::*;
+pub use write::*;
 
 #[repr(u32)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -130,5 +132,32 @@ impl std::ops::Deref for DataArray {
 impl std::ops::DerefMut for DataArray {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.nodes
+    }
+}
+
+impl IntoIterator for DataArray {
+    type Item = <Vec<DataNode> as IntoIterator>::Item;
+    type IntoIter = <Vec<DataNode> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.nodes.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DataArray {
+    type Item = <&'a Vec<DataNode> as IntoIterator>::Item;
+    type IntoIter = <&'a Vec<DataNode> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.nodes).into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut DataArray {
+    type Item = <&'a mut Vec<DataNode> as IntoIterator>::Item;
+    type IntoIter = <&'a mut Vec<DataNode> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&mut self.nodes).into_iter()
     }
 }
