@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::crypt::{CryptAlgorithm, CryptWriter, NewRandom, NoopCrypt, OldRandom};
-use crate::{DataArray, DataNode};
+use crate::{DataArray, DataKind, DataNode};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum WriteEncoding {
@@ -15,7 +15,7 @@ pub enum WriteEncoding {
 
 #[derive(Debug, Clone)]
 pub struct WriteSettings {
-    encoding: WriteEncoding,
+    pub encoding: WriteEncoding,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -23,7 +23,7 @@ pub enum WriteError {
     #[error("length/line {0} is too large to be written")]
     LengthTooLarge(usize),
 
-    #[error("could not encode text {0} into the desired encoding")]
+    #[error("could not encode text '{0}' into the desired encoding")]
     EncodeError(String),
 
     #[error("{0}")]
@@ -61,8 +61,8 @@ impl Writer<'_, '_> {
         match node {
             DataNode::Integer(value) => self.writer.write_i32::<LittleEndian>(*value)?,
             DataNode::Float(value) => self.writer.write_f32::<LittleEndian>(*value)?,
-            DataNode::Var(name) => self.write_string(name)?,
-            DataNode::Func(name) => self.write_string(name)?,
+            DataNode::Variable(name) => self.write_string(name)?,
+            DataNode::Function(name) => self.write_string(name)?,
             DataNode::Object(name) => self.write_string(name)?,
             DataNode::Symbol(name) => self.write_string(name)?,
             DataNode::Unhandled => self.writer.write_i32::<LittleEndian>(0)?,
@@ -77,13 +77,18 @@ impl Writer<'_, '_> {
             DataNode::Property(array) => self.write_array(array)?,
             DataNode::Glob(value) => self.write_glob(value)?,
 
-            DataNode::Define(name) => self.write_string(name)?,
+            DataNode::Define(name, body) => {
+                self.write_string(name)?;
+                self.writer.write_u32::<LittleEndian>(DataKind::Array as u32)?;
+                self.write_array(body)?;
+            },
             DataNode::Include(path) => self.write_string(path)?,
             DataNode::Merge(path) => self.write_string(path)?,
             DataNode::Ifndef(name) => self.write_string(name)?,
-            DataNode::Autorun(array) => {
+            DataNode::Autorun(body) => {
                 self.writer.write_i32::<LittleEndian>(0)?;
-                self.write_array(array)?;
+                self.writer.write_u32::<LittleEndian>(DataKind::Command as u32)?;
+                self.write_array(body)?;
             },
             DataNode::Undef(name) => self.write_string(name)?,
         }
@@ -109,8 +114,8 @@ impl Writer<'_, '_> {
     }
 
     fn write_string(&mut self, text: &String) -> Result<(), WriteError> {
-        let (encoded, actual_encoding, success) = self.encoding.encode(text);
-        if !success || std::ptr::addr_eq(self.encoding, actual_encoding) {
+        let (encoded, actual_encoding, remapped) = self.encoding.encode(text);
+        if remapped || !std::ptr::addr_eq(self.encoding, actual_encoding) {
             return Err(WriteError::EncodeError(text.clone()));
         }
 
@@ -167,6 +172,7 @@ pub fn write_newstyle_seeded(
     settings: WriteSettings,
     seed: i32,
 ) -> Result<(), WriteError> {
+    writer.write_i32::<LittleEndian>(seed)?;
     write_encrypted(array, writer, &mut NewRandom::new(seed), settings)
 }
 
@@ -176,6 +182,7 @@ pub fn write_oldstyle_seeded(
     settings: WriteSettings,
     seed: u32,
 ) -> Result<(), WriteError> {
+    writer.write_u32::<LittleEndian>(seed)?;
     write_encrypted(array, writer, &mut OldRandom::new(seed), settings)
 }
 

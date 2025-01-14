@@ -16,8 +16,8 @@ pub mod prelude {
 pub enum DataKind {
     Integer = 0,
     Float = 1,
-    Var = 2,
-    Func = 3,
+    Variable = 2,
+    Function = 3,
     Object = 4,
     Symbol = 5,
     Unhandled = 6,
@@ -40,12 +40,48 @@ pub enum DataKind {
     Undef = 37,
 }
 
+impl TryFrom<u32> for DataKind {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        let kind = match value {
+            0 => Self::Integer,
+            1 => Self::Float,
+            2 => Self::Variable,
+            3 => Self::Function,
+            4 => Self::Object,
+            5 => Self::Symbol,
+            6 => Self::Unhandled,
+
+            7 => Self::Ifdef,
+            8 => Self::Else,
+            9 => Self::Endif,
+
+            16 => Self::Array,
+            17 => Self::Command,
+            18 => Self::String,
+            19 => Self::Property,
+            20 => Self::Glob,
+
+            32 => Self::Define,
+            33 => Self::Include,
+            34 => Self::Merge,
+            35 => Self::Ifndef,
+            36 => Self::Autorun,
+            37 => Self::Undef,
+
+            _ => return Err(()),
+        };
+        Ok(kind)
+    }
+}
+
 #[derive(Debug)]
 pub enum DataNode {
     Integer(i32),
     Float(f32),
-    Var(String),
-    Func(String),
+    Variable(String),
+    Function(String),
     Object(String),
     Symbol(String),
     Unhandled,
@@ -60,7 +96,7 @@ pub enum DataNode {
     Property(DataArray),
     Glob(Vec<u8>),
 
-    Define(String),
+    Define(String, DataArray),
     Include(String),
     Merge(String),
     Ifndef(String),
@@ -73,8 +109,8 @@ impl DataNode {
         match self {
             Self::Integer(_) => DataKind::Integer,
             Self::Float(_) => DataKind::Float,
-            Self::Var(_) => DataKind::Var,
-            Self::Func(_) => DataKind::Func,
+            Self::Variable(_) => DataKind::Variable,
+            Self::Function(_) => DataKind::Function,
             Self::Object(_) => DataKind::Object,
             Self::Symbol(_) => DataKind::Symbol,
             Self::Unhandled => DataKind::Unhandled,
@@ -89,7 +125,7 @@ impl DataNode {
             Self::Property(_) => DataKind::Property,
             Self::Glob(_) => DataKind::Glob,
 
-            Self::Define(_) => DataKind::Define,
+            Self::Define(_, _) => DataKind::Define,
             Self::Include(_) => DataKind::Include,
             Self::Merge(_) => DataKind::Merge,
             Self::Ifndef(_) => DataKind::Ifndef,

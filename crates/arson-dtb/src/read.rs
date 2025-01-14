@@ -5,7 +5,7 @@ use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::crypt::{CryptAlgorithm, CryptReader, NewRandom, NoopCrypt, OldRandom};
-use crate::{DataArray, DataNode};
+use crate::{DataArray, DataKind, DataNode};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ReadError {
@@ -17,6 +17,13 @@ pub enum ReadError {
 
     #[error("length/line {0} cannot be negative")]
     InvalidLength(i16),
+
+    #[error("{expecting:?} was expecting {expected:?} argument, but got {actual:?} instead")]
+    IncorrectNodeArgument {
+        expecting: DataKind,
+        expected: DataKind,
+        actual: DataKind,
+    },
 
     #[error("unexpected end of file")]
     UnexpectedEof,
@@ -48,8 +55,8 @@ fn read_node(reader: &mut CryptReader<'_, '_>) -> Result<DataNode, ReadError> {
     let data = match kind {
         0 => DataNode::Integer(reader.read_i32::<LittleEndian>()?),
         1 => DataNode::Float(reader.read_f32::<LittleEndian>()?),
-        2 => DataNode::Var(read_string(reader)?),
-        3 => DataNode::Func(read_string(reader)?),
+        2 => DataNode::Variable(read_string(reader)?),
+        3 => DataNode::Function(read_string(reader)?),
         4 => DataNode::Object(read_string(reader)?),
         5 => DataNode::Symbol(read_string(reader)?),
         6 => {
@@ -73,13 +80,36 @@ fn read_node(reader: &mut CryptReader<'_, '_>) -> Result<DataNode, ReadError> {
         19 => DataNode::Property(read_array(reader)?),
         20 => DataNode::Glob(read_glob(reader)?),
 
-        32 => DataNode::Define(read_string(reader)?),
+        32 => {
+            let name = read_string(reader)?;
+            let body = match read_node(reader)? {
+                DataNode::Array(array) => array,
+                node => {
+                    return Err(ReadError::IncorrectNodeArgument {
+                        expecting: DataKind::Define,
+                        expected: DataKind::Array,
+                        actual: node.get_kind(),
+                    })
+                },
+            };
+            DataNode::Define(name, body)
+        },
         33 => DataNode::Include(read_string(reader)?),
         34 => DataNode::Merge(read_string(reader)?),
         35 => DataNode::Ifndef(read_string(reader)?),
         36 => {
             _ = reader.read_i32::<LittleEndian>()?;
-            DataNode::Autorun(read_array(reader)?)
+            let body = match read_node(reader)? {
+                DataNode::Command(array) => array,
+                node => {
+                    return Err(ReadError::IncorrectNodeArgument {
+                        expecting: DataKind::Autorun,
+                        expected: DataKind::Command,
+                        actual: node.get_kind(),
+                    })
+                },
+            };
+            DataNode::Autorun(body)
         },
         37 => DataNode::Undef(read_string(reader)?),
 
@@ -137,10 +167,12 @@ fn read_encrypted(
     reader: &mut impl SeekRead,
     crypt: &mut impl CryptAlgorithm,
 ) -> Result<DataArray, ReadError> {
-    let exists = reader.read_u8()?;
+    let mut crypt_reader = CryptReader::new(reader, crypt);
+
+    let exists = crypt_reader.read_u8()?;
     match exists {
         0 => Ok(DataArray::default()),
-        1 => match read_array(&mut CryptReader::new(reader, crypt)) {
+        1 => match read_array(&mut crypt_reader) {
             Ok(value) => Ok(value),
             Err(err) => match err {
                 ReadError::Malformed(offset) => {
@@ -185,11 +217,19 @@ pub fn read(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
 
 pub fn read_newstyle(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     let seed = reader.read_i32::<LittleEndian>()?;
-    read_encrypted(reader, &mut NewRandom::new(seed))
+    read_newstyle_seeded(reader, seed)
 }
 
 pub fn read_oldstyle(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     let seed = reader.read_u32::<LittleEndian>()?;
+    read_oldstyle_seeded(reader, seed)
+}
+
+pub fn read_newstyle_seeded(reader: &mut impl SeekRead, seed: i32) -> Result<DataArray, ReadError> {
+    read_encrypted(reader, &mut NewRandom::new(seed))
+}
+
+pub fn read_oldstyle_seeded(reader: &mut impl SeekRead, seed: u32) -> Result<DataArray, ReadError> {
     read_encrypted(reader, &mut OldRandom::new(seed))
 }
 
