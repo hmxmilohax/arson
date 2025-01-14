@@ -9,4 +9,6 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+byteorder = "1.5.0"
+encoding_rs = "0.8.35"
 thiserror = "1.0.65"

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::ffi::OsString;
+mod crypt;
+mod read;
 
-pub mod crypt;
+pub use read::*;
 
 #[repr(u32)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum DataKind {
     Integer = 0,
     Float = 1,
@@ -32,34 +34,35 @@ pub enum DataKind {
     Undef = 37,
 }
 
-pub enum Data {
+#[derive(Debug)]
+pub enum DataNode {
     Integer(i32),
     Float(f32),
-    Var(OsString),
-    Func(OsString),
-    Object(OsString),
-    Symbol(OsString),
+    Var(String),
+    Func(String),
+    Object(String),
+    Symbol(String),
     Unhandled,
 
-    Ifdef(OsString),
+    Ifdef(String),
     Else,
     Endif,
 
-    Array(Vec<Data>),
-    Command(Vec<Data>),
-    String(OsString),
-    Property(Vec<Data>),
+    Array(DataArray),
+    Command(DataArray),
+    String(String),
+    Property(DataArray),
     Glob(Vec<u8>),
 
-    Define(OsString),
-    Include(OsString),
-    Merge(OsString),
-    Ifndef(OsString),
-    Autorun(Vec<Data>),
-    Undef(OsString),
+    Define(String),
+    Include(String),
+    Merge(String),
+    Ifndef(String),
+    Autorun(DataArray),
+    Undef(String),
 }
 
-impl Data {
+impl DataNode {
     pub fn get_kind(&self) -> DataKind {
         match self {
             Self::Integer(_) => DataKind::Integer,
@@ -87,5 +90,45 @@ impl Data {
             Self::Autorun(_) => DataKind::Autorun,
             Self::Undef(_) => DataKind::Undef,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct DataArray {
+    line: usize,
+    nodes: Vec<DataNode>,
+}
+
+impl DataArray {
+    pub fn new(line: usize) -> Self {
+        Self { line, nodes: Vec::new() }
+    }
+
+    pub fn with_capacity(capacity: usize, line: usize) -> Self {
+        Self { line, nodes: Vec::with_capacity(capacity) }
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
+    }
+}
+
+impl Default for DataArray {
+    fn default() -> Self {
+        Self::new(1)
+    }
+}
+
+impl std::ops::Deref for DataArray {
+    type Target = Vec<DataNode>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
+}
+
+impl std::ops::DerefMut for DataArray {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.nodes
     }
 }

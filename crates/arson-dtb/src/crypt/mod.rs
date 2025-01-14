@@ -3,9 +3,11 @@
 use std::io;
 
 mod new;
+mod noop;
 mod old;
 
 pub use new::*;
+pub use noop::*;
 pub use old::*;
 
 pub trait CryptAlgorithm {
