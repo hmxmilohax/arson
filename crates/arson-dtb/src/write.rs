@@ -90,7 +90,7 @@ impl Writer<'_, '_> {
                 self.writer.write_u32::<LittleEndian>(DataKind::Command as u32)?;
                 self.write_array(body)?;
             },
-            DataNode::Undef(name) => self.write_string(name)?,
+            DataNode::Undefine(name) => self.write_string(name)?,
         }
 
         Ok(())
@@ -192,4 +192,134 @@ pub fn write_unencrypted(
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
     write_encrypted(array, writer, &mut NoopCrypt, settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_node_bytes(node: DataNode) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut writer = io::Cursor::new(&mut bytes);
+        let mut crypt = NoopCrypt;
+
+        let mut crypt_writer = Writer {
+            settings: WriteSettings { encoding: WriteEncoding::UTF8 },
+            encoding: encoding_rs::UTF_8,
+            writer: CryptWriter::new(&mut writer, &mut crypt),
+        };
+
+        crypt_writer.write_node(&node).expect("failed to write node bytes");
+
+        bytes
+    }
+
+    fn assert_node_bytes(node: DataNode, expected: &[u8]) {
+        assert_eq!(write_node_bytes(node), expected);
+    }
+
+    #[test]
+    fn values() {
+        assert_node_bytes(DataNode::Integer(10), &[0, 0, 0, 0, 10, 0, 0, 0]);
+        assert_node_bytes(DataNode::Float(1.0), &[1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F]);
+        assert_node_bytes(DataNode::Variable("foo".to_owned()), &[
+            2, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Function("foo".to_owned()), &[
+            3, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Object("foo".to_owned()), &[
+            4, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Symbol("foo".to_owned()), &[
+            5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Unhandled, &[6, 0, 0, 0, 0, 0, 0, 0]);
+
+        assert_node_bytes(DataNode::Ifdef("foo".to_owned()), &[
+            7, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Else, &[8, 0, 0, 0, 0, 0, 0, 0]);
+        assert_node_bytes(DataNode::Endif, &[9, 0, 0, 0, 0, 0, 0, 0]);
+
+        #[rustfmt::skip]
+        const fn array_bytes<const KIND: u8>() -> &'static [u8] {
+            &[
+                KIND, 0, 0, 0,
+                3, 0, // size
+                1, 0, // line
+                0, 0, // deprecated field
+                0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
+                1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
+                5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
+            ]
+        }
+
+        assert_node_bytes(
+            DataNode::Array(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+            array_bytes::<16>(),
+        );
+        assert_node_bytes(
+            DataNode::Command(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+            array_bytes::<17>(),
+        );
+        assert_node_bytes(DataNode::String("foo".to_owned()), &[
+            18, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(
+            DataNode::Property(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+            array_bytes::<19>(),
+        );
+        assert_node_bytes(DataNode::Glob(vec![b'f', b'o', b'o']), &[
+            20, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+
+        let mut bytes = [32, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'].to_vec();
+        bytes.extend_from_slice(array_bytes::<16>());
+        assert_node_bytes(
+            DataNode::Define(
+                "foo".to_owned(),
+                DataArray::from_nodes(1, vec![
+                    DataNode::Integer(10),
+                    DataNode::Float(1.0),
+                    DataNode::Symbol("foo".to_owned()),
+                ]),
+            ),
+            &bytes,
+        );
+        assert_node_bytes(DataNode::Include("foo".to_owned()), &[
+            33, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Merge("foo".to_owned()), &[
+            34, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        assert_node_bytes(DataNode::Ifndef("foo".to_owned()), &[
+            35, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+        let mut bytes = [36, 0, 0, 0, 0, 0, 0, 0].to_vec();
+        bytes.extend_from_slice(array_bytes::<17>());
+        assert_node_bytes(
+            DataNode::Autorun(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+            &bytes,
+        );
+        assert_node_bytes(DataNode::Undefine("foo".to_owned()), &[
+            37, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
+        ]);
+    }
 }

@@ -37,7 +37,7 @@ pub enum DataKind {
     Merge = 34,
     Ifndef = 35,
     Autorun = 36,
-    Undef = 37,
+    Undefine = 37,
 }
 
 impl TryFrom<u32> for DataKind {
@@ -68,7 +68,7 @@ impl TryFrom<u32> for DataKind {
             34 => Self::Merge,
             35 => Self::Ifndef,
             36 => Self::Autorun,
-            37 => Self::Undef,
+            37 => Self::Undefine,
 
             _ => return Err(()),
         };
@@ -76,7 +76,7 @@ impl TryFrom<u32> for DataKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataNode {
     Integer(i32),
     Float(f32),
@@ -101,7 +101,7 @@ pub enum DataNode {
     Merge(String),
     Ifndef(String),
     Autorun(DataArray),
-    Undef(String),
+    Undefine(String),
 }
 
 impl DataNode {
@@ -130,12 +130,12 @@ impl DataNode {
             Self::Merge(_) => DataKind::Merge,
             Self::Ifndef(_) => DataKind::Ifndef,
             Self::Autorun(_) => DataKind::Autorun,
-            Self::Undef(_) => DataKind::Undef,
+            Self::Undefine(_) => DataKind::Undefine,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DataArray {
     line: usize,
     nodes: Vec<DataNode>,
@@ -146,8 +146,12 @@ impl DataArray {
         Self { line, nodes: Vec::new() }
     }
 
-    pub fn with_capacity(capacity: usize, line: usize) -> Self {
+    pub fn with_capacity(line: usize, capacity: usize) -> Self {
         Self { line, nodes: Vec::with_capacity(capacity) }
+    }
+
+    pub fn from_nodes(line: usize, nodes: Vec<DataNode>) -> Self {
+        Self { line, nodes }
     }
 
     pub fn line(&self) -> usize {

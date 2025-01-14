@@ -41,7 +41,7 @@ fn read_array(reader: &mut CryptReader<'_, '_>) -> Result<DataArray, ReadError> 
     let line = lengthen(reader.read_i16::<LittleEndian>()?)?;
     let _deprecated = reader.read_i16::<LittleEndian>()?;
 
-    let mut array = DataArray::with_capacity(size, line);
+    let mut array = DataArray::with_capacity(line, size);
     for _i in 0..size {
         let data = read_node(reader)?;
         array.push(data);
@@ -111,7 +111,7 @@ fn read_node(reader: &mut CryptReader<'_, '_>) -> Result<DataNode, ReadError> {
             };
             DataNode::Autorun(body)
         },
-        37 => DataNode::Undef(read_string(reader)?),
+        37 => DataNode::Undefine(read_string(reader)?),
 
         _ => {
             // A kind value greater than 255 is most likely improperly-decrypted data
@@ -193,20 +193,20 @@ fn read_encrypted(
 
 pub fn read(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     // Attempt new-style decryption first
-    if let Ok(result) = read_newstyle(reader) {
-        return Ok(result);
+    if let Ok((array, _seed)) = read_newstyle(reader) {
+        return Ok(array);
     };
 
     // If that fails, try old-style
     reader.seek(io::SeekFrom::Start(0))?;
-    if let Ok(result) = read_oldstyle(reader) {
-        return Ok(result);
+    if let Ok((array, _seed)) = read_oldstyle(reader) {
+        return Ok(array);
     };
 
     // Finally, try unencrypted
     reader.seek(io::SeekFrom::Start(0))?;
-    if let Ok(result) = read_unencrypted(reader) {
-        return Ok(result);
+    if let Ok(array) = read_unencrypted(reader) {
+        return Ok(array);
     };
 
     Err(ReadError::IO(io::Error::new(
@@ -215,24 +215,153 @@ pub fn read(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     )))
 }
 
-pub fn read_newstyle(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
+pub fn read_newstyle(reader: &mut impl SeekRead) -> Result<(DataArray, i32), ReadError> {
     let seed = reader.read_i32::<LittleEndian>()?;
-    read_newstyle_seeded(reader, seed)
+    read_encrypted(reader, &mut NewRandom::new(seed)).map(|array| (array, seed))
 }
 
-pub fn read_oldstyle(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
+pub fn read_oldstyle(reader: &mut impl SeekRead) -> Result<(DataArray, u32), ReadError> {
     let seed = reader.read_u32::<LittleEndian>()?;
-    read_oldstyle_seeded(reader, seed)
-}
-
-pub fn read_newstyle_seeded(reader: &mut impl SeekRead, seed: i32) -> Result<DataArray, ReadError> {
-    read_encrypted(reader, &mut NewRandom::new(seed))
-}
-
-pub fn read_oldstyle_seeded(reader: &mut impl SeekRead, seed: u32) -> Result<DataArray, ReadError> {
-    read_encrypted(reader, &mut OldRandom::new(seed))
+    read_encrypted(reader, &mut OldRandom::new(seed)).map(|array| (array, seed))
 }
 
 pub fn read_unencrypted(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     read_encrypted(reader, &mut NoopCrypt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read_node_bytes(bytes: &[u8]) -> DataNode {
+        let mut reader = io::Cursor::new(bytes);
+        let mut crypt = NoopCrypt;
+
+        let mut crypt_reader = CryptReader::new(&mut reader, &mut crypt);
+        let node = read_node(&mut crypt_reader).expect("failed to read node bytes");
+
+        assert_eq!(reader.position() as usize, bytes.len(), "not all node bytes were read");
+
+        node
+    }
+
+    fn assert_node_bytes(bytes: &[u8], expected: DataNode) {
+        assert_eq!(read_node_bytes(&bytes), expected);
+    }
+
+    #[test]
+    fn values() {
+        assert_node_bytes(&[0, 0, 0, 0, 10, 0, 0, 0], DataNode::Integer(10));
+        assert_node_bytes(&[1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F], DataNode::Float(1.0));
+        assert_node_bytes(
+            &[2, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Variable("foo".to_owned()),
+        );
+        assert_node_bytes(
+            &[3, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Function("foo".to_owned()),
+        );
+        assert_node_bytes(
+            &[4, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Object("foo".to_owned()),
+        );
+        assert_node_bytes(
+            &[5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Symbol("foo".to_owned()),
+        );
+        assert_node_bytes(&[6, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC], DataNode::Unhandled);
+
+        assert_node_bytes(
+            &[7, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Ifdef("foo".to_owned()),
+        );
+        assert_node_bytes(&[8, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC], DataNode::Else);
+        assert_node_bytes(&[9, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC], DataNode::Endif);
+
+        #[rustfmt::skip]
+        const fn array_bytes<const KIND: u8>() -> &'static [u8] {
+            &[
+                KIND, 0, 0, 0,
+                3, 0, // size
+                1, 0, // line
+                0, 0, // deprecated field
+                0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
+                1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
+                5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
+            ]
+        }
+
+        assert_node_bytes(
+            array_bytes::<16>(),
+            DataNode::Array(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+        );
+        assert_node_bytes(
+            array_bytes::<17>(),
+            DataNode::Command(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+        );
+        assert_node_bytes(
+            &[18, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::String("foo".to_owned()),
+        );
+        assert_node_bytes(
+            array_bytes::<19>(),
+            DataNode::Property(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+        );
+        assert_node_bytes(
+            &[20, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Glob(vec![b'f', b'o', b'o']),
+        );
+
+        let mut bytes = [32, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'].to_vec();
+        bytes.extend_from_slice(array_bytes::<16>());
+        assert_node_bytes(
+            &bytes,
+            DataNode::Define(
+                "foo".to_owned(),
+                DataArray::from_nodes(1, vec![
+                    DataNode::Integer(10),
+                    DataNode::Float(1.0),
+                    DataNode::Symbol("foo".to_owned()),
+                ]),
+            ),
+        );
+        assert_node_bytes(
+            &[33, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Include("foo".to_owned()),
+        );
+        assert_node_bytes(
+            &[34, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Merge("foo".to_owned()),
+        );
+        assert_node_bytes(
+            &[35, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Ifndef("foo".to_owned()),
+        );
+        let mut bytes = [36, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC].to_vec();
+        bytes.extend_from_slice(array_bytes::<17>());
+        assert_node_bytes(
+            &bytes,
+            DataNode::Autorun(DataArray::from_nodes(1, vec![
+                DataNode::Integer(10),
+                DataNode::Float(1.0),
+                DataNode::Symbol("foo".to_owned()),
+            ])),
+        );
+        assert_node_bytes(
+            &[37, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'],
+            DataNode::Undefine("foo".to_owned()),
+        );
+    }
 }
