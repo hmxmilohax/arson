@@ -7,6 +7,10 @@ mod write;
 pub use read::*;
 pub use write::*;
 
+pub mod prelude {
+    pub use super::{DataArray, DataKind, DataNode, WriteEncoding, WriteSettings};
+}
+
 #[repr(u32)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum DataKind {
