@@ -5,7 +5,7 @@ use std::iter::Peekable;
 use logos::Span;
 
 use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
-use crate::{DirectiveArgumentDescription, FloatValue, IntegerValue};
+use crate::{ArrayKind, DirectiveArgumentDescription, FloatValue, IntegerValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -135,6 +135,7 @@ pub enum ExpressionValue<'src> {
     BlockComment(&'src str),
 }
 
+#[derive(Debug)]
 pub enum ExpressionKind {
     Integer,
     Float,
@@ -204,41 +205,6 @@ impl<'src> Expression<'src> {
 
     pub fn get_kind(&self) -> ExpressionKind {
         self.value.get_kind()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ArrayKind {
-    Array,
-    Command,
-    Property,
-}
-
-impl ArrayKind {
-    pub fn delimiter(&self, open: bool) -> char {
-        let delimiters = self.delimiters();
-        match open {
-            true => delimiters.0,
-            false => delimiters.1,
-        }
-    }
-
-    pub fn delimiters(&self) -> (char, char) {
-        match self {
-            ArrayKind::Array => ('(', ')'),
-            ArrayKind::Command => ('{', '}'),
-            ArrayKind::Property => ('[', ']'),
-        }
-    }
-}
-
-impl std::fmt::Display for ArrayKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ArrayKind::Array => write!(f, "array"),
-            ArrayKind::Command => write!(f, "command"),
-            ArrayKind::Property => write!(f, "property"),
-        }
     }
 }
 
@@ -606,12 +572,18 @@ impl<'src> Preprocessor<'src> {
 }
 
 /// An error result from file parsing.
-#[derive(Debug, PartialEq)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub struct ParseError {
     /// All diagnostics issued for the file.
     pub diagnostics: Vec<Diagnostic>,
     /// The number of unclosed arrays remaining when the end-of-file was reached.
     pub unclosed_array_count: usize,
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("failed to parse the given text")
+    }
 }
 
 /// An error result from file parsing, with recovered AST information.

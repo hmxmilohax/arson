@@ -10,6 +10,49 @@ use crate::DiagnosticKind;
 pub type IntegerValue = i64;
 pub type FloatValue = f64;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ArrayKind {
+    Array,
+    Command,
+    Property,
+}
+
+impl ArrayKind {
+    pub fn delimiter(&self, open: bool) -> char {
+        let delimiters = self.delimiters();
+        match open {
+            true => delimiters.0,
+            false => delimiters.1,
+        }
+    }
+
+    pub fn delimiter_tokens(&self) -> (TokenValue<'static>, TokenValue<'static>) {
+        match self {
+            ArrayKind::Array => (TokenValue::ArrayOpen, TokenValue::ArrayClose),
+            ArrayKind::Command => (TokenValue::CommandOpen, TokenValue::CommandClose),
+            ArrayKind::Property => (TokenValue::PropertyOpen, TokenValue::PropertyClose),
+        }
+    }
+
+    pub fn delimiters(&self) -> (char, char) {
+        match self {
+            ArrayKind::Array => ('(', ')'),
+            ArrayKind::Command => ('{', '}'),
+            ArrayKind::Property => ('[', ']'),
+        }
+    }
+}
+
+impl std::fmt::Display for ArrayKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArrayKind::Array => write!(f, "array"),
+            ArrayKind::Command => write!(f, "command"),
+            ArrayKind::Property => write!(f, "property"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
     pub value: TokenValue<'src>,

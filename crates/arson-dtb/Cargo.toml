@@ -1,0 +1,19 @@
+[package]
+name = "arson-dtb"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+publish = false
+
+[features]
+token-conversion = ["dep:arson-parse"]
+
+[dependencies]
+arson-parse = { path = "../../crates/arson-parse", optional = true }
+
+byteorder = "1.5.0"
+encoding_rs = "0.8.35"
+thiserror = "1.0.65"

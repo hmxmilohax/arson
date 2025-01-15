@@ -16,6 +16,7 @@ pub use lexer::*;
 pub use parser::*;
 
 pub mod prelude {
+    pub use super::diagnostics::{Diagnostic, DiagnosticKind};
     pub use super::lexer::{Token, TokenValue, Tokenizer};
     pub use super::parser::{Expression, ExpressionValue};
 }
