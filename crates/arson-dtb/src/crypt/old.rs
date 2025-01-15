@@ -9,23 +9,24 @@ pub struct OldRandom {
 }
 
 impl OldRandom {
-    pub fn new(mut seed: u32) -> Self {
-        fn permute(value: u32) -> u32 {
+    pub const fn new(mut seed: u32) -> Self {
+        const fn permute(value: u32) -> u32 {
             value.wrapping_mul(0x41C64E6D).wrapping_add(12345)
         }
 
-        let table = std::array::from_fn::<u32, 256, _>(|_| {
-            let i = permute(seed);
-            seed = permute(i);
-            (seed & 0x7FFF0000) | (i >> 16)
-        });
+        let mut table = [0u32; 256];
+        let mut i = 0;
+        while i < table.len() {
+            let value = permute(seed);
+            seed = permute(value);
+            table[i] = (seed & 0x7FFF0000) | (value >> 16);
+            i += 1;
+        }
 
         Self { index1: 0, index2: 103, table }
     }
-}
 
-impl CryptAlgorithm for OldRandom {
-    fn next(&mut self) -> u8 {
+    pub fn next(&mut self) -> u32 {
         fn increment(mut index: usize) -> usize {
             index = index.wrapping_add(1);
             if index > 248 {
@@ -42,14 +43,20 @@ impl CryptAlgorithm for OldRandom {
         self.index1 = increment(self.index1);
         self.index2 = increment(self.index2);
 
-        value as u8
+        value
+    }
+}
+
+impl CryptAlgorithm for OldRandom {
+    fn next(&mut self) -> u8 {
+        OldRandom::next(self) as u8
     }
 }
 
 impl Iterator for OldRandom {
-    type Item = u8;
+    type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(CryptAlgorithm::next(self))
+        Some(OldRandom::next(self))
     }
 }

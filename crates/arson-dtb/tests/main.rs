@@ -64,7 +64,7 @@ fn unencrypted() {
     for _i in 0..25 {
         let array = arson_dtb::read_unencrypted(&mut Cursor::new(&bytes)).unwrap();
         assert_eq!(array, array);
-    
+
         bytes.clear();
         arson_dtb::write_unencrypted(&array, &mut Cursor::new(&mut bytes), SETTINGS).unwrap();
         assert_eq!(bytes, TEST_DATA_UNENCRYPTED);
@@ -86,7 +86,7 @@ fn oldstyle() {
     for _i in 0..25 {
         let (array, seed) = arson_dtb::read_oldstyle(&mut Cursor::new(&bytes)).unwrap();
         assert_eq!(array, array);
-    
+
         let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
         let b = seed.wrapping_div(0x1F31D).wrapping_mul(0xB14);
         let seed = match a - b {
@@ -114,7 +114,7 @@ fn newstyle() {
     for _i in 0..25 {
         let (array, seed) = arson_dtb::read_newstyle(&mut Cursor::new(&bytes)).unwrap();
         assert_eq!(array, array);
-    
+
         let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
         let b = seed.wrapping_div(0x1F31D).wrapping_mul(0xB14);
         let seed = match a - b {

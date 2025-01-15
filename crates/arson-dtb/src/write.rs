@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::io::{self, Write};
+use std::sync::Mutex;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 
@@ -154,7 +155,10 @@ pub fn write_newstyle(
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
     const DEFAULT_SEED: i32 = 0x30171609; // seed used by dtab
-    write_newstyle_seeded(array, writer, settings, DEFAULT_SEED)
+    static SEED_GENERATOR: Mutex<NewRandom> = Mutex::new(NewRandom::new(DEFAULT_SEED));
+
+    let seed = SEED_GENERATOR.lock().map_or(DEFAULT_SEED, |mut g| g.next());
+    write_newstyle_seeded(array, writer, settings, seed)
 }
 
 pub fn write_oldstyle(
@@ -163,7 +167,10 @@ pub fn write_oldstyle(
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
     const DEFAULT_SEED: u32 = 0x52534F4C; // seed used by DtbCrypt
-    write_oldstyle_seeded(array, writer, settings, DEFAULT_SEED)
+    static SEED_GENERATOR: Mutex<OldRandom> = Mutex::new(OldRandom::new(DEFAULT_SEED));
+
+    let seed = SEED_GENERATOR.lock().map_or(DEFAULT_SEED, |mut g| g.next());
+    write_oldstyle_seeded(array, writer, settings, seed)
 }
 
 pub fn write_newstyle_seeded(
