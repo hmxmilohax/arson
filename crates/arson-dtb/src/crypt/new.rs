@@ -7,6 +7,8 @@ pub struct NewRandom {
 }
 
 impl NewRandom {
+    pub const DEFAULT_SEED: i32 = 0x30171609; // seed used by dtab
+
     pub const fn new(seed: i32) -> Self {
         let seed = match seed {
             0 => 1,

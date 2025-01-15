@@ -100,18 +100,7 @@ impl Writer<'_, '_> {
     fn write_glob(&mut self, bytes: &[u8]) -> Result<(), WriteError> {
         let length = u32::try_from(bytes.len()).map_err(|_| WriteError::LengthTooLarge(bytes.len()))?;
         self.writer.write_u32::<LittleEndian>(length)?;
-
-        let written = self.writer.write(bytes)?;
-        if written < bytes.len() {
-            // Attempt once more to make sure it's not a fluke
-            let bytes = &bytes[written..];
-            let written = self.writer.write(bytes)?;
-            if written < bytes.len() {
-                return Err(io::Error::from(io::ErrorKind::WriteZero).into());
-            }
-        }
-
-        Ok(())
+        Ok(self.writer.write_all(bytes)?)
     }
 
     fn write_string(&mut self, text: &String) -> Result<(), WriteError> {
@@ -149,15 +138,15 @@ fn write_encrypted(
     Ok(())
 }
 
+static NEWSTYLE_SEEDER: Mutex<NewRandom> = Mutex::new(NewRandom::new(NewRandom::DEFAULT_SEED));
+static OLDSTYLE_SEEDER: Mutex<OldRandom> = Mutex::new(OldRandom::new(OldRandom::DEFAULT_SEED));
+
 pub fn write_newstyle(
     array: &DataArray,
     writer: &mut impl io::Write,
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
-    const DEFAULT_SEED: i32 = 0x30171609; // seed used by dtab
-    static SEED_GENERATOR: Mutex<NewRandom> = Mutex::new(NewRandom::new(DEFAULT_SEED));
-
-    let seed = SEED_GENERATOR.lock().map_or(DEFAULT_SEED, |mut g| g.next());
+    let seed = NEWSTYLE_SEEDER.lock().map_or(NewRandom::DEFAULT_SEED, |mut g| g.next());
     write_newstyle_seeded(array, writer, settings, seed)
 }
 
@@ -166,10 +155,7 @@ pub fn write_oldstyle(
     writer: &mut impl io::Write,
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
-    const DEFAULT_SEED: u32 = 0x52534F4C; // seed used by DtbCrypt
-    static SEED_GENERATOR: Mutex<OldRandom> = Mutex::new(OldRandom::new(DEFAULT_SEED));
-
-    let seed = SEED_GENERATOR.lock().map_or(DEFAULT_SEED, |mut g| g.next());
+    let seed = OLDSTYLE_SEEDER.lock().map_or(OldRandom::DEFAULT_SEED, |mut g| g.next());
     write_oldstyle_seeded(array, writer, settings, seed)
 }
 
@@ -199,6 +185,34 @@ pub fn write_unencrypted(
     settings: WriteSettings,
 ) -> Result<(), WriteError> {
     write_encrypted(array, writer, &mut NoopCrypt, settings)
+}
+
+pub fn encrypt_newstyle(bytes: &Vec<u8>, writer: &mut impl io::Write) -> io::Result<()> {
+    let seed = NEWSTYLE_SEEDER.lock().map_or(NewRandom::DEFAULT_SEED, |mut g| g.next());
+    encrypt_newstyle_seeded(bytes, writer, seed)
+}
+
+pub fn encrypt_oldstyle(bytes: &Vec<u8>, writer: &mut impl io::Write) -> io::Result<()> {
+    let seed = OLDSTYLE_SEEDER.lock().map_or(OldRandom::DEFAULT_SEED, |mut g| g.next());
+    encrypt_oldstyle_seeded(bytes, writer, seed)
+}
+
+pub fn encrypt_newstyle_seeded(bytes: &Vec<u8>, writer: &mut impl io::Write, seed: i32) -> io::Result<()> {
+    writer.write_i32::<LittleEndian>(seed)?;
+    Ok(encrypt_impl(bytes, writer, &mut NewRandom::new(seed))?)
+}
+
+pub fn encrypt_oldstyle_seeded(bytes: &Vec<u8>, writer: &mut impl io::Write, seed: u32) -> io::Result<()> {
+    writer.write_u32::<LittleEndian>(seed)?;
+    Ok(encrypt_impl(bytes, writer, &mut OldRandom::new(seed))?)
+}
+
+fn encrypt_impl(
+    bytes: &Vec<u8>,
+    writer: &mut impl io::Write,
+    crypt: &mut impl CryptAlgorithm,
+) -> io::Result<()> {
+    CryptWriter::new(writer, crypt).write_all(bytes)
 }
 
 #[cfg(test)]

@@ -192,19 +192,21 @@ fn read_encrypted(
 }
 
 pub fn read(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
+    let position = reader.stream_position()?;
+
     // Attempt new-style decryption first
     if let Ok((array, _seed)) = read_newstyle(reader) {
         return Ok(array);
     };
 
     // If that fails, try old-style
-    reader.seek(io::SeekFrom::Start(0))?;
+    reader.seek(io::SeekFrom::Start(position))?;
     if let Ok((array, _seed)) = read_oldstyle(reader) {
         return Ok(array);
     };
 
     // Finally, try unencrypted
-    reader.seek(io::SeekFrom::Start(0))?;
+    reader.seek(io::SeekFrom::Start(position))?;
     if let Ok(array) = read_unencrypted(reader) {
         return Ok(array);
     };
@@ -227,6 +229,55 @@ pub fn read_oldstyle(reader: &mut impl SeekRead) -> Result<(DataArray, u32), Rea
 
 pub fn read_unencrypted(reader: &mut impl SeekRead) -> Result<DataArray, ReadError> {
     read_encrypted(reader, &mut NoopCrypt)
+}
+
+pub fn decrypt(reader: &mut impl SeekRead) -> Result<Vec<u8>, ReadError> {
+    let position = reader.stream_position()?;
+
+    // Attempt new-style decryption first
+    if let Ok(_) = read_newstyle(reader) {
+        reader.seek(io::SeekFrom::Start(position))?;
+        return Ok(decrypt_newstyle(reader).map(|(bytes, _)| bytes)?);
+    };
+
+    // If that fails, try old-style
+    reader.seek(io::SeekFrom::Start(position))?;
+    if let Ok(_) = read_oldstyle(reader) {
+        reader.seek(io::SeekFrom::Start(position))?;
+        return Ok(decrypt_oldstyle(reader).map(|(bytes, _)| bytes)?);
+    };
+
+    // Finally, try unencrypted
+    reader.seek(io::SeekFrom::Start(position))?;
+    if let Ok(_) = read_unencrypted(reader) {
+        reader.seek(io::SeekFrom::Start(position))?;
+        return Ok(decrypt_unencrypted(reader)?);
+    };
+
+    Err(ReadError::IO(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "input data could not be decoded; tried newstyle, oldstyle, and unencrypted",
+    )))
+}
+
+pub fn decrypt_newstyle(reader: &mut impl io::Read) -> io::Result<(Vec<u8>, i32)> {
+    let seed = reader.read_i32::<LittleEndian>()?;
+    decrypt_impl(reader, &mut NewRandom::new(seed)).map(|bytes| (bytes, seed))
+}
+
+pub fn decrypt_oldstyle(reader: &mut impl io::Read) -> io::Result<(Vec<u8>, u32)> {
+    let seed = reader.read_u32::<LittleEndian>()?;
+    decrypt_impl(reader, &mut OldRandom::new(seed)).map(|bytes| (bytes, seed))
+}
+
+fn decrypt_unencrypted(reader: &mut impl io::Read) -> io::Result<Vec<u8>> {
+    decrypt_impl(reader, &mut NoopCrypt).map(|bytes| bytes)
+}
+
+fn decrypt_impl(reader: &mut impl io::Read, crypt: &mut impl CryptAlgorithm) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    CryptReader::new(reader, crypt).read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 #[cfg(test)]

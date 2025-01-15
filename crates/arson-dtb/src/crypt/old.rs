@@ -9,6 +9,8 @@ pub struct OldRandom {
 }
 
 impl OldRandom {
+    pub const DEFAULT_SEED: u32 = 0x52534F4C; // seed used by DtbCrypt
+
     pub const fn new(mut seed: u32) -> Self {
         const fn permute(value: u32) -> u32 {
             value.wrapping_mul(0x41C64E6D).wrapping_add(12345)
