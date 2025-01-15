@@ -83,6 +83,7 @@ dependencies = [
 name = "arson-dtb"
 version = "0.1.0"
 dependencies = [
+ "arson-parse",
  "byteorder",
  "encoding_rs",
  "thiserror",

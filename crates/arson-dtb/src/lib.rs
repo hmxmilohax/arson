@@ -7,6 +7,11 @@ mod write;
 pub use read::*;
 pub use write::*;
 
+#[cfg(feature = "token-conversion")]
+mod convert;
+#[cfg(feature = "token-conversion")]
+pub use convert::*;
+
 pub mod prelude {
     pub use super::{DataArray, DataKind, DataNode, WriteEncoding, WriteSettings};
 }
