@@ -179,6 +179,18 @@ impl<'src> Formatter<'src> {
             )
         }
 
+        fn is_directive(expr: &Expression<'_>) -> bool {
+            matches!(
+                expr.value,
+                ExpressionValue::Define(_, _)
+                    | ExpressionValue::Undefine(_)
+                    | ExpressionValue::Include(_)
+                    | ExpressionValue::IncludeOptional(_)
+                    | ExpressionValue::Merge(_)
+                    | ExpressionValue::Autorun(_)
+            )
+        }
+
         fn is_conditional(expr: &Expression<'_>) -> bool {
             matches!(expr.value, ExpressionValue::Conditional { .. })
         }
@@ -187,7 +199,7 @@ impl<'src> Formatter<'src> {
             return Ok(());
         }
 
-        // If there is only one element, and it is not an array itself, always print it as-is
+        // If there is only one element, try to print it as-is
         if array.len() == 1 {
             let first = &array[0];
             if !is_any_array(first) && !is_conditional(first) {
@@ -195,14 +207,16 @@ impl<'src> Formatter<'src> {
             }
         }
 
-        let (arrays, conditionals) = array.iter().fold((0, 0), |(mut arr, mut cond), n| {
-            arr += is_any_array(n) as usize;
-            cond += is_conditional(n) as usize;
-            (arr, cond)
-        });
+        let (arrays, directives, conditionals) =
+            array.iter().fold((0, 0, 0), |(mut arr, mut dir, mut cond), n| {
+                arr += is_any_array(n) as usize;
+                dir += is_directive(n) as usize;
+                cond += is_conditional(n) as usize;
+                (arr, dir, cond)
+            });
 
-        // Attempt compact array first, so long as there is no more than one inner array
-        if arrays <= 1 && conditionals < 1 {
+        // Attempt compact array
+        if arrays <= 1 && directives < 1 && conditionals < 1 {
             // Max width - 2, to account for array delimiters
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();

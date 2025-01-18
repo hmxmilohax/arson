@@ -47,6 +47,71 @@ fn multiple_arrays() {
 #[test]
 fn directives() {
     assert_format(
+        "(#define kDefine (1))",
+        "(#define kDefine (1))",
+    );
+    assert_format(
+        "(#undef kDefine)",
+        "(#undef kDefine)",
+    );
+    assert_format(
+        "(#include items.dta)",
+        "(#include items.dta)",
+    );
+    assert_format(
+        "(#include_opt items.dta)",
+        "(#include_opt items.dta)",
+    );
+    assert_format(
+        "(#merge items.dta)",
+        "(#merge items.dta)",
+    );
+    assert_format(
+        "(#autorun {print \"bar\"})",
+        "(#autorun {print \"bar\"})",
+    );
+
+    assert_format(
+        "(foo #define kDefine (1))",
+        "(foo\
+       \n   #define kDefine (1)\
+       \n)",
+    );
+    assert_format(
+        "(foo #undef kDefine)",
+        "(foo\
+       \n   #undef kDefine\
+       \n)",
+    );
+    assert_format(
+        "(items #include items.dta)",
+        "(items\
+       \n   #include items.dta\
+       \n)",
+    );
+    assert_format(
+        "(items #include_opt items.dta)",
+        "(items\
+       \n   #include_opt items.dta\
+       \n)",
+    );
+    assert_format(
+        "(items #merge items.dta)",
+        "(items\
+       \n   #merge items.dta\
+       \n)",
+    );
+    assert_format(
+        "(foo #autorun {print \"bar\"})",
+        "(foo\
+       \n   #autorun {print \"bar\"}\
+       \n)",
+    );
+}
+
+#[test]
+fn conditionals() {
+    assert_format(
         "#ifdef kDefine (array1 50) #endif",
         "#ifdef kDefine\
        \n(array1 50)\
