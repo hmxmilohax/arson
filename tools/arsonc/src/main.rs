@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
@@ -180,7 +180,10 @@ fn compile(
         },
     };
 
-    let mut output_file = File::create_new(&output_path).context("couldn't create output file")?;
+    let mut output_file = File::create_new(&output_path)
+        .map(BufWriter::new)
+        .context("couldn't create output file")?;
+
     let settings = WriteSettings {
         encoding: match encoding {
             Encoding::UTF8 => WriteEncoding::UTF8,
@@ -213,7 +216,8 @@ fn decompile(
     let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dta"));
     validate_paths(&input_path, &output_path, "DTB", "DTA")?;
 
-    let mut file = File::open(input_path).context("couldn't open file")?;
+    let mut file = File::open(input_path).map(BufReader::new).context("couldn't open file")?;
+
     let result = match decryption {
         Some(EncryptionMode::None) => arson_dtb::read_unencrypted(&mut file),
         Some(EncryptionMode::Old) => arson_dtb::read_oldstyle(&mut file).map(|(arr, _)| arr),
@@ -223,9 +227,11 @@ fn decompile(
     let array = result.context("couldn't read input file")?;
     let tokens = array.to_tokens();
 
-    let mut output_file = File::create_new(&output_path).context("couldn't create output file")?;
-    let result = tokens.iter().try_for_each(|token| write!(output_file, "{token} "));
+    let mut output_file = File::create_new(&output_path)
+        .map(BufWriter::new)
+        .context("couldn't create output file")?;
 
+    let result = tokens.iter().try_for_each(|token| write!(output_file, "{token} "));
     result.with_context(|| {
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
@@ -259,7 +265,8 @@ fn cross_crypt(
     });
     validate_paths(&input_path, &output_path, "DTB", "DTB")?;
 
-    let mut file = File::open(input_path).context("couldn't open file")?;
+    let mut file = File::open(input_path).map(BufReader::new).context("couldn't open file")?;
+
     let result = match decryption {
         Some(EncryptionMode::None) => {
             let mut bytes = Vec::new();
@@ -275,7 +282,10 @@ fn cross_crypt(
     };
     let bytes = result.context("couldn't read input file")?;
 
-    let mut output_file = File::create_new(&output_path).context("couldn't create output file")?;
+    let mut output_file = File::create_new(&output_path)
+        .map(BufWriter::new)
+        .context("couldn't create output file")?;
+
     let result = match encryption {
         EncryptionMode::None => output_file.write_all(&bytes),
         EncryptionMode::Old => match key {
