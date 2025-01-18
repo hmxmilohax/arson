@@ -60,25 +60,24 @@ fn directives() {
        \n(array2 100)\
        \n#endif",
     );
-    // TODO
-    // assert_format(
-    //     "(#ifdef kDefine (array1 50) #endif)",
-    //     "(\
-    //    \n   #ifdef kDefine\
-    //    \n   (array1 50)\
-    //    \n   #endif\
-    //    \n)",
-    // );
-    // assert_format(
-    //     "(#ifdef kDefine (array1 50) #else (array2 100) #endif)",
-    //     "(\
-    //    \n   #ifdef kDefine\
-    //    \n   (array1 50)\
-    //    \n   #else\
-    //    \n   (array2 100)\
-    //    \n   #endif\
-    //    \n)",
-    // );
+    assert_format(
+        "(#ifdef kDefine (array1 50) #endif)",
+        "(\
+       \n   #ifdef kDefine\
+       \n   (array1 50)\
+       \n   #endif\
+       \n)",
+    );
+    assert_format(
+        "(#ifdef kDefine (array1 50) #else (array2 100) #endif)",
+        "(\
+       \n   #ifdef kDefine\
+       \n   (array1 50)\
+       \n   #else\
+       \n   (array2 100)\
+       \n   #endif\
+       \n)",
+    );
 }
 
 #[test]

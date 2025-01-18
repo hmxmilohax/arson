@@ -176,7 +176,7 @@ impl<'src> Formatter<'src> {
             matches!(
                 expr.value,
                 ExpressionValue::Array(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_)
-            ) || is_conditional(expr)
+            )
         }
 
         fn is_conditional(expr: &Expression<'_>) -> bool {
@@ -188,12 +188,21 @@ impl<'src> Formatter<'src> {
         }
 
         // If there is only one element, and it is not an array itself, always print it as-is
-        if array.len() == 1 && !is_any_array(&array[0]) {
-            return self.format_expr_noindent(&array[0], f);
+        if array.len() == 1 {
+            let first = &array[0];
+            if !is_any_array(first) && !is_conditional(first) {
+                return self.format_expr_noindent(first, f);
+            }
         }
 
+        let (arrays, conditionals) = array.iter().fold((0, 0), |(mut arr, mut cond), n| {
+            arr += is_any_array(n) as usize;
+            cond += is_conditional(n) as usize;
+            (arr, cond)
+        });
+
         // Attempt compact array first, so long as there is no more than one inner array
-        if array.iter().filter(|n| is_any_array(n)).count() <= 1 {
+        if arrays <= 1 && conditionals < 1 {
             // Max width - 2, to account for array delimiters
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
