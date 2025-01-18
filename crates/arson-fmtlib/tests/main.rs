@@ -30,6 +30,34 @@ fn inner_arrays() {
     assert_format("(sym1 (sym2 100))", "(sym1 (sym2 100))");
     assert_format("(sym1 {sym2 100})", "(sym1 {sym2 100})");
     assert_format("(sym1 [sym2 100])", "(sym1 [sym2 100])");
+
+    assert_format(
+        "(sym1 (sym2 (foo 5) (bar 10)))",
+        "(sym1\
+       \n   (sym2\
+       \n      (foo 5)\
+       \n      (bar 10)\
+       \n   )\
+       \n)",
+    );
+    assert_format(
+        "(sym1 {sym2 (foo 5) (bar 10)})",
+        "(sym1\
+       \n   {sym2\
+       \n      (foo 5)\
+       \n      (bar 10)\
+       \n   }\
+       \n)",
+    );
+    assert_format(
+        "(sym1 [sym2 (foo 5) (bar 10)])",
+        "(sym1\
+       \n   [sym2\
+       \n      (foo 5)\
+       \n      (bar 10)\
+       \n   ]\
+       \n)",
+    );
 }
 
 #[test]

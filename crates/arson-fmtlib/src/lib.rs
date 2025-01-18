@@ -149,9 +149,99 @@ impl Drop for IndentGuard<'_> {
     }
 }
 
+struct ExprFormatter<'src>(&'src Formatter<'src>, &'src Expression<'src>);
+
+impl fmt::Display for ExprFormatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.format_expr_noindent(self.1, f)
+    }
+}
+
+fn is_any_array(expr: &Expression<'_>) -> bool {
+    matches!(
+        expr.value,
+        ExpressionValue::Array(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_)
+    )
+}
+
+fn is_directive(expr: &Expression<'_>) -> bool {
+    matches!(
+        expr.value,
+        ExpressionValue::Define(_, _)
+            | ExpressionValue::Undefine(_)
+            | ExpressionValue::Include(_)
+            | ExpressionValue::IncludeOptional(_)
+            | ExpressionValue::Merge(_)
+            | ExpressionValue::Autorun(_)
+    )
+}
+
+fn is_conditional(expr: &Expression<'_>) -> bool {
+    matches!(expr.value, ExpressionValue::Conditional { .. })
+}
+
 impl<'src> Formatter<'src> {
     fn write_original(&self, expr: &Expression<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.input[expr.location.clone()])
+    }
+
+    fn probe_node(&self, buffer: &mut String, expr: &Expression<'src>) -> bool {
+        match &expr.value {
+            ExpressionValue::Array(array) => self.probe_array_(buffer, array, ArrayKind::Array),
+            ExpressionValue::Command(array) => self.probe_array_(buffer, array, ArrayKind::Command),
+            ExpressionValue::Property(array) => self.probe_array_(buffer, array, ArrayKind::Property),
+            _ => write!(buffer, "{}", ExprFormatter(self, expr)).is_ok(),
+        }
+    }
+
+    fn probe_array_(&self, buffer: &mut String, array: &[Expression<'src>], kind: ArrayKind) -> bool {
+        let (l, r) = kind.delimiters();
+        buffer.push(l);
+        let result = self.probe_array(array).inspect(|short| buffer.push_str(&short));
+        buffer.push(r);
+        result.is_some()
+    }
+
+    fn probe_array(&self, array: &[Expression<'src>]) -> Option<String> {
+        // If there is only one element, try to print it as-is
+        if array.len() == 1 {
+            let first = &array[0];
+            if !is_any_array(first) && !is_conditional(first) {
+                let mut short = String::new();
+                write!(short, "{}", ExprFormatter(self, &array[0])).ok()?;
+                return Some(short);
+            }
+        }
+
+        let (arrays, directives, conditionals) =
+            array.iter().fold((0, 0, 0), |(mut arr, mut dir, mut cond), n| {
+                arr += is_any_array(n) as usize;
+                dir += is_directive(n) as usize;
+                cond += is_conditional(n) as usize;
+                (arr, dir, cond)
+            });
+
+        // Attempt compact array
+        if arrays <= 1 && directives < 1 && conditionals < 1 {
+            // Max width - 2, to account for array delimiters
+            let max_len = self.options.max_array_width - 2;
+            let mut limit_buffer = String::new();
+
+            let mut is_small = self.probe_node(&mut limit_buffer, &array[0]);
+            for expr in &array[1..] {
+                limit_buffer.push(' ');
+                is_small &= self.probe_node(&mut limit_buffer, expr);
+                if !is_small || limit_buffer.len() > max_len {
+                    break;
+                }
+            }
+
+            if is_small && limit_buffer.len() <= max_len {
+                return Some(limit_buffer);
+            }
+        }
+
+        None
     }
 
     fn format_array(
@@ -172,74 +262,13 @@ impl<'src> Formatter<'src> {
         kind: ArrayKind,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        fn is_any_array(expr: &Expression<'_>) -> bool {
-            matches!(
-                expr.value,
-                ExpressionValue::Array(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_)
-            )
-        }
-
-        fn is_directive(expr: &Expression<'_>) -> bool {
-            matches!(
-                expr.value,
-                ExpressionValue::Define(_, _)
-                    | ExpressionValue::Undefine(_)
-                    | ExpressionValue::Include(_)
-                    | ExpressionValue::IncludeOptional(_)
-                    | ExpressionValue::Merge(_)
-                    | ExpressionValue::Autorun(_)
-            )
-        }
-
-        fn is_conditional(expr: &Expression<'_>) -> bool {
-            matches!(expr.value, ExpressionValue::Conditional { .. })
-        }
-
         if array.is_empty() {
             return Ok(());
         }
 
-        // If there is only one element, try to print it as-is
-        if array.len() == 1 {
-            let first = &array[0];
-            if !is_any_array(first) && !is_conditional(first) {
-                return self.format_expr_noindent(first, f);
-            }
-        }
-
-        let (arrays, directives, conditionals) =
-            array.iter().fold((0, 0, 0), |(mut arr, mut dir, mut cond), n| {
-                arr += is_any_array(n) as usize;
-                dir += is_directive(n) as usize;
-                cond += is_conditional(n) as usize;
-                (arr, dir, cond)
-            });
-
-        // Attempt compact array
-        if arrays <= 1 && directives < 1 && conditionals < 1 {
-            // Max width - 2, to account for array delimiters
-            let max_len = self.options.max_array_width - 2;
-            let mut limit_buffer = String::new();
-
-            struct ExprFormatter<'src>(&'src Formatter<'src>, &'src Expression<'src>);
-
-            impl fmt::Display for ExprFormatter<'_> {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    self.0.format_expr_noindent(self.1, f)
-                }
-            }
-
-            write!(limit_buffer, "{}", ExprFormatter(self, &array[0]))?;
-            for expr in &array[1..] {
-                write!(limit_buffer, " {}", ExprFormatter(self, expr))?;
-                if limit_buffer.len() > max_len {
-                    break;
-                }
-            }
-
-            if limit_buffer.len() <= max_len {
-                return f.write_str(&limit_buffer);
-            }
+        // Attempt short representation of the array
+        if let Some(short) = self.probe_array(array) {
+            return f.write_str(&short)
         }
 
         // Inspect first element of the array
