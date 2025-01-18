@@ -126,13 +126,24 @@ impl fmt::Display for Formatter<'_> {
         }
 
         // At the top level of the AST, print everything on its own line
-        self.format_expr(&self.ast[0], f)?;
+        self.format_expr_noindent(&self.ast[0], f)?;
         for expr in &self.ast[1..] {
             f.write_char('\n')?;
-            self.format_expr(expr, f)?;
+            self.format_expr_noindent(expr, f)?;
         }
 
         Ok(())
+    }
+}
+
+struct IndentGuard<'src> {
+    formatter: &'src Formatter<'src>,
+    saved: isize,
+}
+
+impl Drop for IndentGuard<'_> {
+    fn drop(&mut self) {
+        self.formatter.indent_level.set(self.saved);
     }
 }
 
@@ -153,15 +164,20 @@ impl<'src> Formatter<'src> {
         f.write_char(r)
     }
 
-    fn format_array_(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format_array_(
+        &self,
+        array: &[Expression<'src>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         fn is_any_array(expr: &Expression<'_>) -> bool {
             matches!(
                 expr.value,
-                ExpressionValue::Array(_)
-                    | ExpressionValue::Command(_)
-                    | ExpressionValue::Property(_)
-                    | ExpressionValue::Conditional { .. }
-            )
+                ExpressionValue::Array(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_)
+            ) || is_conditional(expr)
+        }
+
+        fn is_conditional(expr: &Expression<'_>) -> bool {
+            matches!(expr.value, ExpressionValue::Conditional { .. })
         }
 
         if array.is_empty() {
@@ -200,37 +216,48 @@ impl<'src> Formatter<'src> {
             }
         }
 
-        // Display leading symbol on the same line as the array opening
-        let block = match array.split_first() {
-            Some((first, remaining)) => {
-                if matches!(first.value, ExpressionValue::Symbol(_)) {
-                    self.format_expr_noindent(first, f)?;
-                } else {
-                    f.write_char('\n')?;
-                    self.format_expr(first, f)?;
-                }
-                f.write_char('\n')?;
-                remaining
-            },
-            None => return Ok(()),
+        // Inspect first element of the array
+        let Some((first, mut remaining)) = array.split_first() else {
+            return Ok(());
         };
 
-        self.format_block(block, f)
+        // Display leading symbol on the same line as the array opening
+        match first.value {
+            ExpressionValue::Symbol(_) => {
+                self.format_expr_noindent(first, f)?;
+            },
+            _ => {
+                remaining = array;
+            },
+        };
+
+        // Bump up indentation for inner elements
+        let guard = self.bump_indent(1);
+
+        f.write_char('\n')?;
+        for expr in remaining {
+            self.format_expr(expr, f)?;
+            f.write_char('\n')?;
+        }
+
+        // Restore and write indentation for closing delimiter
+        drop(guard);
+
+        // Write indentation for closing delimiter and restore (implicit)
+        self.write_indent(f)
     }
 
     fn format_block(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Bump up indentation for inner elements
-        let original_indent = self.indent_level.get();
-        self.indent_level.set(original_indent + 1);
+        let guard = self.bump_indent(1);
 
         for expr in array {
             self.format_expr(expr, f)?;
             f.write_char('\n')?;
         }
 
-        // Restore and write indentation for closing delimiter
-        self.indent_level.set(original_indent);
-        self.write_indent(f)?;
+        // Restore indentation
+        drop(guard);
 
         Ok(())
     }
@@ -240,12 +267,9 @@ impl<'src> Formatter<'src> {
         array: &[Expression<'src>],
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let original_indent = self.indent_level.get();
-        self.indent_level.set(original_indent - 1);
-
+        let guard = self.bump_indent(-1);
         self.format_block(&array, f)?;
-
-        self.indent_level.set(original_indent);
+        drop(guard);
 
         Ok(())
     }
@@ -310,6 +334,13 @@ impl<'src> Formatter<'src> {
             ExpressionValue::Comment(_) => self.write_original(expr, f),
             ExpressionValue::BlockComment(_) => self.write_original(expr, f),
         }
+    }
+
+    #[must_use = "indentation is restored when guard is dropped"]
+    fn bump_indent(&self, amount: isize) -> IndentGuard<'_> {
+        let saved = self.indent_level.get();
+        self.indent_level.set(saved + amount);
+        IndentGuard { formatter: self, saved }
     }
 
     fn write_indent(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
