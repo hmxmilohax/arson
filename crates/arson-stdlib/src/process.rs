@@ -40,7 +40,9 @@ pub fn exit(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 
 pub fn abort(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 0);
-    Err(arson_core::Error::from_custom(ExitError(Some("an abnormal exit has occurred".to_owned()))))
+    Err(arson_core::Error::from_custom(ExitError(Some(
+        "an abnormal exit has occurred".to_owned(),
+    ))))
 }
 
 pub fn panic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {

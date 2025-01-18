@@ -74,30 +74,12 @@ fn multiple_arrays() {
 
 #[test]
 fn directives() {
-    assert_format(
-        "(#define kDefine (1))",
-        "(#define kDefine (1))",
-    );
-    assert_format(
-        "(#undef kDefine)",
-        "(#undef kDefine)",
-    );
-    assert_format(
-        "(#include items.dta)",
-        "(#include items.dta)",
-    );
-    assert_format(
-        "(#include_opt items.dta)",
-        "(#include_opt items.dta)",
-    );
-    assert_format(
-        "(#merge items.dta)",
-        "(#merge items.dta)",
-    );
-    assert_format(
-        "(#autorun {print \"bar\"})",
-        "(#autorun {print \"bar\"})",
-    );
+    assert_format("(#define kDefine (1))", "(#define kDefine (1))");
+    assert_format("(#undef kDefine)", "(#undef kDefine)");
+    assert_format("(#include items.dta)", "(#include items.dta)");
+    assert_format("(#include_opt items.dta)", "(#include_opt items.dta)");
+    assert_format("(#merge items.dta)", "(#merge items.dta)");
+    assert_format("(#autorun {print \"bar\"})", "(#autorun {print \"bar\"})");
 
     assert_format(
         "(foo #define kDefine (1))",
@@ -253,6 +235,14 @@ fn command_args() {
        \n}",
     );
     assert_format(
+        "{func print_thing ($the_thing) {print $the_thing} {...}}",
+        "{func print_thing\
+       \n   ($the_thing)\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
         "{if {== $i 5} {print $i} {...}}",
         "{if {== $i 5}\
        \n   {print $i}\
@@ -264,6 +254,20 @@ fn command_args() {
         "{if_else {== $i 5}\
        \n   {print $i}\
        \n   {print \"Bad number\"}\
+       \n}",
+    );
+    assert_format(
+        "{set $var \"Some really long text which will get wrapped by the formatter\"}",
+        "{set $var\
+       \n   \"Some really long text which will get wrapped by the formatter\"\
+       \n}",
+    );
+    assert_format(
+        "{switch $var (case_1 ...) (case_2 ...) (...)}",
+        "{switch $var\
+       \n   (case_1 ...)\
+       \n   (case_2 ...)\
+       \n   (...)\
        \n}",
     );
     assert_format(
@@ -280,10 +284,27 @@ fn command_args() {
        \n   {...}\
        \n}",
     );
+
     assert_format(
-        "{func print_thing ($the_thing) {print $the_thing} {...}}",
-        "{func print_thing\
-       \n   ($the_thing)\
+        "{$object with_thing $the_thing {print $the_thing} {...}}",
+        "{$object with_thing\
+       \n   $the_thing\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{{get_thing} with_thing $the_thing {print $the_thing} {...}}",
+        "{{get_thing} with_thing\
+       \n   $the_thing\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{[thing] with_thing $the_thing {print $the_thing} {...}}",
+        "{[thing] with_thing\
+       \n   $the_thing\
        \n   {print $the_thing}\
        \n   {...}\
        \n}",
@@ -299,8 +320,7 @@ fn big_example() {
        \n   (sym2\
        \n      (asdf 100)\
        \n      (jkl 250)\
-       \n      (\
-       \n         1\
+       \n      (1\
        \n         (5 \"foo\")\
        \n         (10 \"bar\")\
        \n      )\

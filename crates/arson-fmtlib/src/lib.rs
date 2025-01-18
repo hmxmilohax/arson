@@ -164,6 +164,15 @@ fn is_any_array(expr: &Expression<'_>) -> bool {
     )
 }
 
+fn is_populated_array(expr: &Expression<'_>) -> bool {
+    match &expr.value {
+        ExpressionValue::Array(array)
+        | ExpressionValue::Command(array)
+        | ExpressionValue::Property(array) => array.len() > 1,
+        _ => false,
+    }
+}
+
 fn is_directive(expr: &Expression<'_>) -> bool {
     matches!(
         expr.value,
@@ -217,16 +226,22 @@ impl<'src> Formatter<'src> {
             }
         }
 
-        let (arrays, directives, conditionals) =
-            array.iter().fold((0, 0, 0), |(mut arr, mut dir, mut cond), n| {
-                arr += is_any_array(n) as usize;
-                dir += is_directive(n) as usize;
-                cond += is_conditional(n) as usize;
-                (arr, dir, cond)
-            });
+        let (arrays, large_arrays, directives, conditionals) =
+            array
+                .iter()
+                .fold((0, 0, 0, 0), |(mut arr, mut larry, mut dir, mut cond), n| {
+                    arr += is_any_array(n) as usize;
+                    larry += is_populated_array(n) as usize;
+                    dir += is_directive(n) as usize;
+                    cond += is_conditional(n) as usize;
+                    (arr, larry, dir, cond)
+                });
 
         // Attempt compact array
-        if arrays <= 1 && directives < 1 && conditionals < 1 {
+        if (arrays == 1 && large_arrays == 1 || (arrays <= 3 && large_arrays < 1))
+            && directives < 1
+            && conditionals < 1
+        {
             // Max width - 2, to account for array delimiters
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
@@ -272,7 +287,7 @@ impl<'src> Formatter<'src> {
 
         // Attempt short representation of the array
         if let Some(short) = self.probe_array(array) {
-            return f.write_str(&short)
+            return f.write_str(&short);
         }
 
         // Inspect first element of the array
@@ -280,9 +295,9 @@ impl<'src> Formatter<'src> {
             return Ok(());
         };
 
-        // Display leading symbol on the same line as the array opening
         match first.value {
             ExpressionValue::Symbol(name) => {
+                // Display leading symbol on the same line as the array opening
                 self.format_expr_noindent(first, f)?;
 
                 // Additional arguments which should be displayed on the same line
@@ -291,24 +306,60 @@ impl<'src> Formatter<'src> {
                         HashMap::from_iter([
                             ("foreach", 2),     // {foreach $var $array {...} ...}
                             ("foreach_int", 3), // {foreach_int $var 0 5 {...} ...}
+                            ("func", 1),        // {func name ($arg1 ...) {...} ...}
                             ("if", 1),          // {if {condition} {...} ...}
                             ("if_else", 1),     // {if_else {condition} {...} {...}}
+                            ("set", 1),         // {set $var {...}}
+                            ("switch", 1),      // {switch $var (case_1 ...) (case_2 ...) ...}
                             ("unless", 1),      // {unless {condition} {...} ...}
                             ("with", 1),        // {with $object {...} ...}
                             ("while", 1),       // {while {condition} {...} ...}
-                            ("func", 1),        // {func name ($arg1 ...) {...} ...}
                         ])
                     });
 
                     if let Some(&arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
                         let count = remaining.len().min(arg_count);
-                        let args;
-                        (args, remaining) = remaining.split_at(count);
+                        let (args, _remaining) = remaining.split_at(count);
 
-                        for arg in args {
+                        if let Some(short) = self.probe_array(args) {
                             f.write_char(' ')?;
-                            self.format_expr_noindent(arg, f)?;
+                            f.write_str(&short)?;
+                            remaining = _remaining;
                         }
+                    }
+                }
+            },
+            ExpressionValue::Integer(_) if remaining.iter().any(|n| is_any_array(n)) => {
+                // Display integers used as data keys or case values on the
+                // same line as the array opening
+                self.format_expr_noindent(first, f)?;
+            },
+            ExpressionValue::Variable(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_) => {
+                // Display leading variable on the same line as the array opening
+                self.format_expr_noindent(first, f)?;
+
+                if matches!(kind, ArrayKind::Command) {
+                    // Also display the next following symbol on the same line
+                    if let Some((next, _remaining)) = remaining.split_first() {
+                        if matches!(next.value, ExpressionValue::Symbol(_)) {
+                            f.write_char(' ')?;
+                            self.format_expr_noindent(next, f)?;
+                            remaining = _remaining;
+                        }
+                    }
+                }
+            },
+            ExpressionValue::String(_) if matches!(kind, ArrayKind::Command) => {
+                // The first argument of a command being a string means to look up an object,
+                // format it similarly to variables
+                self.format_expr_noindent(first, f)?;
+
+                // Also display the next following symbol on the same line
+                if let Some((next, _remaining)) = remaining.split_first() {
+                    if matches!(next.value, ExpressionValue::Symbol(_)) {
+                        f.write_char(' ')?;
+                        self.format_expr_noindent(next, f)?;
+                        remaining = _remaining;
                     }
                 }
             },
@@ -320,11 +371,7 @@ impl<'src> Formatter<'src> {
         self.format_array_long(remaining, f)
     }
 
-    fn format_array_long(
-        &self,
-        array: &[Expression<'src>],
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn format_array_long(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Bump up indentation for inner elements
         let guard = self.bump_indent(1);
 
@@ -341,11 +388,7 @@ impl<'src> Formatter<'src> {
         self.write_indent(f)
     }
 
-    fn format_define_body(
-        &self,
-        body: &[Expression<'src>],
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn format_define_body(&self, body: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (l, r) = ArrayKind::Array.delimiters();
         f.write_char(l)?;
 
