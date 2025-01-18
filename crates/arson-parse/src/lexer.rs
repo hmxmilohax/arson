@@ -140,8 +140,9 @@ make_tokens! {
     Float(FloatValue) {
         kind_display: "float",
         value_display: |f, value| {
+            // Printed as f32, the additional storage precision isn't necessary for text
             // Debug display used since it acts as a general format specifier
-            write!(f, "{:?}", value)
+            write!(f, "{:?}", (*value as f32))
         },
     },
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
