@@ -317,11 +317,19 @@ impl<'src> Formatter<'src> {
             },
         };
 
+        self.format_array_long(remaining, f)
+    }
+
+    fn format_array_long(
+        &self,
+        array: &[Expression<'src>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         // Bump up indentation for inner elements
         let guard = self.bump_indent(1);
 
         f.write_char('\n')?;
-        for expr in remaining {
+        for expr in array {
             self.format_expr(expr, f)?;
             f.write_char('\n')?;
         }
@@ -329,8 +337,28 @@ impl<'src> Formatter<'src> {
         // Restore and write indentation for closing delimiter
         drop(guard);
 
-        // Write indentation for closing delimiter and restore (implicit)
+        // Write indentation for closing delimiter and restore
         self.write_indent(f)
+    }
+
+    fn format_define_body(
+        &self,
+        body: &[Expression<'src>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let (l, r) = ArrayKind::Array.delimiters();
+        f.write_char(l)?;
+
+        if !body.is_empty() {
+            // Attempt short representation
+            if let Some(short) = self.probe_array(body) {
+                f.write_str(&short)?;
+            } else {
+                self.format_array_long(body, f)?;
+            }
+        }
+
+        f.write_char(r)
     }
 
     fn format_conditional_block(
@@ -376,7 +404,7 @@ impl<'src> Formatter<'src> {
 
             ExpressionValue::Define(name, body) => {
                 write!(f, "#define {} ", name.text)?;
-                self.format_array(&body.exprs, ArrayKind::Array, f)
+                self.format_define_body(&body.exprs, f)
             },
             ExpressionValue::Undefine(name) => write!(f, "#undef {}", name.text),
             ExpressionValue::Include(name) => write!(f, "#include {}", name.text),
