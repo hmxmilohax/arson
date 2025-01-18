@@ -139,7 +139,10 @@ make_tokens! {
     #[regex(r#"[+-]?[0-9]*\.[0-9]*([Ee][+-]?[0-9])?"#, parse_float, priority = 2)]
     Float(FloatValue) {
         kind_display: "float",
-        value_display: |f, value| value.fmt(f),
+        value_display: |f, value| {
+            // Debug display used since it acts as a general format specifier
+            write!(f, "{:?}", value)
+        },
     },
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
     String(&'src str) {
