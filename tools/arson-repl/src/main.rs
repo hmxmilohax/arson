@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::process::ExitCode;
-
+use anyhow::{bail, Context};
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::parse::reporting::files::SimpleFile;
 use arson::parse::reporting::term::termcolor::{ColorChoice, StandardStream};
@@ -37,24 +36,24 @@ enum EditorModeArgument {
     Vi,
 }
 
-fn main() -> ExitCode {
+fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
 
-    let mut context = make_context(&args);
-    let mut editor = make_editor(&args);
+    let mut context = make_context(&args)?;
+    let mut editor = make_editor(&args)?;
 
     run(&mut context, &mut editor)
 }
 
-fn make_context(args: &Arguments) -> Context {
-    let mut context = Context::new();
+fn make_context(args: &Arguments) -> anyhow::Result<arson::Context> {
+    let mut context = arson::Context::new();
     context.register_state(StdlibOptions {
         file_load_options: LoadOptions { allow_include: true, allow_autorun: true },
     });
     arson::stdlib::register_funcs(&mut context);
 
     if let Some(ref directory) = args.mount_dir {
-        let driver = BasicFileSystemDriver::new(directory).expect("failed to create file driver");
+        let driver = BasicFileSystemDriver::new(directory).context("failed to create file driver")?;
         context = context.with_filesystem_driver(driver);
     } else if !args.skip_prompt {
         loop {
@@ -77,10 +76,10 @@ fn make_context(args: &Arguments) -> Context {
         }
     }
 
-    context
+    Ok(context)
 }
 
-fn make_editor(args: &Arguments) -> DefaultEditor {
+fn make_editor(args: &Arguments) -> anyhow::Result<DefaultEditor> {
     use rustyline::config::Configurer;
     use rustyline::{Config, EditMode};
 
@@ -91,7 +90,7 @@ fn make_editor(args: &Arguments) -> DefaultEditor {
         .tab_stop(3)
         .build();
 
-    let mut editor = DefaultEditor::with_config(config).expect("failed to create text reader");
+    let mut editor = DefaultEditor::with_config(config).context("failed to create text reader")?;
 
     if let Some(ref mode) = args.editor_mode {
         let mode = match mode {
@@ -107,22 +106,25 @@ fn make_editor(args: &Arguments) -> DefaultEditor {
         }
     }
 
-    editor
+    Ok(editor)
 }
 
-fn run(context: &mut Context, editor: &mut DefaultEditor) -> ExitCode {
+fn run(context: &mut arson::Context, editor: &mut DefaultEditor) -> anyhow::Result<()> {
     loop {
         let array = match read_input(context, editor) {
             Some(array) => array,
-            None => return ExitCode::SUCCESS,
+            None => return Ok(()),
         };
 
         for node in array {
             match node.evaluate(context) {
                 Ok(evaluated) => println!("{evaluated}"),
                 Err(error) => {
-                    if let Some(exit) = ExitError::is_exit(&error) {
-                        return exit;
+                    if let Some(message) = ExitError::is_exit(&error) {
+                        match message {
+                            Some(message) => bail!("exit error: {message}"),
+                            None => return Ok(()),
+                        }
                     }
 
                     eprintln!("Evaluation error: {error}\n{}", error.backtrace())
@@ -132,7 +134,7 @@ fn run(context: &mut Context, editor: &mut DefaultEditor) -> ExitCode {
     }
 }
 
-fn read_input(context: &mut Context, editor: &mut DefaultEditor) -> Option<NodeArray> {
+fn read_input(context: &mut arson::Context, editor: &mut DefaultEditor) -> Option<NodeArray> {
     let mut prompt = ">>> ";
     let mut text = String::new();
     loop {

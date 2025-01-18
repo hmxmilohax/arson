@@ -11,5 +11,6 @@ publish = false
 [dependencies]
 arson = { path = "../../crates/arson", features = ["parse-reporting"] }
 
+anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
 rustyline = "15.0.0"
