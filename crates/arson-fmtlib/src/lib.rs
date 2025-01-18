@@ -96,7 +96,7 @@ pub struct Formatter<'src> {
     input: &'src str,
     ast: Vec<Expression<'src>>,
 
-    indent_level: Cell<usize>,
+    indent_level: Cell<isize>,
     indent_text: String,
 }
 
@@ -143,21 +143,24 @@ impl<'src> Formatter<'src> {
 
     fn format_array(
         &self,
-        array: &Vec<Expression<'src>>,
+        array: &[Expression<'src>],
         kind: ArrayKind,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let (l, r) = kind.delimiters();
         f.write_char(l)?;
-        self.format_block(array, f)?;
+        self.format_array_(array, f)?;
         f.write_char(r)
     }
 
-    fn format_block(&self, array: &Vec<Expression<'src>>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format_array_(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>,) -> fmt::Result {
         fn is_any_array(expr: &Expression<'_>) -> bool {
             matches!(
                 expr.value,
-                ExpressionValue::Array(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_)
+                ExpressionValue::Array(_)
+                    | ExpressionValue::Command(_)
+                    | ExpressionValue::Property(_)
+                    | ExpressionValue::Conditional { .. }
             )
         }
 
@@ -197,27 +200,30 @@ impl<'src> Formatter<'src> {
             }
         }
 
+        // Display leading symbol on the same line as the array opening
+        let block = match array.split_first() {
+            Some((first, remaining)) => {
+                if matches!(first.value, ExpressionValue::Symbol(_)) {
+                    self.format_expr_noindent(first, f)?;
+                } else {
+                    f.write_char('\n')?;
+                    self.format_expr(first, f)?;
+                }
+                f.write_char('\n')?;
+                remaining
+            },
+            None => return Ok(()),
+        };
+
+        self.format_block(block, f)
+    }
+
+    fn format_block(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Bump up indentation for inner elements
         let original_indent = self.indent_level.get();
         self.indent_level.set(original_indent + 1);
 
-        let mut iter = array.iter();
-
-        // Display leading symbol on the same line as the array opening
-        match iter.next() {
-            Some(expr) => {
-                if matches!(expr.value, ExpressionValue::Symbol(_)) {
-                    self.format_expr_noindent(expr, f)?;
-                } else {
-                    f.write_char('\n')?;
-                    self.format_expr(expr, f)?;
-                }
-                f.write_char('\n')?;
-            },
-            None => return Ok(()),
-        }
-
-        for expr in iter {
+        for expr in array {
             self.format_expr(expr, f)?;
             f.write_char('\n')?;
         }
@@ -225,6 +231,21 @@ impl<'src> Formatter<'src> {
         // Restore and write indentation for closing delimiter
         self.indent_level.set(original_indent);
         self.write_indent(f)?;
+
+        Ok(())
+    }
+
+    fn format_conditional_block(
+        &self,
+        array: &[Expression<'src>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let original_indent = self.indent_level.get();
+        self.indent_level.set(original_indent - 1);
+
+        self.format_block(&array, f)?;
+
+        self.indent_level.set(original_indent);
 
         Ok(())
     }
@@ -266,13 +287,23 @@ impl<'src> Formatter<'src> {
                     true => write!(f, "#ifdef {}", symbol.text)?,
                     false => write!(f, "#ifndef {}", symbol.text)?,
                 };
+                f.write_char('\n')?;
 
-                self.format_block(&true_branch.exprs, f)?;
+                self.format_conditional_block(&true_branch.exprs, f)?;
                 if let Some(false_branch) = false_branch {
+                    // TODO: this is a hack to keep directives indented properly after writing the block
+                    if self.indent_level.get() > 0 {
+                        f.write_str(&self.indent_text)?;
+                    }
                     f.write_str("#else")?;
-                    self.format_block(&false_branch.exprs, f)?;
+                    f.write_char('\n')?;
+                    self.format_conditional_block(&false_branch.exprs, f)?;
                 }
 
+                // TODO: this is a hack to keep directives indented properly after writing the block
+                if self.indent_level.get() > 0 {
+                    f.write_str(&self.indent_text)?;
+                }
                 f.write_str("#endif")
             },
 
