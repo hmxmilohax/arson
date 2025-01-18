@@ -45,6 +45,97 @@ fn multiple_arrays() {
 }
 
 #[test]
+fn directives() {
+    assert_format(
+        "#ifdef kDefine (array1 50) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    // TODO
+    // assert_format(
+    //     "(#ifdef kDefine (array1 50) #endif)",
+    //     "(\
+    //    \n   #ifdef kDefine\
+    //    \n   (array1 50)\
+    //    \n   #endif\
+    //    \n)",
+    // );
+    // assert_format(
+    //     "(#ifdef kDefine (array1 50) #else (array2 100) #endif)",
+    //     "(\
+    //    \n   #ifdef kDefine\
+    //    \n   (array1 50)\
+    //    \n   #else\
+    //    \n   (array2 100)\
+    //    \n   #endif\
+    //    \n)",
+    // );
+}
+
+#[test]
+fn command_args() {
+    assert_format(
+        "{foreach $elem $array {print $elem} {...}}",
+        "{foreach $elem $array\
+       \n   {print $elem}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{foreach_int $i 0 5 {print $i} {...}}",
+        "{foreach_int $i 0 5\
+       \n   {print $i}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{if {== $i 5} {print $i} {...}}",
+        "{if {== $i 5}\
+       \n   {print $i}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{if_else {== $i 5} {print $i} {print \"Bad number\"}}",
+        "{if_else {== $i 5}\
+       \n   {print $i}\
+       \n   {print \"Bad number\"}\
+       \n}",
+    );
+    assert_format(
+        "{unless {== $i 5} {print $i} {...}}",
+        "{unless {== $i 5}\
+       \n   {print $i}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{with $object {print $i} {...}}",
+        "{with $object\
+       \n   {print $i}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{func print_thing ($the_thing) {print $the_thing} {...}}",
+        "{func print_thing\
+       \n   ($the_thing)\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+}
+
+#[test]
 fn big_example() {
     assert_format(
         "((sym1 5) (sym2 (asdf 100) (jkl 250) (1 (5 \"foo\") (10 \"bar\"))) (3 3) (4 4))",
@@ -102,7 +193,10 @@ fn indent_style() {
 }
 
 #[test]
-fn max_line_width() {}
+#[ignore = "not implemented"]
+fn max_line_width() {
+    todo!()
+}
 
 #[test]
 fn max_array_width() {

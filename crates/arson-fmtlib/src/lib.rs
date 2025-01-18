@@ -5,7 +5,9 @@
 #![warn(missing_docs)]
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::fmt::{self, Write};
+use std::sync::LazyLock;
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
@@ -160,13 +162,14 @@ impl<'src> Formatter<'src> {
     ) -> fmt::Result {
         let (l, r) = kind.delimiters();
         f.write_char(l)?;
-        self.format_array_(array, f)?;
+        self.format_array_(array, kind, f)?;
         f.write_char(r)
     }
 
     fn format_array_(
         &self,
         array: &[Expression<'src>],
+        kind: ArrayKind,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         fn is_any_array(expr: &Expression<'_>) -> bool {
@@ -223,8 +226,35 @@ impl<'src> Formatter<'src> {
 
         // Display leading symbol on the same line as the array opening
         match first.value {
-            ExpressionValue::Symbol(_) => {
+            ExpressionValue::Symbol(name) => {
                 self.format_expr_noindent(first, f)?;
+
+                // Additional arguments which should be displayed on the same line
+                if matches!(kind, ArrayKind::Command) {
+                    static COMMAND_SAME_LINE_ARGS: LazyLock<HashMap<&str, usize>> = LazyLock::new(|| {
+                        HashMap::from_iter([
+                            ("foreach", 2),     // {foreach $var $array {...} ...}
+                            ("foreach_int", 3), // {foreach_int $var 0 5 {...} ...}
+                            ("if", 1),          // {if {condition} {...} ...}
+                            ("if_else", 1),     // {if_else {condition} {...} {...}}
+                            ("unless", 1),      // {unless {condition} {...} ...}
+                            ("with", 1),        // {with $object {...} ...}
+                            ("while", 1),       // {while {condition} {...} ...}
+                            ("func", 1),        // {func name ($arg1 ...) {...} ...}
+                        ])
+                    });
+
+                    if let Some(&arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
+                        let count = remaining.len().min(arg_count);
+                        let args;
+                        (args, remaining) = remaining.split_at(count);
+
+                        for arg in args {
+                            f.write_char(' ')?;
+                            self.format_expr_noindent(arg, f)?;
+                        }
+                    }
+                }
             },
             _ => {
                 remaining = array;
