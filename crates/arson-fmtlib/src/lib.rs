@@ -206,7 +206,7 @@ impl<'src> Formatter<'src> {
     fn probe_array_(&self, buffer: &mut String, array: &[Expression<'src>], kind: ArrayKind) -> bool {
         let (l, r) = kind.delimiters();
         buffer.push(l);
-        let result = self.probe_array(array).inspect(|short| buffer.push_str(&short));
+        let result = self.probe_array(array).inspect(|short| buffer.push_str(short));
         buffer.push(r);
         result.is_some()
     }

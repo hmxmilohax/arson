@@ -186,16 +186,16 @@ fn compile(
     let output_path = output_path
         .map(Cow::Borrowed)
         .unwrap_or_else(|| Cow::Owned(input_path.with_extension("dtb")));
-    validate_paths(&input_path, &output_path, "DTA", "DTB")?;
+    validate_paths(input_path, &output_path, "DTA", "DTB")?;
 
-    let input_file = File::open(&input_path)
+    let input_file = File::open(input_path)
         .and_then(std::io::read_to_string)
         .context("couldn't read input file")?;
 
     let array = match DataArray::parse(&input_file) {
         Ok(ast) => ast,
         Err(error) => match error {
-            arson_dtb::DataParseError::Parse(error) => write_parse_errors(error, &input_path, &input_file),
+            arson_dtb::DataParseError::Parse(error) => write_parse_errors(error, input_path, &input_file),
             _ => bail!("couldn't load input file: {error}"),
         },
     };
