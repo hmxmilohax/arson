@@ -195,7 +195,10 @@ fn compile(
     let array = match DataArray::parse(&input_file) {
         Ok(ast) => ast,
         Err(error) => match error {
-            arson_dtb::DataParseError::Parse(error) => write_parse_errors(error, input_path, &input_file),
+            arson_dtb::DataParseError::Parse(error) => {
+                write_parse_errors(error, input_path, &input_file);
+                bail!("failed to parse input file");
+            },
             _ => bail!("couldn't load input file: {error}"),
         },
     };
@@ -263,7 +266,10 @@ fn decompile(
     let options = arson_fmtlib::Options::default();
     let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
         Ok(formatter) => formatter,
-        Err(error) => write_parse_errors(error, &input_path, &unformatted),
+        Err(error) => {
+            write_parse_errors(error, &input_path, &unformatted);
+            bail!("failed to parse decompiled text");
+        },
     };
 
     let mut output_file = create_file(&output_path, allow_overwrite)?;
@@ -345,7 +351,7 @@ fn create_file(path: &Path, allow_overwrite: bool) -> anyhow::Result<BufWriter<F
     file.map(BufWriter::new).context("couldn't create output file")
 }
 
-fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) -> ! {
+fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) {
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config { chars: Chars::ascii(), ..Default::default() };
 
@@ -353,6 +359,4 @@ fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) ->
     for error in error.diagnostics {
         _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
     }
-
-    std::process::abort()
 }

@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
                 let _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
             }
 
-            std::process::abort()
+            bail!("failed to parse file")
         },
     };
 
