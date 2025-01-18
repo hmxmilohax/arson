@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 anyhow = "1.0.95"
 arson-dtb = { path = "../../crates/arson-dtb", features = ["token-conversion"] }
+arson-fmtlib = { path = "../../crates/arson-fmtlib" }
 arson-parse = { path = "../../crates/arson-parse", features = ["reporting"] }
 
 clap = { version = "4.5.23", features = ["derive"] }

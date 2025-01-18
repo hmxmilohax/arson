@@ -154,6 +154,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arson-dtb",
+ "arson-fmtlib",
  "arson-parse",
  "clap",
 ]

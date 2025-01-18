@@ -9,6 +9,6 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-arson-parse = { path = "../../crates/arson-parse", features = ["reporting"] }
+arson-parse = { path = "../../crates/arson-parse" }
 
 thiserror = "1.0.65"
