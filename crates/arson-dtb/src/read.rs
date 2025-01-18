@@ -235,21 +235,21 @@ pub fn decrypt(reader: &mut impl SeekRead) -> Result<Vec<u8>, ReadError> {
     let position = reader.stream_position()?;
 
     // Attempt new-style decryption first
-    if let Ok(_) = read_newstyle(reader) {
+    if read_newstyle(reader).is_ok() {
         reader.seek(io::SeekFrom::Start(position))?;
         return Ok(decrypt_newstyle(reader).map(|(bytes, _)| bytes)?);
     };
 
     // If that fails, try old-style
     reader.seek(io::SeekFrom::Start(position))?;
-    if let Ok(_) = read_oldstyle(reader) {
+    if read_oldstyle(reader).is_ok() {
         reader.seek(io::SeekFrom::Start(position))?;
         return Ok(decrypt_oldstyle(reader).map(|(bytes, _)| bytes)?);
     };
 
     // Finally, try unencrypted
     reader.seek(io::SeekFrom::Start(position))?;
-    if let Ok(_) = read_unencrypted(reader) {
+    if read_unencrypted(reader).is_ok() {
         reader.seek(io::SeekFrom::Start(position))?;
         return Ok(decrypt_unencrypted(reader)?);
     };
@@ -271,7 +271,7 @@ pub fn decrypt_oldstyle(reader: &mut impl io::Read) -> io::Result<(Vec<u8>, u32)
 }
 
 fn decrypt_unencrypted(reader: &mut impl io::Read) -> io::Result<Vec<u8>> {
-    decrypt_impl(reader, &mut NoopCrypt).map(|bytes| bytes)
+    decrypt_impl(reader, &mut NoopCrypt)
 }
 
 fn decrypt_impl(reader: &mut impl io::Read, crypt: &mut impl CryptAlgorithm) -> io::Result<Vec<u8>> {

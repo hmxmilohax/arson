@@ -198,6 +198,10 @@ impl<'a> IntoIterator for &'a DataArray {
     type IntoIter = <&'a Vec<DataNode> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
+        #[expect(
+            clippy::into_iter_on_ref,
+            reason = "intentionally forwarding to into_iter"
+        )]
         (&self.nodes).into_iter()
     }
 }
@@ -207,6 +211,10 @@ impl<'a> IntoIterator for &'a mut DataArray {
     type IntoIter = <&'a mut Vec<DataNode> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
+        #[expect(
+            clippy::into_iter_on_ref,
+            reason = "intentionally forwarding to into_iter"
+        )]
         (&mut self.nodes).into_iter()
     }
 }

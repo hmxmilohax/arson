@@ -50,7 +50,7 @@ impl DataArray {
         convert_to_array(&ast, &(0..text.len()), &lines)
     }
 
-    pub fn to_tokens<'src>(&'src self) -> Vec<TokenValue<'src>> {
+    pub fn to_tokens(&self) -> Vec<TokenValue<'_>> {
         convert_to_tokens(self)
     }
 }
@@ -120,7 +120,7 @@ fn convert_to_array(
     Ok(array)
 }
 
-fn convert_to_tokens<'src>(array: &'src DataArray) -> Vec<TokenValue<'src>> {
+fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
     let mut tokens = Vec::new();
 
     fn symbol_pair<'src>(
