@@ -153,7 +153,7 @@ impl<'src> Formatter<'src> {
         f.write_char(r)
     }
 
-    fn format_array_(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>,) -> fmt::Result {
+    fn format_array_(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn is_any_array(expr: &Expression<'_>) -> bool {
             matches!(
                 expr.value,
