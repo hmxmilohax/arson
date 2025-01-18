@@ -203,6 +203,10 @@ impl<'src> Formatter<'src> {
     }
 
     fn probe_array(&self, array: &[Expression<'src>]) -> Option<String> {
+        if array.is_empty() {
+            return Some(String::new());
+        }
+
         // If there is only one element, try to print it as-is
         if array.len() == 1 {
             let first = &array[0];
