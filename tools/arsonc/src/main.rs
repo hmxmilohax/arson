@@ -12,7 +12,7 @@ use arson_dtb::ReadError;
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
-use arson_parse::ParseError;
+use arson_parse::{ParseError, TokenValue};
 use clap::Parser;
 
 /// The Arson DTA<->DTB compiler/decompiler.
@@ -245,16 +245,25 @@ fn decompile(
     let array = result.context("couldn't read input file")?;
     let tokens = array.to_tokens();
 
-    let mut text = String::new();
+    let mut unformatted = String::with_capacity(tokens.len() * 5);
     for token in tokens {
         use std::fmt::Write;
-        write!(text, "{token} ").context("couldn't format token buffer")?;
+
+        let result = match token {
+            // This should never happen, fail immediately if it does
+            TokenValue::Error(error) => bail!("encountered error when tokenizing decompiled file: {error}"),
+
+            _ => write!(unformatted, "{token}"),
+        };
+        result.context("couldn't format token buffer")?;
+
+        unformatted.push(' ');
     }
 
     let options = arson_fmtlib::Options::default();
-    let formatter = match arson_fmtlib::Formatter::new(&text, options) {
+    let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
         Ok(formatter) => formatter,
-        Err(error) => write_parse_errors(error, &input_path, &text),
+        Err(error) => write_parse_errors(error, &input_path, &unformatted),
     };
 
     let mut output_file = create_file(&output_path, allow_overwrite)?;
