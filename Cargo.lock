@@ -103,6 +103,7 @@ dependencies = [
  "arson-fmtlib",
  "arson-parse",
  "clap",
+ "encoding_rs",
  "thiserror",
 ]
 
