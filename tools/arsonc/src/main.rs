@@ -45,6 +45,9 @@ enum CompilerMode {
         ///
         /// Defaults to the input path with the extension changed to .dtb.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
     },
     /// Decompile a compiled script file (.dtb) into textual form (.dta).
     Decompile {
@@ -59,6 +62,9 @@ enum CompilerMode {
         ///
         /// Defaults to the input path with the extension changed to .dta.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
     },
     /// Changes the encryption of a compiled script file (.dtb).
     CrossCrypt {
@@ -81,6 +87,9 @@ enum CompilerMode {
         ///
         /// Defaults to appending `_encrypted` to the file name.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
     },
 }
 
@@ -115,19 +124,35 @@ fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
 
     match args.mode {
-        CompilerMode::Compile { encryption, key, encoding, input_path, output_path } => {
-            compile(encryption, key, encoding, &input_path, output_path.as_deref())
-        },
-        CompilerMode::Decompile { decryption, input_path, output_path } => {
-            decompile(decryption, input_path, output_path)
-        },
+        CompilerMode::Compile {
+            encryption,
+            key,
+            encoding,
+            input_path,
+            output_path,
+            allow_overwrite,
+        } => compile(
+            encryption,
+            key,
+            encoding,
+            &input_path,
+            output_path.as_deref(),
+            allow_overwrite,
+        ),
+        CompilerMode::Decompile {
+            decryption,
+            input_path,
+            output_path,
+            allow_overwrite,
+        } => decompile(decryption, input_path, output_path, allow_overwrite),
         CompilerMode::CrossCrypt {
             decryption,
             encryption,
             key,
             input_path,
             output_path,
-        } => cross_crypt(decryption, encryption, key, input_path, output_path),
+            allow_overwrite,
+        } => cross_crypt(decryption, encryption, key, input_path, output_path, allow_overwrite),
     }
 }
 
@@ -156,6 +181,7 @@ fn compile(
     encoding: Encoding,
     input_path: &Path,
     output_path: Option<&Path>,
+    allow_overwrite: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path
         .map(Cow::Borrowed)
@@ -174,10 +200,7 @@ fn compile(
         },
     };
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
-
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
     let settings = WriteSettings {
         encoding: match encoding {
             Encoding::UTF8 => WriteEncoding::UTF8,
@@ -206,6 +229,7 @@ fn decompile(
     decryption: Option<EncryptionMode>,
     input_path: PathBuf,
     output_path: Option<PathBuf>,
+    allow_overwrite: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dta"));
     validate_paths(&input_path, &output_path, "DTB", "DTA")?;
@@ -233,10 +257,7 @@ fn decompile(
         Err(error) => write_parse_errors(error, &input_path, &text),
     };
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
-
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
     write!(output_file, "{formatter}").with_context(|| {
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
@@ -249,6 +270,7 @@ fn cross_crypt(
     key: Option<u32>,
     input_path: PathBuf,
     output_path: Option<PathBuf>,
+    allow_overwrite: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path.unwrap_or_else(|| {
         let suffix = match encryption {
@@ -287,10 +309,7 @@ fn cross_crypt(
     };
     let bytes = result.context("couldn't read input file")?;
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
-
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
     let result = match encryption {
         EncryptionMode::None => output_file.write_all(&bytes),
         EncryptionMode::Old => match key {
@@ -307,6 +326,14 @@ fn cross_crypt(
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
     })
+}
+
+fn create_file(path: &Path, allow_overwrite: bool) -> anyhow::Result<BufWriter<File>> {
+    let file = match allow_overwrite {
+        true => File::create(path),
+        false => File::create_new(path),
+    };
+    file.map(BufWriter::new).context("couldn't create output file")
 }
 
 fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) -> ! {
