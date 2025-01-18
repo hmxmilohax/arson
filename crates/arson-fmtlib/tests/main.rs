@@ -139,6 +139,7 @@ fn directives() {
 
 #[test]
 fn conditionals() {
+    // Top-scope
     assert_format(
         "#ifdef kDefine (array1 50) #endif",
         "#ifdef kDefine\
@@ -153,6 +154,30 @@ fn conditionals() {
        \n(array2 100)\
        \n#endif",
     );
+
+    // Nested within another conditional
+    assert_format(
+        "#ifdef kDefine   #ifdef kDefine2 (array1 50) #endif   #endif",
+        "#ifdef kDefine\
+       \n   #ifdef kDefine2\
+       \n   (array1 50)\
+       \n   #endif\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine   #ifdef kDefine2 (array1 50) #else (array2 100) #endif   #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n   #ifdef kDefine2\
+       \n   (array1 50)\
+       \n   #else\
+       \n   (array2 100)\
+       \n   #endif\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+
+    // Nested within an array
     assert_format(
         "(#ifdef kDefine (array1 50) #endif)",
         "(\
@@ -169,6 +194,30 @@ fn conditionals() {
        \n   #else\
        \n   (array2 100)\
        \n   #endif\
+       \n)",
+    );
+
+    // Nested within two arrays
+    assert_format(
+        "(foo (bar #ifdef kDefine (array1 50) #endif))",
+        "(foo\
+       \n   (bar\
+       \n      #ifdef kDefine\
+       \n      (array1 50)\
+       \n      #endif\
+       \n   )\
+       \n)",
+    );
+    assert_format(
+        "(foo (bar #ifdef kDefine (array1 50) #else (array2 100) #endif))",
+        "(foo\
+       \n   (bar\
+       \n      #ifdef kDefine\
+       \n      (array1 50)\
+       \n      #else\
+       \n      (array2 100)\
+       \n      #endif\
+       \n   )\
        \n)",
     );
 }

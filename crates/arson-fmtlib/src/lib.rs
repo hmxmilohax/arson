@@ -98,7 +98,7 @@ pub struct Formatter<'src> {
     input: &'src str,
     ast: Vec<Expression<'src>>,
 
-    indent_level: Cell<isize>,
+    indent_level: Cell<usize>,
     indent_text: String,
 }
 
@@ -140,7 +140,7 @@ impl fmt::Display for Formatter<'_> {
 
 struct IndentGuard<'src> {
     formatter: &'src Formatter<'src>,
-    saved: isize,
+    saved: usize,
 }
 
 impl Drop for IndentGuard<'_> {
@@ -329,9 +329,16 @@ impl<'src> Formatter<'src> {
         self.write_indent(f)
     }
 
-    fn format_block(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Bump up indentation for inner elements
-        let guard = self.bump_indent(1);
+    fn format_conditional_block(
+        &self,
+        array: &[Expression<'src>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        // Only indent if block contains inner conditionals
+        let guard = match array.iter().any(|n| is_conditional(n)) {
+            true => self.bump_indent(1),
+            false => self.bump_indent(0),
+        };
 
         for expr in array {
             self.format_expr(expr, f)?;
@@ -339,18 +346,6 @@ impl<'src> Formatter<'src> {
         }
 
         // Restore indentation
-        drop(guard);
-
-        Ok(())
-    }
-
-    fn format_conditional_block(
-        &self,
-        array: &[Expression<'src>],
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        let guard = self.bump_indent(-1);
-        self.format_block(&array, f)?;
         drop(guard);
 
         Ok(())
@@ -397,19 +392,13 @@ impl<'src> Formatter<'src> {
 
                 self.format_conditional_block(&true_branch.exprs, f)?;
                 if let Some(false_branch) = false_branch {
-                    // TODO: this is a hack to keep directives indented properly after writing the block
-                    if self.indent_level.get() > 0 {
-                        f.write_str(&self.indent_text)?;
-                    }
+                    self.write_indent(f)?;
                     f.write_str("#else")?;
                     f.write_char('\n')?;
                     self.format_conditional_block(&false_branch.exprs, f)?;
                 }
 
-                // TODO: this is a hack to keep directives indented properly after writing the block
-                if self.indent_level.get() > 0 {
-                    f.write_str(&self.indent_text)?;
-                }
+                self.write_indent(f)?;
                 f.write_str("#endif")
             },
 
@@ -419,7 +408,7 @@ impl<'src> Formatter<'src> {
     }
 
     #[must_use = "indentation is restored when guard is dropped"]
-    fn bump_indent(&self, amount: isize) -> IndentGuard<'_> {
+    fn bump_indent(&self, amount: usize) -> IndentGuard<'_> {
         let saved = self.indent_level.get();
         self.indent_level.set(saved + amount);
         IndentGuard { formatter: self, saved }
