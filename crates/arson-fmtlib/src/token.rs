@@ -86,6 +86,15 @@ struct InnerFormatter<'src> {
     indent_text: String,
 }
 
+enum ProbeStopCause {
+    Array,
+    Directive,
+    Conditional,
+    Comment,
+    Length,
+    Error,
+}
+
 impl<'src> InnerFormatter<'src> {
     fn new(options: Options, input: &'src str) -> Self {
         let indent_text = match options.indentation {
@@ -202,16 +211,17 @@ impl<'src> InnerFormatter<'src> {
         self.format_array_open_unindented(open_token, kind, f)
     }
 
-    fn probe_array(&mut self) -> Result<String, Vec<Token<'src>>> {
+    fn probe_array(&mut self) -> Result<String, (Vec<Token<'src>>, ProbeStopCause)> {
         let mut is_short = true;
         let mut short_str = String::new();
         let mut array_tokens = Vec::new();
+        let mut stop_cause = ProbeStopCause::Error;
 
         macro_rules! try_write {
             ($($arg:tt)+) => {
                 match $($arg)+ {
                     Ok(ok) => ok,
-                    Err(_) => return Err(array_tokens),
+                    Err(_) => return Err((array_tokens, ProbeStopCause::Error)),
                 }
             }
         }
@@ -238,11 +248,13 @@ impl<'src> InnerFormatter<'src> {
                 },
 
                 TokenValue::ArrayOpen | TokenValue::CommandOpen | TokenValue::PropertyOpen => {
+                    stop_cause = ProbeStopCause::Array;
                     is_short = false;
                     break;
                 },
 
                 TokenValue::Ifdef | TokenValue::Ifndef | TokenValue::Else | TokenValue::Endif => {
+                    stop_cause = ProbeStopCause::Conditional;
                     is_short = false;
                     break;
                 },
@@ -253,15 +265,18 @@ impl<'src> InnerFormatter<'src> {
                 | TokenValue::IncludeOptional
                 | TokenValue::Merge
                 | TokenValue::Autorun => {
+                    stop_cause = ProbeStopCause::Directive;
                     is_short = false;
                     break;
                 },
 
                 TokenValue::Comment(_) | TokenValue::Error(_) => {
+                    stop_cause = ProbeStopCause::Comment;
                     is_short = false;
                     break;
                 },
                 TokenValue::BlockComment(text) if text.contains('\n') => {
+                    stop_cause = ProbeStopCause::Comment;
                     is_short = false;
                     break;
                 },
@@ -284,6 +299,7 @@ impl<'src> InnerFormatter<'src> {
                     array_tokens.push(token);
 
                     if short_str.len() >= self.options.max_array_width {
+                        stop_cause = ProbeStopCause::Length;
                         is_short = false;
                         break;
                     }
@@ -298,7 +314,7 @@ impl<'src> InnerFormatter<'src> {
 
             Ok(short_str)
         } else {
-            Err(array_tokens)
+            Err((array_tokens, stop_cause))
         }
     }
 
@@ -312,7 +328,7 @@ impl<'src> InnerFormatter<'src> {
         // Checked later, checking here would format things incorrectly
         // self.format_possible_comments(&open_token, f)?;
 
-        let mut array_tokens = match self.probe_array() {
+        let (mut array_tokens, stop_cause) = match self.probe_array() {
             Ok(short_str) => return f.write_str(&short_str),
             Err(tokens) => tokens,
         };
@@ -367,7 +383,7 @@ impl<'src> InnerFormatter<'src> {
 
                     f.write_char('\n')?;
                 },
-                TokenValue::Integer(_) => {
+                TokenValue::Integer(_) if matches!(stop_cause, ProbeStopCause::Array) => {
                     // More than likely this is used as a data key if we're in a large array,
                     // print on the same line as the opening
                     self.write_token_unindented(first, f)?;
@@ -392,7 +408,9 @@ impl<'src> InnerFormatter<'src> {
 
                     f.write_char('\n')?;
                 },
-                TokenValue::String(_) if matches!(kind, ArrayKind::Command) => {
+                TokenValue::String(_)
+                    if matches!(kind, ArrayKind::Command) || matches!(stop_cause, ProbeStopCause::Array) =>
+                {
                     // The first argument of a command being a string means to look up an object,
                     // format it similarly to variables
                     self.write_token_unindented(first, f)?;
@@ -488,7 +506,7 @@ impl<'src> InnerFormatter<'src> {
 
             match self.probe_array() {
                 Ok(short_str) => return f.write_str(&short_str),
-                Err(tokens) => {
+                Err((tokens, _)) => {
                     f.write_char('\n')?;
 
                     self.indent_level += 1;

@@ -173,11 +173,27 @@ fn inner_arrays() {
 #[test]
 fn multiple_arrays() {
     assert_format(
-        "(sym1 (10 20 30) {sym2 100} [sym2])",
-        "(sym1\
+        "(foo (10 20 30) {bar 100} [bar])",
+        "(foo\
        \n   (10 20 30)\
-       \n   {sym2 100}\
-       \n   [sym2]\
+       \n   {bar 100}\
+       \n   [bar]\
+       \n)",
+    );
+    assert_format(
+        "(400 (10 20 30) {bar 100} [bar])",
+        "(400\
+       \n   (10 20 30)\
+       \n   {bar 100}\
+       \n   [bar]\
+       \n)",
+    );
+    assert_format(
+        "(\"foo\" (10 20 30) {bar 100} [bar])",
+        "(\"foo\"\
+       \n   (10 20 30)\
+       \n   {bar 100}\
+       \n   [bar]\
        \n)",
     );
 }

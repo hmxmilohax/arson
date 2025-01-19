@@ -111,6 +111,13 @@ impl Drop for IndentGuard<'_, '_> {
     }
 }
 
+struct ArrayProbeStats {
+    arrays: usize,
+    large_arrays: usize,
+    directives: usize,
+    conditionals: usize,
+}
+
 fn is_any_array(expr: &Expression<'_>) -> bool {
     matches!(
         expr.value,
@@ -256,37 +263,42 @@ impl<'src> InnerFormatter<'src> {
         buffer.push(l);
         let result = self.probe_array(array).inspect(|short| buffer.push_str(short));
         buffer.push(r);
-        result.is_some()
+        result.is_ok()
     }
 
-    fn probe_array(&mut self, array: &[Expression<'src>]) -> Option<String> {
+    fn probe_array(&mut self, array: &[Expression<'src>]) -> Result<String, ArrayProbeStats> {
         if array.is_empty() {
-            return Some(String::new());
+            return Ok(String::new());
         }
 
         // If there is only one element, try to print it as-is
         if array.len() == 1 && !is_any_array(&array[0]) {
             let mut short = String::new();
             if self.probe_node(&array[0], &mut short) {
-                return Some(short);
+                return Ok(short);
             }
         }
 
-        let (arrays, large_arrays, directives, conditionals) =
-            array
-                .iter()
-                .fold((0, 0, 0, 0), |(mut arr, mut larry, mut dir, mut cond), n| {
-                    arr += is_any_array(n) as usize;
-                    larry += is_populated_array(n) as usize;
-                    dir += is_directive(n) as usize;
-                    cond += is_conditional(n) as usize;
-                    (arr, larry, dir, cond)
-                });
+        let stats = array.iter().fold(
+            ArrayProbeStats {
+                arrays: 0,
+                large_arrays: 0,
+                directives: 0,
+                conditionals: 0,
+            },
+            |mut stats, n| {
+                stats.arrays += is_any_array(n) as usize;
+                stats.large_arrays += is_populated_array(n) as usize;
+                stats.directives += is_directive(n) as usize;
+                stats.conditionals += is_conditional(n) as usize;
+                stats
+            },
+        );
 
         // Attempt compact array
-        if (arrays == 1 && large_arrays == 1 || (arrays <= 3 && large_arrays < 1))
-            && directives < 1
-            && conditionals < 1
+        if (stats.arrays == 1 && stats.large_arrays == 1 || (stats.arrays <= 3 && stats.large_arrays < 1))
+            && stats.directives < 1
+            && stats.conditionals < 1
         {
             // Max width - 2, to account for array delimiters
             let max_len = self.options.max_array_width - 2;
@@ -305,11 +317,11 @@ impl<'src> InnerFormatter<'src> {
             }
 
             if is_small && limit_buffer.len() <= max_len {
-                return Some(limit_buffer);
+                return Ok(limit_buffer);
             }
         }
 
-        None
+        Err(stats)
     }
 
     fn format_array(
@@ -335,9 +347,10 @@ impl<'src> InnerFormatter<'src> {
         }
 
         // Attempt short representation of the array
-        if let Some(short) = self.probe_array(array) {
-            return f.write_str(&short);
-        }
+        let stats = match self.probe_array(array) {
+            Ok(short) => return f.write_str(&short),
+            Err(stats) => stats,
+        };
 
         // Inspect first element of the array
         let Some((first, mut remaining)) = array.split_first() else {
@@ -356,7 +369,7 @@ impl<'src> InnerFormatter<'src> {
                         let count = remaining.len().min(arg_count);
                         let (args, _remaining) = remaining.split_at(count);
 
-                        if let Some(short) = self.probe_array(args) {
+                        if let Ok(short) = self.probe_array(args) {
                             f.write_char(' ')?;
                             f.write_str(&short)?;
                             if let Some(last_arg) = args.last() {
@@ -387,9 +400,10 @@ impl<'src> InnerFormatter<'src> {
                     }
                 }
             },
-            ExpressionValue::String(_) if matches!(kind, ArrayKind::Command) => {
-                // The first argument of a command being a string means to look up an object,
-                // format it similarly to variables
+            ExpressionValue::String(_) if matches!(kind, ArrayKind::Command) || stats.arrays > 0 => {
+                // The first argument of a command being a string means to look up an object.
+                // Additionally, if the rest of the array contains more arrays, the string
+                // is most likely an object key (weird choice though)
                 self.write_original(first, f)?;
 
                 // Also display the next following symbol on the same line
@@ -510,7 +524,7 @@ impl<'src> InnerFormatter<'src> {
 
         if !body.is_empty() {
             // Attempt short representation
-            if let Some(short) = self.probe_array(body) {
+            if let Ok(short) = self.probe_array(body) {
                 f.write_str(&short)?;
             } else {
                 self.format_array_long(body, None, f)?;
