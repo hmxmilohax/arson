@@ -1,17 +1,110 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_fmtlib::{Indentation, Options};
+use arson_parse::{Expression, ExpressionValue};
 
 fn assert_format(input: &str, expected: &str) {
     let options = Options::default();
     let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
     assert_eq!(actual, expected);
+
+    fn assert_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>], msg: &str) {
+        fn check_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>]) -> Result<(), ()> {
+            if left.len() != right.len() {
+                return Err(());
+            }
+
+            for i in 0..left.len() {
+                match (&left[i].value, &right[i].value) {
+                    (ExpressionValue::Array(left), ExpressionValue::Array(right))
+                    | (ExpressionValue::Command(left), ExpressionValue::Command(right))
+                    | (ExpressionValue::Property(left), ExpressionValue::Property(right)) => {
+                        check_ast_eq(left, right)?;
+                    },
+
+                    (ExpressionValue::Undefine(left), ExpressionValue::Undefine(right))
+                    | (ExpressionValue::Include(left), ExpressionValue::Include(right))
+                    | (ExpressionValue::IncludeOptional(left), ExpressionValue::IncludeOptional(right))
+                    | (ExpressionValue::Merge(left), ExpressionValue::Merge(right)) => {
+                        if left.text != right.text {
+                            return Err(());
+                        }
+                    },
+
+                    (
+                        ExpressionValue::Define(left_name, left),
+                        ExpressionValue::Define(right_name, right),
+                    ) => {
+                        if left_name.text != right_name.text {
+                            return Err(());
+                        }
+
+                        check_ast_eq(&left.exprs, &right.exprs)?;
+                    },
+                    (ExpressionValue::Autorun(left), ExpressionValue::Autorun(right)) => {
+                        check_ast_eq(&left.exprs, &right.exprs)?;
+                    },
+
+                    (
+                        ExpressionValue::Conditional {
+                            is_positive: left_positive,
+                            symbol: left_name,
+                            true_branch: left_true,
+                            false_branch: left_false,
+                        },
+                        ExpressionValue::Conditional {
+                            is_positive: right_positive,
+                            symbol: right_name,
+                            true_branch: right_true,
+                            false_branch: right_false,
+                        },
+                    ) => {
+                        if left_positive != right_positive || left_name.text != right_name.text {
+                            return Err(());
+                        }
+
+                        check_ast_eq(&left_true.exprs, &right_true.exprs)?;
+
+                        match (left_false, right_false) {
+                            (Some(left_false), Some(right_false)) => {
+                                check_ast_eq(&left_false.exprs, &right_false.exprs)?
+                            },
+                            (None, None) => (),
+                            _ => return Err(()),
+                        }
+                    },
+
+                    (left, right) => {
+                        if left != right {
+                            return Err(());
+                        }
+                    },
+                }
+            }
+
+            Ok(())
+        }
+
+        if let Err(_) = check_ast_eq(left, right) {
+            panic!(
+                "{msg}\
+               \n left: {left:?}
+               \nright: {right:?}"
+            );
+        }
+    }
+
+    let input = arson_parse::parse_text(input).unwrap();
+    let expected = arson_parse::parse_text(expected).unwrap();
+    let actual = arson_parse::parse_text(&actual).unwrap();
+    assert_ast_eq(&input, &expected, "input ast differs from expected ast");
+    assert_ast_eq(&actual, &expected, "actual ast differs from expected ast");
+    // sanity check
+    assert_ast_eq(&input, &actual, "input ast differs from actual ast");
 }
 
 fn assert_preserved(input: &str) {
-    let options = Options::default();
-    let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
-    assert_eq!(actual, input);
+    assert_format(input, input)
 }
 
 #[test]

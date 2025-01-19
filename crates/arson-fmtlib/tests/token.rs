@@ -1,18 +1,49 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_fmtlib::{Indentation, Options};
+use arson_parse::{Token, Tokenizer};
 
 fn assert_format(input: &str, expected: &str) {
     let options = Options::default();
 
     let actual = arson_fmtlib::token::format_to_string(input, options);
     assert_eq!(actual, expected);
+
+    fn assert_token_eq(left: &[Token<'_>], right: &[Token<'_>], msg: &str) {
+        fn check_token_eq(left: &[Token<'_>], right: &[Token<'_>]) -> Result<(), ()> {
+            if left.len() != right.len() {
+                return Err(());
+            }
+
+            for i in 0..left.len() {
+                if &left[i].value != &right[i].value {
+                    return Err(());
+                }
+            }
+
+            Ok(())
+        }
+
+        if let Err(_) = check_token_eq(left, right) {
+            panic!(
+                "{msg}\
+               \n left: {left:?}
+               \nright: {right:?}"
+            );
+        }
+    }
+
+    let input: Vec<_> = Tokenizer::new(input).collect();
+    let expected: Vec<_> = Tokenizer::new(expected).collect();
+    let actual: Vec<_> = Tokenizer::new(&actual).collect();
+    assert_token_eq(&input, &expected, "input tokens differs from expected tokens");
+    assert_token_eq(&actual, &expected, "actual tokens differs from expected tokens");
+    // sanity check
+    assert_token_eq(&input, &actual, "input tokens differs from actual tokens");
 }
 
 fn assert_preserved(input: &str) {
-    let options = Options::default();
-    let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
-    assert_eq!(actual, input);
+    assert_format(input, input)
 }
 
 #[test]
