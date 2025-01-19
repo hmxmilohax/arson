@@ -2,7 +2,6 @@
 
 //! Formats DTA using an expression-based formatter.
 
-use std::cell::Cell;
 use std::fmt::{self, Write};
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
@@ -57,63 +56,59 @@ pub struct Formatter<'src> {
 
     input: &'src str,
     ast: Vec<Expression<'src>>,
-
-    indent_level: Cell<usize>,
-    indent_text: String,
 }
 
 impl<'src> Formatter<'src> {
     /// Creates a new [`Formatter`] with the given input and options.
     pub fn new(input: &'src str, options: Options) -> Result<Formatter<'src>, ParseError> {
         let ast = arson_parse::parse_text(input)?;
-        let indent_text = match options.indentation {
-            Indentation::Tabs(_) => "\t".to_owned(),
-            Indentation::Spaces(count) => std::iter::repeat_n(' ', count).collect(),
-        };
-
-        Ok(Self {
-            options,
-            input,
-            ast,
-            indent_level: Cell::new(0),
-            indent_text,
-        })
+        Ok(Self { options, input, ast })
     }
 }
 
 impl fmt::Display for Formatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.ast.is_empty() {
-            return Ok(());
-        }
-
-        // At the top level of the AST, print everything on its own line
-        self.format_expr_noindent(&self.ast[0], f)?;
-        for expr in &self.ast[1..] {
-            f.write_char('\n')?;
-            self.format_expr_noindent(expr, f)?;
-        }
-
-        Ok(())
+        InnerFormatter::new(self).format_input(f)
     }
 }
 
-struct IndentGuard<'src> {
-    formatter: &'src Formatter<'src>,
+struct InnerFormatter<'src> {
+    options: Options,
+
+    input: &'src str,
+    exprs: &'src Vec<Expression<'src>>,
+
+    indent_level: usize,
+    indent_text: String,
+}
+
+impl<'src> InnerFormatter<'src> {
+    fn new(outer: &'src Formatter<'src>) -> Self {
+        let indent_text = match outer.options.indentation {
+            Indentation::Tabs(_) => "\t".to_owned(),
+            Indentation::Spaces(count) => std::iter::repeat_n(' ', count).collect(),
+        };
+
+        Self {
+            options: outer.options.clone(),
+
+            input: outer.input,
+            exprs: &outer.ast,
+
+            indent_level: 0,
+            indent_text,
+        }
+    }
+}
+
+struct IndentGuard<'a, 'src> {
+    f: &'a mut InnerFormatter<'src>,
     saved: usize,
 }
 
-impl Drop for IndentGuard<'_> {
+impl Drop for IndentGuard<'_, '_> {
     fn drop(&mut self) {
-        self.formatter.indent_level.set(self.saved);
-    }
-}
-
-struct ExprFormatter<'src>(&'src Formatter<'src>, &'src Expression<'src>);
-
-impl fmt::Display for ExprFormatter<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.format_expr_noindent(self.1, f)
+        self.f.indent_level = self.saved;
     }
 }
 
@@ -149,21 +144,99 @@ fn is_conditional(expr: &Expression<'_>) -> bool {
     matches!(expr.value, ExpressionValue::Conditional { .. })
 }
 
-impl<'src> Formatter<'src> {
-    fn write_original(&self, expr: &Expression<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'src> InnerFormatter<'src> {
+    fn write_original(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
         f.write_str(&self.input[expr.location.clone()])
     }
 
-    fn probe_node(&self, buffer: &mut String, expr: &Expression<'src>) -> bool {
+    fn write_expr_spaced(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
+        f.write_char(' ')?;
+        self.write_original(expr, f)
+    }
+
+    fn format_input(&mut self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.exprs.is_empty() {
+            return Ok(());
+        };
+
+        // At the top level of the AST, print everything on its own line
+        self.format_expr(&self.exprs[0], f)?;
+        for expr in &self.exprs[1..] {
+            f.write_char('\n')?;
+            self.format_expr(&expr, f)?;
+        }
+
+        Ok(())
+    }
+
+    fn format_expr(&mut self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
+        self.write_indent(f)?;
+        self.format_expr_unindented(expr, f)
+    }
+
+    fn format_expr_unindented(&mut self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
+        match &expr.value {
+            ExpressionValue::Integer(_) => self.write_original(expr, f)?,
+            ExpressionValue::Float(_) => self.write_original(expr, f)?,
+            ExpressionValue::String(_) => self.write_original(expr, f)?,
+
+            ExpressionValue::Symbol(_) => self.write_original(expr, f)?,
+            ExpressionValue::Variable(_) => self.write_original(expr, f)?,
+            ExpressionValue::Unhandled => self.write_original(expr, f)?,
+
+            ExpressionValue::Array(body) => self.format_array(body, ArrayKind::Array, f)?,
+            ExpressionValue::Command(body) => self.format_array(body, ArrayKind::Command, f)?,
+            ExpressionValue::Property(body) => self.format_array(body, ArrayKind::Property, f)?,
+
+            ExpressionValue::Define(name, body) => {
+                write!(f, "#define {} ", name.text)?;
+                self.format_define_body(&body.exprs, f)?;
+            },
+            ExpressionValue::Undefine(name) => write!(f, "#undef {}", name.text)?,
+            ExpressionValue::Include(name) => write!(f, "#include {}", name.text)?,
+            ExpressionValue::IncludeOptional(name) => write!(f, "#include_opt {}", name.text)?,
+            ExpressionValue::Merge(name) => write!(f, "#merge {}", name.text)?,
+            ExpressionValue::Autorun(body) => {
+                f.write_str("#autorun ")?;
+                self.format_array(&body.exprs, ArrayKind::Command, f)?;
+            },
+
+            ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
+                match is_positive {
+                    true => write!(f, "#ifdef {}", symbol.text)?,
+                    false => write!(f, "#ifndef {}", symbol.text)?,
+                };
+                f.write_char('\n')?;
+
+                self.format_conditional_block(&true_branch.exprs, f)?;
+                if let Some(false_branch) = false_branch {
+                    self.write_indent(f)?;
+                    f.write_str("#else")?;
+                    f.write_char('\n')?;
+                    self.format_conditional_block(&false_branch.exprs, f)?;
+                }
+
+                self.write_indent(f)?;
+                f.write_str("#endif")?;
+            },
+
+            ExpressionValue::Comment(_) => self.write_original(expr, f)?,
+            ExpressionValue::BlockComment(_) => self.write_original(expr, f)?,
+        }
+
+        Ok(())
+    }
+
+    fn probe_node(&mut self, expr: &Expression<'src>, buffer: &mut String) -> bool {
         match &expr.value {
             ExpressionValue::Array(array) => self.probe_array_(buffer, array, ArrayKind::Array),
             ExpressionValue::Command(array) => self.probe_array_(buffer, array, ArrayKind::Command),
             ExpressionValue::Property(array) => self.probe_array_(buffer, array, ArrayKind::Property),
-            _ => write!(buffer, "{}", ExprFormatter(self, expr)).is_ok(),
+            _ => self.format_expr_unindented(&expr, buffer).is_ok(),
         }
     }
 
-    fn probe_array_(&self, buffer: &mut String, array: &[Expression<'src>], kind: ArrayKind) -> bool {
+    fn probe_array_(&mut self, buffer: &mut String, array: &[Expression<'src>], kind: ArrayKind) -> bool {
         let (l, r) = kind.delimiters();
         buffer.push(l);
         let result = self.probe_array(array).inspect(|short| buffer.push_str(short));
@@ -171,7 +244,7 @@ impl<'src> Formatter<'src> {
         result.is_some()
     }
 
-    fn probe_array(&self, array: &[Expression<'src>]) -> Option<String> {
+    fn probe_array(&mut self, array: &[Expression<'src>]) -> Option<String> {
         if array.is_empty() {
             return Some(String::new());
         }
@@ -181,7 +254,7 @@ impl<'src> Formatter<'src> {
             let first = &array[0];
             if !is_any_array(first) && !is_conditional(first) {
                 let mut short = String::new();
-                write!(short, "{}", ExprFormatter(self, &array[0])).ok()?;
+                self.format_expr_unindented(&array[0], &mut short).ok()?;
                 return Some(short);
             }
         }
@@ -206,10 +279,10 @@ impl<'src> Formatter<'src> {
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
 
-            let mut is_small = self.probe_node(&mut limit_buffer, &array[0]);
+            let mut is_small = self.probe_node(&array[0], &mut limit_buffer);
             for expr in &array[1..] {
                 limit_buffer.push(' ');
-                is_small &= self.probe_node(&mut limit_buffer, expr);
+                is_small &= self.probe_node(expr, &mut limit_buffer);
                 if !is_small || limit_buffer.len() > max_len {
                     break;
                 }
@@ -224,10 +297,10 @@ impl<'src> Formatter<'src> {
     }
 
     fn format_array(
-        &self,
+        &mut self,
         array: &[Expression<'src>],
         kind: ArrayKind,
-        f: &mut fmt::Formatter<'_>,
+        f: &mut impl fmt::Write,
     ) -> fmt::Result {
         let (l, r) = kind.delimiters();
         f.write_char(l)?;
@@ -236,10 +309,10 @@ impl<'src> Formatter<'src> {
     }
 
     fn format_array_(
-        &self,
+        &mut self,
         array: &[Expression<'src>],
         kind: ArrayKind,
-        f: &mut fmt::Formatter<'_>,
+        f: &mut impl fmt::Write,
     ) -> fmt::Result {
         if array.is_empty() {
             return Ok(());
@@ -258,7 +331,7 @@ impl<'src> Formatter<'src> {
         match first.value {
             ExpressionValue::Symbol(name) => {
                 // Display leading symbol on the same line as the array opening
-                self.format_expr_noindent(first, f)?;
+                self.write_original(first, f)?;
 
                 // Additional arguments which should be displayed on the same line
                 if matches!(kind, ArrayKind::Command) {
@@ -277,18 +350,17 @@ impl<'src> Formatter<'src> {
             ExpressionValue::Integer(_) if remaining.iter().any(|n| is_any_array(n)) => {
                 // Display integers used as data keys or case values on the
                 // same line as the array opening
-                self.format_expr_noindent(first, f)?;
+                self.write_original(first, f)?;
             },
             ExpressionValue::Variable(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_) => {
                 // Display leading variable on the same line as the array opening
-                self.format_expr_noindent(first, f)?;
+                self.write_original(first, f)?;
 
                 if matches!(kind, ArrayKind::Command) {
                     // Also display the next following symbol on the same line
                     if let Some((next, _remaining)) = remaining.split_first() {
                         if matches!(next.value, ExpressionValue::Symbol(_)) {
-                            f.write_char(' ')?;
-                            self.format_expr_noindent(next, f)?;
+                            self.write_expr_spaced(next, f)?;
                             remaining = _remaining;
                         }
                     }
@@ -297,13 +369,12 @@ impl<'src> Formatter<'src> {
             ExpressionValue::String(_) if matches!(kind, ArrayKind::Command) => {
                 // The first argument of a command being a string means to look up an object,
                 // format it similarly to variables
-                self.format_expr_noindent(first, f)?;
+                self.write_original(first, f)?;
 
                 // Also display the next following symbol on the same line
                 if let Some((next, _remaining)) = remaining.split_first() {
                     if matches!(next.value, ExpressionValue::Symbol(_)) {
-                        f.write_char(' ')?;
-                        self.format_expr_noindent(next, f)?;
+                        self.write_expr_spaced(next, f)?;
                         remaining = _remaining;
                     }
                 }
@@ -316,13 +387,13 @@ impl<'src> Formatter<'src> {
         self.format_array_long(remaining, f)
     }
 
-    fn format_array_long(&self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format_array_long(&mut self, array: &[Expression<'src>], f: &mut impl fmt::Write) -> fmt::Result {
         // Bump up indentation for inner elements
         let guard = self.bump_indent(1);
 
         f.write_char('\n')?;
         for expr in array {
-            self.format_expr(expr, f)?;
+            guard.f.format_expr(expr, f)?;
             f.write_char('\n')?;
         }
 
@@ -333,7 +404,7 @@ impl<'src> Formatter<'src> {
         self.write_indent(f)
     }
 
-    fn format_define_body(&self, body: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format_define_body(&mut self, body: &[Expression<'src>], f: &mut impl fmt::Write) -> fmt::Result {
         let (l, r) = ArrayKind::Array.delimiters();
         f.write_char(l)?;
 
@@ -350,9 +421,9 @@ impl<'src> Formatter<'src> {
     }
 
     fn format_conditional_block(
-        &self,
+        &mut self,
         array: &[Expression<'src>],
-        f: &mut fmt::Formatter<'_>,
+        f: &mut impl fmt::Write,
     ) -> fmt::Result {
         // Only indent if block contains inner conditionals
         let guard = match array.iter().any(|n| is_conditional(n)) {
@@ -361,7 +432,7 @@ impl<'src> Formatter<'src> {
         };
 
         for expr in array {
-            self.format_expr(expr, f)?;
+            guard.f.format_expr(expr, f)?;
             f.write_char('\n')?;
         }
 
@@ -371,71 +442,15 @@ impl<'src> Formatter<'src> {
         Ok(())
     }
 
-    fn format_expr(&self, expr: &Expression<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.write_indent(f)?;
-        self.format_expr_noindent(expr, f)
-    }
-
-    fn format_expr_noindent(&self, expr: &Expression<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &expr.value {
-            ExpressionValue::Integer(_) => self.write_original(expr, f),
-            ExpressionValue::Float(_) => self.write_original(expr, f),
-            ExpressionValue::String(_) => self.write_original(expr, f),
-
-            ExpressionValue::Symbol(_) => self.write_original(expr, f),
-            ExpressionValue::Variable(_) => self.write_original(expr, f),
-            ExpressionValue::Unhandled => self.write_original(expr, f),
-
-            ExpressionValue::Array(body) => self.format_array(body, ArrayKind::Array, f),
-            ExpressionValue::Command(body) => self.format_array(body, ArrayKind::Command, f),
-            ExpressionValue::Property(body) => self.format_array(body, ArrayKind::Property, f),
-
-            ExpressionValue::Define(name, body) => {
-                write!(f, "#define {} ", name.text)?;
-                self.format_define_body(&body.exprs, f)
-            },
-            ExpressionValue::Undefine(name) => write!(f, "#undef {}", name.text),
-            ExpressionValue::Include(name) => write!(f, "#include {}", name.text),
-            ExpressionValue::IncludeOptional(name) => write!(f, "#include_opt {}", name.text),
-            ExpressionValue::Merge(name) => write!(f, "#merge {}", name.text),
-            ExpressionValue::Autorun(body) => {
-                f.write_str("#autorun ")?;
-                self.format_array(&body.exprs, ArrayKind::Command, f)
-            },
-
-            ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
-                match is_positive {
-                    true => write!(f, "#ifdef {}", symbol.text)?,
-                    false => write!(f, "#ifndef {}", symbol.text)?,
-                };
-                f.write_char('\n')?;
-
-                self.format_conditional_block(&true_branch.exprs, f)?;
-                if let Some(false_branch) = false_branch {
-                    self.write_indent(f)?;
-                    f.write_str("#else")?;
-                    f.write_char('\n')?;
-                    self.format_conditional_block(&false_branch.exprs, f)?;
-                }
-
-                self.write_indent(f)?;
-                f.write_str("#endif")
-            },
-
-            ExpressionValue::Comment(_) => self.write_original(expr, f),
-            ExpressionValue::BlockComment(_) => self.write_original(expr, f),
-        }
-    }
-
     #[must_use = "indentation is restored when guard is dropped"]
-    fn bump_indent(&self, amount: usize) -> IndentGuard<'_> {
-        let saved = self.indent_level.get();
-        self.indent_level.set(saved + amount);
-        IndentGuard { formatter: self, saved }
+    fn bump_indent(&mut self, amount: usize) -> IndentGuard<'_, 'src> {
+        let saved = self.indent_level;
+        self.indent_level = saved + amount;
+        IndentGuard { f: self, saved }
     }
 
-    fn write_indent(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for _i in 0..self.indent_level.get() {
+    fn write_indent(&self, f: &mut impl fmt::Write) -> fmt::Result {
+        for _i in 0..self.indent_level {
             f.write_str(&self.indent_text)?;
         }
 

@@ -6,7 +6,6 @@
 //! this formatter doesn't have the same characteristics as the expression-based one,
 //! and is best used as a fallback.
 
-use std::cell::Cell;
 use std::fmt::{self, Write};
 
 use arson_parse::{ArrayKind, Token, TokenValue, Tokenizer};
@@ -83,7 +82,7 @@ struct InnerFormatter<'src> {
     input: &'src str,
     tokens: Tokenizer<'src>,
 
-    indent_level: Cell<usize>,
+    indent_level: usize,
     indent_text: String,
 }
 
@@ -100,7 +99,7 @@ impl<'src> InnerFormatter<'src> {
             input,
             tokens: Tokenizer::new(input),
 
-            indent_level: Cell::new(0),
+            indent_level: 0,
             indent_text,
         }
     }
@@ -244,10 +243,9 @@ impl<'src> InnerFormatter<'src> {
                 _ => {
                     let token = self.tokens.next().unwrap();
 
-                    if short_str.is_empty() {
-                        try_write!(self.write_token_unindented(&token, &mut short_str));
-                    } else {
-                        try_write!(self.write_token_spaced(&token, &mut short_str));
+                    match short_str.is_empty() {
+                        true => try_write!(self.write_token_unindented(&token, &mut short_str)),
+                        false => try_write!(self.write_token_spaced(&token, &mut short_str)),
                     }
 
                     array_tokens.push(token);
@@ -283,7 +281,7 @@ impl<'src> InnerFormatter<'src> {
             Err(tokens) => tokens,
         };
 
-        self.indent_level.set(self.indent_level.get() + 1);
+        self.indent_level += 1;
 
         fn pop_front<T>(vec: &mut Vec<T>) -> Option<T> {
             if vec.is_empty() {
@@ -385,7 +383,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn format_array_close(&mut self, close_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Unindent before writing token, or else it'll be indented wrong
-        self.indent_level.set(self.indent_level.get().saturating_sub(1));
+        self.indent_level = self.indent_level.saturating_sub(1);
         self.write_token_line(close_token, f)
     }
 
@@ -431,7 +429,7 @@ impl<'src> InnerFormatter<'src> {
                 Err(tokens) => {
                     f.write_char('\n')?;
 
-                    self.indent_level.set(self.indent_level.get() + 1);
+                    self.indent_level += 1;
 
                     for token in tokens {
                         self.write_token_line(&token, f)?;
@@ -460,7 +458,7 @@ impl<'src> InnerFormatter<'src> {
     }
 
     fn write_indent(&self, f: &mut impl fmt::Write) -> fmt::Result {
-        for _i in 0..self.indent_level.get() {
+        for _i in 0..self.indent_level {
             f.write_str(&self.indent_text)?;
         }
 
