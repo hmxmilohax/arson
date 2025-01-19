@@ -4,7 +4,7 @@ use arson_fmtlib::{Indentation, Options};
 
 fn assert_format(input: &str, expected: &str) {
     let options = Options::default();
-    let actual = arson_fmtlib::format_to_string(input, options).unwrap();
+    let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
     assert_eq!(actual, expected);
 }
 
@@ -335,8 +335,8 @@ fn big_example() {
 fn indent_style() {
     fn assert_indent(indentation: Indentation, input: &str, expected: &str) {
         let options = Options { indentation, ..Default::default() };
-        let formatted = arson_fmtlib::format_to_string(input, options).unwrap();
-        assert_eq!(&formatted, expected);
+        let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
+        assert_eq!(actual, expected);
     }
 
     assert_indent(
@@ -381,8 +381,8 @@ fn max_array_width() {
             max_line_width: 999,
             ..Default::default()
         };
-        let formatted = arson_fmtlib::format_to_string(input, options).unwrap();
-        assert_eq!(&formatted, expected);
+        let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
+        assert_eq!(actual, expected);
     }
 
     assert_width(

@@ -339,7 +339,7 @@ impl<'src> Tokenizer<'src> {
         self.text
     }
 
-    pub fn peek(&mut self) -> Option<&Token<'src>> {
+    pub fn peek(&self) -> Option<&Token<'src>> {
         self.current.as_ref()
     }
 

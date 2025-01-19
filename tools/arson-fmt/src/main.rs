@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context};
-use arson_fmtlib::{Formatter, Options};
+use arson_fmtlib::expr::Formatter;
+use arson_fmtlib::Options;
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
