@@ -38,7 +38,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             indentation: Indentation::Spaces(3),
-            max_array_width: 60,
+            max_array_width: 75,
             max_line_width: 90,
         }
     }

@@ -272,7 +272,7 @@ fn directives() {
     );
 
     assert_format(
-        "#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8)",
+        "#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8 kValue9 kValue10)",
         "#define kDefine (\
        \n   kValue1\
        \n   kValue2\
@@ -282,10 +282,12 @@ fn directives() {
        \n   kValue6\
        \n   kValue7\
        \n   kValue8\
+       \n   kValue9\
+       \n   kValue10\
        \n)",
     );
     assert_format(
-        "(#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8))",
+        "(#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8 kValue9 kValue10))",
         "(\
        \n   #define kDefine (\
        \n      kValue1\
@@ -296,6 +298,8 @@ fn directives() {
        \n      kValue6\
        \n      kValue7\
        \n      kValue8\
+       \n      kValue9\
+       \n      kValue10\
        \n   )\
        \n)",
     );
@@ -427,9 +431,9 @@ fn command_args() {
        \n}",
     );
     assert_format(
-        "{set $var \"Some really long text which will get wrapped by the formatter\"}",
+        "{set $var \"Some really quite long text which will get wrapped by the formatter\"}",
         "{set $var\
-       \n   \"Some really long text which will get wrapped by the formatter\"\
+       \n   \"Some really quite long text which will get wrapped by the formatter\"\
        \n}",
     );
     assert_format(
