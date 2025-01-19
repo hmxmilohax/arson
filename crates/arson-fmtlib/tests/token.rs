@@ -9,6 +9,12 @@ fn assert_format(input: &str, expected: &str) {
     assert_eq!(actual, expected);
 }
 
+fn assert_preserved(input: &str) {
+    let options = Options::default();
+    let actual = arson_fmtlib::expr::format_to_string(input, options).unwrap();
+    assert_eq!(actual, input);
+}
+
 #[test]
 fn general() {
     assert_format("(5)", "(5)");
@@ -412,6 +418,370 @@ fn command_args() {
        \n   {print $the_thing}\
        \n   {...}\
        \n}",
+    );
+}
+
+#[test]
+fn comments() {
+    assert_preserved(
+        "(array1 10) ; comment\
+       \n(array2 50) ; comment\
+       \n(array3 250) ; comment",
+    );
+    assert_preserved(
+        "; comment\
+       \n(array1 10)\
+       \n; comment\
+       \n(array2 50)\
+       \n; comment\
+       \n(array3 250)",
+    );
+
+    assert_preserved(
+        "(array1 10) /* comment */\
+       \n(array2 50) /* comment */\
+       \n(array3 250) /* comment */",
+    );
+    assert_preserved(
+        "/* comment */\
+       \n(array1 10)\
+       \n/* comment */\
+       \n(array2 50)\
+       \n/* comment */\
+       \n(array3 250)",
+    );
+
+    assert_preserved(
+        "(foo ; comment\
+       \n   (bar 50)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50) ; comment\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n   ; comment\
+       \n)",
+    );
+
+    assert_format(
+        "( ; comment\
+       \n   (bar 50)\
+       \n)",
+        "(\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n)",
+    );
+    assert_preserved(
+        "(\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n)",
+    );
+    assert_preserved(
+        "(\
+       \n   (bar 50) ; comment\
+       \n)",
+    );
+    assert_preserved(
+        "(\
+       \n   (bar 50)\
+       \n   ; comment\
+       \n)",
+    );
+}
+
+#[test]
+fn directive_comments() {
+    assert_format(
+        "/* comment */ #define kDefine (1)",
+        "/* comment */\
+       \n#define kDefine (1)",
+    );
+    assert_preserved("#define /* comment */ kDefine (1)");
+    assert_preserved("#define kDefine /* comment */ (1)");
+    assert_preserved("#define kDefine (/* comment */ 1)");
+    assert_preserved("#define kDefine (1) /* comment */");
+
+    assert_format(
+        "/* comment */ #undef kDefine",
+        "/* comment */\
+       \n#undef kDefine",
+    );
+    assert_preserved("#undef /* comment */ kDefine");
+    assert_preserved("#undef kDefine /* comment */");
+
+    assert_format(
+        "/* comment */ #include items.dta",
+        "/* comment */\
+       \n#include items.dta",
+    );
+    assert_preserved("#include /* comment */ items.dta");
+    assert_preserved("#include items.dta /* comment */");
+
+    assert_format(
+        "/* comment */ #include_opt items.dta",
+        "/* comment */\
+       \n#include_opt items.dta",
+    );
+    assert_preserved("#include_opt /* comment */ items.dta");
+    assert_preserved("#include_opt items.dta /* comment */");
+
+    assert_format(
+        "/* comment */ #merge items.dta",
+        "/* comment */\
+       \n#merge items.dta",
+    );
+    assert_preserved("#merge /* comment */ items.dta");
+    assert_preserved("#merge items.dta /* comment */");
+
+    assert_format(
+        "/* comment */ #autorun {print \"bar\"}",
+        "/* comment */\
+       \n#autorun {print \"bar\"}",
+    );
+    assert_preserved("#autorun /* comment */ {print \"bar\"}");
+    assert_preserved("#autorun {/* comment */ print \"bar\"}");
+    assert_preserved("#autorun {print /* comment */ \"bar\"}");
+    assert_preserved("#autorun {print \"bar\" /* comment */}");
+    assert_preserved("#autorun {print \"bar\"} /* comment */");
+}
+
+#[test]
+fn conditional_comments() {
+    // insanity
+
+    assert_format(
+        "/* comment */ #ifdef kDefine (array1 50) #endif",
+        "/* comment */\
+       \n#ifdef kDefine\
+       \n(array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef /* comment */ kDefine (array1 50) #endif",
+        "#ifdef /* comment */ kDefine\
+       \n(array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine /* comment */ (array1 50) #endif",
+        "#ifdef kDefine /* comment */\
+       \n(array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine\n/* comment */ (array1 50) #endif",
+        "#ifdef kDefine\
+       \n/* comment */\
+       \n(array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (/* comment */ array1 50) #endif",
+        "#ifdef kDefine\
+       \n(/* comment */ array1 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 /* comment */ 50) #endif",
+        "#ifdef kDefine\
+       \n(array1 /* comment */ 50)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50 /* comment */) #endif",
+        "#ifdef kDefine\
+       \n(array1 50 /* comment */)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) /* comment */ #endif",
+        "#ifdef kDefine\
+       \n(array1 50) /* comment */\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50)\n/* comment */ #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n/* comment */\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #endif /* comment */",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#endif /* comment */",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #endif\n/* comment */",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#endif\
+       \n/* comment */",
+    );
+
+    assert_format(
+        "/* comment */ #ifdef kDefine (array1 50) #else (array2 100) #endif",
+        "/* comment */\
+       \n#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef /* comment */ kDefine (array1 50) #else (array2 100) #endif",
+        "#ifdef /* comment */ kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine /* comment */ (array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine /* comment */\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine\n/* comment */ (array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n/* comment */\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (/* comment */ array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(/* comment */ array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 /* comment */ 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 /* comment */ 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50 /* comment */) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50 /* comment */)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) /* comment */ #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50) /* comment */\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50)\n/* comment */ #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n/* comment */\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else /* comment */ (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else /* comment */\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else\n/* comment */ (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n/* comment */\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (/* comment */ array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(/* comment */ array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 /* comment */ 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 /* comment */ 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100 /* comment */) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100 /* comment */)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) /* comment */ #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100) /* comment */\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100)\n/* comment */ #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n/* comment */\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) #endif /* comment */",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif /* comment */",
+    );
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) #endif\n/* comment */",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif\
+       \n/* comment */",
     );
 }
 

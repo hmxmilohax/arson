@@ -3,6 +3,7 @@
 //! Formats DTA using an expression-based formatter.
 
 use std::fmt::{self, Write};
+use std::iter::Peekable;
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
@@ -68,7 +69,7 @@ impl<'src> Formatter<'src> {
 
 impl fmt::Display for Formatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        InnerFormatter::new(self).format_input(f)
+        InnerFormatter::new(self).format_input(&self.ast, f)
     }
 }
 
@@ -76,7 +77,6 @@ struct InnerFormatter<'src> {
     options: Options,
 
     input: &'src str,
-    exprs: &'src Vec<Expression<'src>>,
 
     indent_level: usize,
     indent_text: String,
@@ -93,7 +93,6 @@ impl<'src> InnerFormatter<'src> {
             options: outer.options.clone(),
 
             input: outer.input,
-            exprs: &outer.ast,
 
             indent_level: 0,
             indent_text,
@@ -154,16 +153,18 @@ impl<'src> InnerFormatter<'src> {
         self.write_original(expr, f)
     }
 
-    fn format_input(&mut self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.exprs.is_empty() {
+    fn format_input(&mut self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut iter = array.iter().peekable();
+
+        let Some(expr) = iter.next() else {
             return Ok(());
         };
 
         // At the top level of the AST, print everything on its own line
-        self.format_expr(&self.exprs[0], f)?;
-        for expr in &self.exprs[1..] {
+        self.format_block_node(expr, &mut iter, f)?;
+        while let Some(expr) = iter.next() {
             f.write_char('\n')?;
-            self.format_expr(&expr, f)?;
+            self.format_block_node(expr, &mut iter, f)?;
         }
 
         Ok(())
@@ -206,14 +207,17 @@ impl<'src> InnerFormatter<'src> {
                     true => write!(f, "#ifdef {}", symbol.text)?,
                     false => write!(f, "#ifndef {}", symbol.text)?,
                 };
-                f.write_char('\n')?;
 
-                self.format_conditional_block(&true_branch.exprs, f)?;
+                let last = Expression::new(ExpressionValue::Symbol(symbol.text), symbol.location.clone());
+                self.format_conditional_block(&true_branch.exprs, &last, f)?;
+
                 if let Some(false_branch) = false_branch {
                     self.write_indent(f)?;
                     f.write_str("#else")?;
-                    f.write_char('\n')?;
-                    self.format_conditional_block(&false_branch.exprs, f)?;
+
+                    let last_location = false_branch.location.start..false_branch.location.start + 5;
+                    let last = Expression::new(ExpressionValue::Symbol("#else"), last_location);
+                    self.format_conditional_block(&false_branch.exprs, &last, f)?;
                 }
 
                 self.write_indent(f)?;
@@ -245,7 +249,10 @@ impl<'src> InnerFormatter<'src> {
             ExpressionValue::Conditional { .. } => false,
 
             ExpressionValue::Comment(_) => false,
-            ExpressionValue::BlockComment(text) => !text.contains('\n'),
+            ExpressionValue::BlockComment(text) => {
+                buffer.push_str(text);
+                !text.contains('\n')
+            },
 
             _ => self.format_expr_unindented(&expr, buffer).is_ok(),
         }
@@ -341,13 +348,14 @@ impl<'src> InnerFormatter<'src> {
             return Ok(());
         };
 
+        let mut last = first;
         match first.value {
             ExpressionValue::Symbol(name) => {
                 // Display leading symbol on the same line as the array opening
                 self.write_original(first, f)?;
 
-                // Additional arguments which should be displayed on the same line
                 if matches!(kind, ArrayKind::Command) {
+                    // Additional arguments which should be displayed on the same line
                     if let Some(&arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
                         let count = remaining.len().min(arg_count);
                         let (args, _remaining) = remaining.split_at(count);
@@ -355,6 +363,9 @@ impl<'src> InnerFormatter<'src> {
                         if let Some(short) = self.probe_array(args) {
                             f.write_char(' ')?;
                             f.write_str(&short)?;
+                            if let Some(last_arg) = args.last() {
+                                last = last_arg;
+                            }
                             remaining = _remaining;
                         }
                     }
@@ -374,6 +385,7 @@ impl<'src> InnerFormatter<'src> {
                     if let Some((next, _remaining)) = remaining.split_first() {
                         if matches!(next.value, ExpressionValue::Symbol(_)) {
                             self.write_expr_spaced(next, f)?;
+                            last = next;
                             remaining = _remaining;
                         }
                     }
@@ -388,33 +400,98 @@ impl<'src> InnerFormatter<'src> {
                 if let Some((next, _remaining)) = remaining.split_first() {
                     if matches!(next.value, ExpressionValue::Symbol(_)) {
                         self.write_expr_spaced(next, f)?;
+                        last = next;
                         remaining = _remaining;
                     }
                 }
             },
             _ => {
-                remaining = array;
+                return self.format_array_long(array, None, f);
             },
         };
 
-        self.format_array_long(remaining, f)
+        self.format_array_long(remaining, Some(last), f)
     }
 
-    fn format_array_long(&mut self, array: &[Expression<'src>], f: &mut impl fmt::Write) -> fmt::Result {
+    fn format_array_long(
+        &mut self,
+        array: &[Expression<'src>],
+        last: Option<&Expression<'src>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
         // Bump up indentation for inner elements
         let guard = self.bump_indent(1);
 
-        f.write_char('\n')?;
-        for expr in array {
-            guard.f.format_expr(expr, f)?;
-            f.write_char('\n')?;
-        }
+        guard.f.format_block(array, last, f)?;
 
         // Restore and write indentation for closing delimiter
         drop(guard);
 
         // Write indentation for closing delimiter and restore
         self.write_indent(f)
+    }
+
+    fn format_block(
+        &mut self,
+        array: &[Expression<'src>],
+        last: Option<&Expression<'src>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        let mut iter = array.iter().peekable();
+
+        if let Some(last) = last {
+            self.format_possible_comment(last, &mut iter, f)?;
+        }
+
+        f.write_char('\n')?;
+
+        let Some(expr) = iter.next() else {
+            return Ok(());
+        };
+
+        // At the top level of the AST, print everything on its own line
+        self.format_block_node(expr, &mut iter, f)?;
+        while let Some(expr) = iter.next() {
+            f.write_char('\n')?;
+            self.format_block_node(expr, &mut iter, f)?;
+        }
+
+        f.write_char('\n')?;
+
+        Ok(())
+    }
+
+    fn format_block_node(
+        &mut self,
+        expr: &Expression<'src>,
+        iter: &mut Peekable<std::slice::Iter<'_, Expression<'src>>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        self.format_expr(expr, f)?;
+        self.format_possible_comment(expr, iter, f)?;
+        Ok(())
+    }
+
+    fn format_possible_comment(
+        &mut self,
+        last: &Expression<'src>,
+        iter: &mut Peekable<std::slice::Iter<'_, Expression<'src>>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        if let Some(comment) = iter.peek() {
+            if matches!(
+                comment.value,
+                ExpressionValue::Comment(_) | ExpressionValue::BlockComment(_)
+            ) {
+                let between = &self.input[last.location.end..comment.location.start];
+                if !between.contains('\n') {
+                    let token = iter.next().unwrap();
+                    self.write_expr_spaced(&token, f)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn format_define_body(&mut self, body: &[Expression<'src>], f: &mut impl fmt::Write) -> fmt::Result {
@@ -426,7 +503,7 @@ impl<'src> InnerFormatter<'src> {
             if let Some(short) = self.probe_array(body) {
                 f.write_str(&short)?;
             } else {
-                self.format_array_long(body, f)?;
+                self.format_array_long(body, None, f)?;
             }
         }
 
@@ -436,6 +513,7 @@ impl<'src> InnerFormatter<'src> {
     fn format_conditional_block(
         &mut self,
         array: &[Expression<'src>],
+        last: &Expression<'src>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
         // Only indent if block contains inner conditionals
@@ -444,10 +522,7 @@ impl<'src> InnerFormatter<'src> {
             false => self.bump_indent(0),
         };
 
-        for expr in array {
-            guard.f.format_expr(expr, f)?;
-            f.write_char('\n')?;
-        }
+        guard.f.format_block(array, Some(last), f)?;
 
         // Restore indentation
         drop(guard);

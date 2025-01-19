@@ -117,12 +117,10 @@ impl<'src> InnerFormatter<'src> {
         self.write_token_unindented(token, f)
     }
 
-    fn write_token_line(&self, token: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
+    fn write_token_line(&mut self, token: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
         self.write_token_indented(token, f)?;
-        if self.tokens.peek().is_some() {
-            f.write_char('\n')?;
-        }
-        Ok(())
+        self.format_possible_comment(token, f)?;
+        self.write_possible_line(f)
     }
 
     fn write_token_spaced(&self, token: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
@@ -132,6 +130,13 @@ impl<'src> InnerFormatter<'src> {
 
     fn write_token_unindented(&self, token: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
         f.write_str(&self.input[token.location.clone()])
+    }
+
+    fn write_possible_line(&self, f: &mut impl fmt::Write) -> fmt::Result {
+        if self.tokens.peek().is_some() {
+            f.write_char('\n')?;
+        }
+        Ok(())
     }
 
     fn format_token(&mut self, token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -202,16 +207,19 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::ArrayClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
+                    try_write!(self.format_possible_comment(&token, &mut short_str));
                     break;
                 },
                 TokenValue::CommandClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
+                    try_write!(self.format_possible_comment(&token, &mut short_str));
                     break;
                 },
                 TokenValue::PropertyClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
+                    try_write!(self.format_possible_comment(&token, &mut short_str));
                     break;
                 },
 
@@ -235,10 +243,14 @@ impl<'src> InnerFormatter<'src> {
                     break;
                 },
 
-                TokenValue::Comment(_) | TokenValue::BlockComment(_) | TokenValue::Error(_) => {
+                TokenValue::Comment(_) | TokenValue::Error(_) => {
                     is_short = false;
                     break;
                 },
+                TokenValue::BlockComment(text) if text.contains('\n') => {
+                    is_short = false;
+                    break;
+                }
 
                 _ => {
                     let token = self.tokens.next().unwrap();
@@ -262,6 +274,7 @@ impl<'src> InnerFormatter<'src> {
             if self.tokens.peek().is_some() {
                 short_str.push('\n');
             }
+
             Ok(short_str)
         } else {
             Err(array_tokens)
@@ -275,6 +288,8 @@ impl<'src> InnerFormatter<'src> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         self.write_token_unindented(open_token, f)?;
+        // Checked later, checking here would format things incorrectly
+        // self.format_possible_comments(&open_token, f)?;
 
         let mut array_tokens = match self.probe_array() {
             Ok(short_str) => return f.write_str(&short_str),
@@ -297,6 +312,7 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::Symbol(name) => {
                     // Display leading symbol on the same line as the array opening
                     self.write_token_unindented(first, f)?;
+                    self.format_possible_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
                         // Additional arguments which should be displayed on the same line
@@ -315,10 +331,12 @@ impl<'src> InnerFormatter<'src> {
                                     | TokenValue::Variable(_)
                                     | TokenValue::Unhandled => {
                                         self.write_token_spaced(&token, f)?;
+                                        self.format_possible_comment(&token, f)?;
                                     },
                                     _ => {
                                         f.write_char('\n')?;
                                         self.write_token_indented(&token, f)?;
+                                        self.format_possible_comment(&token, f)?;
                                         break;
                                     },
                                 }
@@ -332,17 +350,20 @@ impl<'src> InnerFormatter<'src> {
                     // More than likely this is used as a data key if we're in a large array,
                     // print on the same line as the opening
                     self.write_token_unindented(first, f)?;
+                    self.format_possible_comment(first, f)?;
                     f.write_char('\n')?;
                 },
                 TokenValue::Variable(_) => {
                     // Display leading variable on the same line as the array opening
                     self.write_token_unindented(first, f)?;
+                    self.format_possible_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
                         // Also display the next following symbol on the same line
                         if let Some(next) = array_tokens.first() {
                             if matches!(next.value, TokenValue::Symbol(_)) {
                                 self.write_token_spaced(next, f)?;
+                                self.format_possible_comment(first, f)?;
                                 pop_front(&mut array_tokens);
                             }
                         }
@@ -354,11 +375,13 @@ impl<'src> InnerFormatter<'src> {
                     // The first argument of a command being a string means to look up an object,
                     // format it similarly to variables
                     self.write_token_unindented(first, f)?;
+                    self.format_possible_comment(first, f)?;
 
                     // Also display the next following symbol on the same line
                     if let Some(next) = array_tokens.first() {
                         if matches!(next.value, TokenValue::Symbol(_)) {
                             self.write_token_spaced(next, f)?;
+                            self.format_possible_comment(next, f)?;
                             pop_front(&mut array_tokens);
                         }
                     }
@@ -367,7 +390,7 @@ impl<'src> InnerFormatter<'src> {
                 },
                 _ => {
                     f.write_char('\n')?;
-                    self.write_token_line(first, f)?
+                    self.write_token_line(first, f)?;
                 },
             }
         } else {
@@ -387,17 +410,33 @@ impl<'src> InnerFormatter<'src> {
         self.write_token_line(close_token, f)
     }
 
+    fn format_possible_comment(&mut self, last: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
+        if let Some(comment) = self.tokens.peek() {
+            if matches!(comment.value, TokenValue::Comment(_) | TokenValue::BlockComment(_)) {
+                let between = &self.input[last.location.end..comment.location.start];
+                if !between.contains('\n') {
+                    let token = self.tokens.next().unwrap();
+                    self.write_token_spaced(&token, f)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn format_symbol_directive(
         &mut self,
         directive_token: &Token<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         self.write_token_indented(directive_token, f)?;
+        self.format_possible_comment(directive_token, f)?;
 
         if let Some(next) = self.tokens.peek() {
             if matches!(next.value, TokenValue::Symbol(_)) {
                 let next = self.tokens.next().unwrap();
                 self.write_token_spaced(&next, f)?;
+                self.format_possible_comment(&next, f)?;
             }
         }
 
@@ -410,7 +449,7 @@ impl<'src> InnerFormatter<'src> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         self.format_symbol_directive(directive_token, f)?;
-        f.write_char('\n')
+        self.write_possible_line(f)
     }
 
     fn format_define(&mut self, directive_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -443,6 +482,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn format_autorun(&mut self, directive_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_token_indented(directive_token, f)?;
+        self.format_possible_comment(directive_token, f)?;
 
         if let Some(next) = self.tokens.peek() {
             if matches!(next.value, TokenValue::CommandOpen) {
