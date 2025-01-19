@@ -131,6 +131,21 @@ fn directives() {
        \n   kValue8\
        \n)",
     );
+    assert_format(
+        "(#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8))",
+        "(\
+       \n   #define kDefine (\
+       \n      kValue1\
+       \n      kValue2\
+       \n      kValue3\
+       \n      kValue4\
+       \n      kValue5\
+       \n      kValue6\
+       \n      kValue7\
+       \n      kValue8\
+       \n   )\
+       \n)",
+    );
 }
 
 #[test]

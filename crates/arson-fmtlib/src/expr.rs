@@ -232,6 +232,21 @@ impl<'src> InnerFormatter<'src> {
             ExpressionValue::Array(array) => self.probe_array_(buffer, array, ArrayKind::Array),
             ExpressionValue::Command(array) => self.probe_array_(buffer, array, ArrayKind::Command),
             ExpressionValue::Property(array) => self.probe_array_(buffer, array, ArrayKind::Property),
+
+            ExpressionValue::Define(name, body) => {
+                write!(buffer, "#define {} ", name.text).is_ok()
+                    && self.probe_array_(buffer, &body.exprs, ArrayKind::Array)
+            },
+            ExpressionValue::Autorun(body) => {
+                buffer.push_str("#autorun ");
+                self.probe_array_(buffer, &body.exprs, ArrayKind::Command)
+            },
+
+            ExpressionValue::Conditional { .. } => false,
+
+            ExpressionValue::Comment(_) => false,
+            ExpressionValue::BlockComment(text) => !text.contains('\n'),
+
             _ => self.format_expr_unindented(&expr, buffer).is_ok(),
         }
     }
@@ -250,11 +265,9 @@ impl<'src> InnerFormatter<'src> {
         }
 
         // If there is only one element, try to print it as-is
-        if array.len() == 1 {
-            let first = &array[0];
-            if !is_any_array(first) && !is_conditional(first) {
-                let mut short = String::new();
-                self.format_expr_unindented(&array[0], &mut short).ok()?;
+        if array.len() == 1 && !is_any_array(&array[0]) {
+            let mut short = String::new();
+            if self.probe_node(&array[0], &mut short) {
                 return Some(short);
             }
         }

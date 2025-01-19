@@ -165,20 +165,6 @@ fn directives() {
     );
 
     assert_format(
-        "#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8)",
-        "#define kDefine (\
-       \n   kValue1\
-       \n   kValue2\
-       \n   kValue3\
-       \n   kValue4\
-       \n   kValue5\
-       \n   kValue6\
-       \n   kValue7\
-       \n   kValue8\
-       \n)",
-    );
-
-    assert_format(
         "#define kDefine 1",
         "#define kDefine\
        \n1",
@@ -212,6 +198,35 @@ fn directives() {
         "#autorun 1",
         "#autorun\
        \n1",
+    );
+
+    assert_format(
+        "#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8)",
+        "#define kDefine (\
+       \n   kValue1\
+       \n   kValue2\
+       \n   kValue3\
+       \n   kValue4\
+       \n   kValue5\
+       \n   kValue6\
+       \n   kValue7\
+       \n   kValue8\
+       \n)",
+    );
+    assert_format(
+        "(#define kDefine (kValue1 kValue2 kValue3 kValue4 kValue5 kValue6 kValue7 kValue8))",
+        "(\
+       \n   #define kDefine (\
+       \n      kValue1\
+       \n      kValue2\
+       \n      kValue3\
+       \n      kValue4\
+       \n      kValue5\
+       \n      kValue6\
+       \n      kValue7\
+       \n      kValue8\
+       \n   )\
+       \n)",
     );
 }
 
