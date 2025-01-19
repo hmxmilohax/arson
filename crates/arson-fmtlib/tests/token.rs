@@ -48,19 +48,28 @@ fn assert_preserved(input: &str) {
 
 #[test]
 fn general() {
-    assert_format("(5)", "(5)");
-    assert_format("(10.0)", "(10.0)");
-    assert_format("(\"asdf\")", "(\"asdf\")");
-    assert_format("(sym)", "(sym)");
-    assert_format("($var)", "($var)");
-    assert_format("(kDataUnhandled)", "(kDataUnhandled)");
+    assert_preserved("5");
+    assert_preserved("10.0");
+    assert_preserved("10.12345678901234567890123456789012345678901234567890");
+    assert_preserved("\"asdf\"");
+    assert_preserved("sym");
+    assert_preserved("$var");
+    assert_preserved("kDataUnhandled");
+
+    assert_preserved("(5)");
+    assert_preserved("(10.0)");
+    assert_preserved("(10.12345678901234567890123456789012345678901234567890)");
+    assert_preserved("(\"asdf\")");
+    assert_preserved("(sym)");
+    assert_preserved("($var)");
+    assert_preserved("(kDataUnhandled)");
 }
 
 #[test]
 fn arrays() {
-    assert_format("(1 2 3)", "(1 2 3)");
-    assert_format("{1 2 3}", "{1 2 3}");
-    assert_format("[1 2 3]", "[1 2 3]");
+    assert_preserved("(1 2 3)");
+    assert_preserved("{1 2 3}");
+    assert_preserved("[1 2 3]");
 }
 
 #[test]
@@ -127,6 +136,13 @@ fn multiple_arrays() {
 
 #[test]
 fn directives() {
+    assert_preserved("#define kDefine (1)");
+    assert_preserved("#undef kDefine");
+    assert_preserved("#include items.dta");
+    assert_preserved("#include_opt items.dta");
+    assert_preserved("#merge items.dta");
+    assert_preserved("#autorun {print \"bar\"}");
+
     assert_format(
         "(#define kDefine (1))",
         "(\

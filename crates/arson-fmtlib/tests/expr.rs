@@ -109,26 +109,35 @@ fn assert_preserved(input: &str) {
 
 #[test]
 fn general() {
-    assert_format("(5)", "(5)");
-    assert_format("(10.0)", "(10.0)");
-    assert_format("(\"asdf\")", "(\"asdf\")");
-    assert_format("(sym)", "(sym)");
-    assert_format("($var)", "($var)");
-    assert_format("(kDataUnhandled)", "(kDataUnhandled)");
+    assert_preserved("5");
+    assert_preserved("10.0");
+    assert_preserved("10.12345678901234567890123456789012345678901234567890");
+    assert_preserved("\"asdf\"");
+    assert_preserved("sym");
+    assert_preserved("$var");
+    assert_preserved("kDataUnhandled");
+
+    assert_preserved("(5)");
+    assert_preserved("(10.0)");
+    assert_preserved("(10.12345678901234567890123456789012345678901234567890)");
+    assert_preserved("(\"asdf\")");
+    assert_preserved("(sym)");
+    assert_preserved("($var)");
+    assert_preserved("(kDataUnhandled)");
 }
 
 #[test]
 fn arrays() {
-    assert_format("(1 2 3)", "(1 2 3)");
-    assert_format("{1 2 3}", "{1 2 3}");
-    assert_format("[1 2 3]", "[1 2 3]");
+    assert_preserved("(1 2 3)");
+    assert_preserved("{1 2 3}");
+    assert_preserved("[1 2 3]");
 }
 
 #[test]
 fn inner_arrays() {
-    assert_format("(sym1 (sym2 100))", "(sym1 (sym2 100))");
-    assert_format("(sym1 {sym2 100})", "(sym1 {sym2 100})");
-    assert_format("(sym1 [sym2 100])", "(sym1 [sym2 100])");
+    assert_preserved("(sym1 (sym2 100))");
+    assert_preserved("(sym1 {sym2 100})");
+    assert_preserved("(sym1 [sym2 100])");
 
     assert_format(
         "(sym1 (sym2 (foo 5) (bar 10)))",
@@ -173,12 +182,19 @@ fn multiple_arrays() {
 
 #[test]
 fn directives() {
-    assert_format("(#define kDefine (1))", "(#define kDefine (1))");
-    assert_format("(#undef kDefine)", "(#undef kDefine)");
-    assert_format("(#include items.dta)", "(#include items.dta)");
-    assert_format("(#include_opt items.dta)", "(#include_opt items.dta)");
-    assert_format("(#merge items.dta)", "(#merge items.dta)");
-    assert_format("(#autorun {print \"bar\"})", "(#autorun {print \"bar\"})");
+    assert_preserved("#define kDefine (1)");
+    assert_preserved("#undef kDefine");
+    assert_preserved("#include items.dta");
+    assert_preserved("#include_opt items.dta");
+    assert_preserved("#merge items.dta");
+    assert_preserved("#autorun {print \"bar\"}");
+
+    assert_preserved("(#define kDefine (1))");
+    assert_preserved("(#undef kDefine)");
+    assert_preserved("(#include items.dta)");
+    assert_preserved("(#include_opt items.dta)");
+    assert_preserved("(#merge items.dta)");
+    assert_preserved("(#autorun {print \"bar\"})");
 
     assert_format(
         "(foo #define kDefine (1))",
