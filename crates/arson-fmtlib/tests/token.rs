@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_fmtlib::{Indentation, Options};
-use arson_parse::{Token, Tokenizer};
+use arson_parse::{Token, TokenValue, Tokenizer};
 
 fn assert_format(input: &str, expected: &str) {
     let options = Options::default();
@@ -11,23 +11,25 @@ fn assert_format(input: &str, expected: &str) {
 
     fn assert_token_eq(left: &[Token<'_>], right: &[Token<'_>], msg: &str) {
         fn check_token_eq(left: &[Token<'_>], right: &[Token<'_>]) -> Result<(), ()> {
-            if left.len() != right.len() {
-                return Err(());
-            }
+            let mut left_i = left.iter().filter(|e| matches!(e.value, TokenValue::BlankLine));
+            let mut right_i = right.iter().filter(|e| matches!(e.value, TokenValue::BlankLine));
 
-            for i in 0..left.len() {
-                if &left[i].value != &right[i].value {
+            while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
+                if &left.value != &right.value {
                     return Err(());
                 }
             }
 
-            Ok(())
+            match (left_i.next(), right_i.next()) {
+                (None, None) => Ok(()),
+                _ => Err(()),
+            }
         }
 
         if let Err(_) = check_token_eq(left, right) {
             panic!(
                 "{msg}\
-               \n left: {left:?}
+               \n left: {left:?}\
                \nright: {right:?}"
             );
         }
@@ -829,6 +831,202 @@ fn conditional_comments() {
        \n(array2 100)\
        \n#endif\
        \n/* comment */",
+    );
+}
+
+#[test]
+fn blank_lines() {
+    assert_format(
+        "(array1 10)\
+       \n\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+        "(array1 10)\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n\
+       \n(array2 50)\
+       \n\
+       \n(array3 250)",
+    );
+    assert_format(
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n\
+       \n(array3 250)",
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n(array3 250)",
+    );
+
+    assert_format(
+        "(foo\
+       \n\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_format(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+
+    assert_format(
+        "#define kDefine\
+       \n\
+       \n(1)",
+        "#define kDefine (1)",
+    );
+    assert_format(
+        "#define kDefine (\
+       \n\
+       \n   1\
+       \n)",
+        "#define kDefine (1)",
+    );
+
+    assert_format(
+        "#ifdef kDefine\
+       \n\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+    );
+    assert_preserved(
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n\
+       \n(quz 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n\
+       \n#endif",
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+    );
+
+    assert_preserved(
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n; comment\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n\
+       \n; comment\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n(array2 50)\
+       \n; comment\
+       \n\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n; comment\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+
+    assert_format(
+        "(foo\
+       \n\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+        "(foo\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n\
+       \n   ; comment\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n\
+       \n   ; comment\
+       \n)",
+    );
+
+    assert_preserved(
+        "(foo\
+       \n   ; comment\
+       \n\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n   ; comment\
+       \n\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_format(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n   ; comment\
+       \n\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n   ; comment\
+       \n)",
     );
 }
 

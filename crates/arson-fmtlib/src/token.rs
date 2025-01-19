@@ -169,6 +169,20 @@ impl<'src> InnerFormatter<'src> {
             TokenValue::Else => self.write_token_line(token, f)?,
             TokenValue::Endif => self.write_token_line(token, f)?,
 
+            TokenValue::BlankLine => {
+                if let Some(next) = self.tokens.peek() {
+                    if !matches!(
+                        next.value,
+                        TokenValue::ArrayClose
+                            | TokenValue::CommandClose
+                            | TokenValue::PropertyClose
+                            | TokenValue::Else
+                            | TokenValue::Endif
+                    ) {
+                        f.write_char('\n')?;
+                    }
+                }
+            },
             TokenValue::Comment(_) => self.write_token_line(token, f)?,
             TokenValue::BlockComment(_) => self.write_token_line(token, f)?,
 
@@ -250,7 +264,14 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::BlockComment(text) if text.contains('\n') => {
                     is_short = false;
                     break;
-                }
+                },
+
+                // Ignore blank lines, as they have no semantic bearing on
+                // whether an array could be large or small
+                TokenValue::BlankLine => {
+                    self.tokens.next().unwrap();
+                    continue;
+                },
 
                 _ => {
                     let token = self.tokens.next().unwrap();
@@ -449,11 +470,13 @@ impl<'src> InnerFormatter<'src> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         self.format_symbol_directive(directive_token, f)?;
+        self.skip_possible_blank()?;
         self.write_possible_line(f)
     }
 
     fn format_define(&mut self, directive_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.format_symbol_directive(directive_token, f)?;
+        self.skip_possible_blank()?;
 
         if let Some(next) = self.tokens.peek() {
             if !matches!(next.value, TokenValue::ArrayOpen) {
@@ -483,6 +506,7 @@ impl<'src> InnerFormatter<'src> {
     fn format_autorun(&mut self, directive_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_token_indented(directive_token, f)?;
         self.format_possible_comment(directive_token, f)?;
+        self.skip_possible_blank()?;
 
         if let Some(next) = self.tokens.peek() {
             if matches!(next.value, TokenValue::CommandOpen) {
@@ -492,6 +516,16 @@ impl<'src> InnerFormatter<'src> {
             }
 
             return f.write_char('\n');
+        }
+
+        Ok(())
+    }
+
+    fn skip_possible_blank(&mut self) -> fmt::Result {
+        if let Some(next) = self.tokens.peek() {
+            if matches!(next.value, TokenValue::BlankLine) {
+                self.tokens.next().unwrap();
+            }
         }
 
         Ok(())

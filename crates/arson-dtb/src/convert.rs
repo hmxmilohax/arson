@@ -111,6 +111,7 @@ fn convert_to_array(
                 continue;
             },
 
+            ExpressionValue::BlankLine => continue,
             ExpressionValue::Comment(_) => continue,
             ExpressionValue::BlockComment(_) => continue,
         };

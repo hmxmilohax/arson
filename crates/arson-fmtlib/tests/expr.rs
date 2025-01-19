@@ -10,12 +10,11 @@ fn assert_format(input: &str, expected: &str) {
 
     fn assert_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>], msg: &str) {
         fn check_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>]) -> Result<(), ()> {
-            if left.len() != right.len() {
-                return Err(());
-            }
+            let mut left_i = left.iter().filter(|e| matches!(e.value, ExpressionValue::BlankLine));
+            let mut right_i = right.iter().filter(|e| matches!(e.value, ExpressionValue::BlankLine));
 
-            for i in 0..left.len() {
-                match (&left[i].value, &right[i].value) {
+            while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
+                match (&left.value, &right.value) {
                     (ExpressionValue::Array(left), ExpressionValue::Array(right))
                     | (ExpressionValue::Command(left), ExpressionValue::Command(right))
                     | (ExpressionValue::Property(left), ExpressionValue::Property(right)) => {
@@ -82,13 +81,16 @@ fn assert_format(input: &str, expected: &str) {
                 }
             }
 
-            Ok(())
+            match (left_i.next(), right_i.next()) {
+                (None, None) => Ok(()),
+                _ => Err(()),
+            }
         }
 
         if let Err(_) = check_ast_eq(left, right) {
             panic!(
                 "{msg}\
-               \n left: {left:?}
+               \n left: {left:?}\
                \nright: {right:?}"
             );
         }
@@ -195,6 +197,43 @@ fn directives() {
     assert_preserved("(#include_opt items.dta)");
     assert_preserved("(#merge items.dta)");
     assert_preserved("(#autorun {print \"bar\"})");
+
+    assert_format(
+        "#define kDefine\
+       \n(1)",
+        "#define kDefine (1)",
+    );
+    assert_format(
+        "#define\
+       \nkDefine\
+       \n(1)",
+        "#define kDefine (1)",
+    );
+    assert_format(
+        "#undef\
+       \nkDefine",
+        "#undef kDefine",
+    );
+    assert_format(
+        "#include\
+       \nitems.dta",
+        "#include items.dta",
+    );
+    assert_format(
+        "#include_opt\
+       \nitems.dta",
+        "#include_opt items.dta",
+    );
+    assert_format(
+        "#merge\
+       \nitems.dta",
+        "#merge items.dta",
+    );
+    assert_format(
+        "#autorun\
+       \n{print \"bar\"}",
+        "#autorun {print \"bar\"}",
+    );
 
     assert_format(
         "(foo #define kDefine (1))",
@@ -832,6 +871,202 @@ fn conditional_comments() {
        \n(array2 100)\
        \n#endif\
        \n/* comment */",
+    );
+}
+
+#[test]
+fn blank_lines() {
+    assert_format(
+        "(array1 10)\
+       \n\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+        "(array1 10)\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n\
+       \n(array2 50)\
+       \n\
+       \n(array3 250)",
+    );
+    assert_format(
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n\
+       \n(array3 250)",
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n(array3 250)",
+    );
+
+    assert_format(
+        "(foo\
+       \n\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_format(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+
+    assert_format(
+        "#define kDefine\
+       \n\
+       \n(1)",
+        "#define kDefine (1)",
+    );
+    assert_format(
+        "#define kDefine (\
+       \n\
+       \n   1\
+       \n)",
+        "#define kDefine (1)",
+    );
+
+    assert_format(
+        "#ifdef kDefine\
+       \n\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+    );
+    assert_preserved(
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n\
+       \n(quz 100)\
+       \n#endif",
+    );
+    assert_format(
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n\
+       \n#endif",
+        "#ifdef kDefine\
+       \n(bar 50)\
+       \n(quz 100)\
+       \n#endif",
+    );
+
+    assert_preserved(
+        "(array1 10)\
+       \n(array2 50)\
+       \n\
+       \n; comment\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n\
+       \n; comment\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n(array2 50)\
+       \n; comment\
+       \n\
+       \n(array3 250)",
+    );
+    assert_preserved(
+        "(array1 10)\
+       \n; comment\
+       \n\
+       \n(array2 50)\
+       \n(array3 250)",
+    );
+
+    assert_format(
+        "(foo\
+       \n\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+        "(foo\
+       \n   ; comment\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n\
+       \n   ; comment\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n\
+       \n   ; comment\
+       \n)",
+    );
+
+    assert_preserved(
+        "(foo\
+       \n   ; comment\
+       \n\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_preserved(
+        "(foo\
+       \n   (bar 50)\
+       \n   ; comment\
+       \n\
+       \n   (quz 100)\
+       \n)",
+    );
+    assert_format(
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n   ; comment\
+       \n\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n   ; comment\
+       \n)",
     );
 }
 

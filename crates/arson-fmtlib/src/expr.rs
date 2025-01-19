@@ -155,19 +155,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn format_input(&mut self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut iter = array.iter().peekable();
-
-        let Some(expr) = iter.next() else {
-            return Ok(());
-        };
-
-        // At the top level of the AST, print everything on its own line
-        self.format_block_node(expr, &mut iter, f)?;
-        while let Some(expr) = iter.next() {
-            f.write_char('\n')?;
-            self.format_block_node(expr, &mut iter, f)?;
-        }
-
-        Ok(())
+        self.format_block_loop(&mut iter, f)
     }
 
     fn format_expr(&mut self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
@@ -224,6 +212,7 @@ impl<'src> InnerFormatter<'src> {
                 f.write_str("#endif")?;
             },
 
+            ExpressionValue::BlankLine => (), // f.write_str("\n\n")?,
             ExpressionValue::Comment(_) => self.write_original(expr, f)?,
             ExpressionValue::BlockComment(_) => self.write_original(expr, f)?,
         }
@@ -248,13 +237,17 @@ impl<'src> InnerFormatter<'src> {
 
             ExpressionValue::Conditional { .. } => false,
 
+            // Ignore blank lines, as they have no semantic bearing on
+            // whether an array could be large or small
+            ExpressionValue::BlankLine => true,
+
             ExpressionValue::Comment(_) => false,
             ExpressionValue::BlockComment(text) => {
                 buffer.push_str(text);
                 !text.contains('\n')
             },
 
-            _ => self.format_expr_unindented(&expr, buffer).is_ok(),
+            _ => self.format_expr_unindented(expr, buffer).is_ok(),
         }
     }
 
@@ -299,9 +292,12 @@ impl<'src> InnerFormatter<'src> {
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
 
-            let mut is_small = self.probe_node(&array[0], &mut limit_buffer);
-            for expr in &array[1..] {
-                limit_buffer.push(' ');
+            let mut is_small = true;
+            for expr in array {
+                if !limit_buffer.is_empty() {
+                    limit_buffer.push(' ');
+                }
+
                 is_small &= self.probe_node(expr, &mut limit_buffer);
                 if !is_small || limit_buffer.len() > max_len {
                     break;
@@ -444,31 +440,45 @@ impl<'src> InnerFormatter<'src> {
         }
 
         f.write_char('\n')?;
-
-        let Some(expr) = iter.next() else {
-            return Ok(());
-        };
-
-        // At the top level of the AST, print everything on its own line
-        self.format_block_node(expr, &mut iter, f)?;
-        while let Some(expr) = iter.next() {
-            f.write_char('\n')?;
-            self.format_block_node(expr, &mut iter, f)?;
-        }
-
+        self.format_block_loop(&mut iter, f)?;
         f.write_char('\n')?;
 
         Ok(())
     }
 
-    fn format_block_node(
+    fn format_block_loop(
         &mut self,
-        expr: &Expression<'src>,
         iter: &mut Peekable<std::slice::Iter<'_, Expression<'src>>>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
-        self.format_expr(expr, f)?;
-        self.format_possible_comment(expr, iter, f)?;
+        if let Some(expr) = iter.peek() {
+            // Skip starting blank line to avoid excess whitespace
+            if matches!(expr.value, ExpressionValue::BlankLine) {
+                iter.next().unwrap();
+            }
+        }
+
+        // Shenanigans are happening here to make blank line formatting work correctly.
+        // This formatting code isn't the greatest lol
+        let mut first = true;
+        while let Some(expr) = iter.next() {
+            // Don't indent blank lines
+            if matches!(expr.value, ExpressionValue::BlankLine) {
+                if !first && iter.peek().is_some() {
+                    f.write_char('\n')?;
+                }
+            } else {
+                if !first {
+                    f.write_char('\n')?;
+                }
+
+                self.format_expr(expr, f)?;
+                self.format_possible_comment(expr, iter, f)?;
+            }
+
+            first = false;
+        }
+
         Ok(())
     }
 
@@ -486,7 +496,7 @@ impl<'src> InnerFormatter<'src> {
                 let between = &self.input[last.location.end..comment.location.start];
                 if !between.contains('\n') {
                     let token = iter.next().unwrap();
-                    self.write_expr_spaced(&token, f)?;
+                    self.write_expr_spaced(token, f)?;
                 }
             }
         }

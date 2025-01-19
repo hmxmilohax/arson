@@ -61,6 +61,7 @@ enum PreprocessedTokenValue<'src> {
         false_branch: Option<(Vec<PreprocessedToken<'src>>, Span)>,
     },
 
+    BlankLine,
     Comment(&'src str),
     BlockComment(&'src str),
 }
@@ -91,6 +92,7 @@ impl PreprocessedTokenValue<'_> {
 
             Self::Conditional { .. } => TokenKind::Ifdef,
 
+            Self::BlankLine => TokenKind::BlankLine,
             Self::Comment(_) => TokenKind::Comment,
             Self::BlockComment(_) => TokenKind::BlockComment,
         }
@@ -131,11 +133,12 @@ pub enum ExpressionValue<'src> {
         false_branch: Option<ArrayExpression<'src>>,
     },
 
+    BlankLine,
     Comment(&'src str),
     BlockComment(&'src str),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum ExpressionKind {
     Integer,
     Float,
@@ -158,6 +161,7 @@ pub enum ExpressionKind {
 
     Conditional,
 
+    Newline,
     Comment,
     BlockComment,
 }
@@ -192,6 +196,7 @@ impl ExpressionValue<'_> {
 
             Self::Conditional { .. } => ExpressionKind::Conditional,
 
+            Self::BlankLine => ExpressionKind::Newline,
             Self::Comment(_) => ExpressionKind::Comment,
             Self::BlockComment(_) => ExpressionKind::BlockComment,
         }
@@ -416,6 +421,7 @@ impl<'src> Preprocessor<'src> {
                 None => return ProcessResult::Error(DiagnosticKind::UnexpectedConditional, token.location),
             },
 
+            TokenValue::BlankLine => PreprocessedTokenValue::BlankLine,
             TokenValue::Comment(text) => PreprocessedTokenValue::Comment(text),
             TokenValue::BlockComment(text) => PreprocessedTokenValue::BlockComment(text),
 
@@ -525,6 +531,11 @@ impl<'src> Preprocessor<'src> {
     fn skip_comments(&mut self, tokens: &mut Tokenizer<'src>) {
         while let Some(token) = tokens.peek() {
             match token.value {
+                TokenValue::BlankLine => {
+                    // Don't transfer this over, it has no meaning
+                    // and formatting wants to strip it out anyways
+                    tokens.next();
+                },
                 TokenValue::Comment(text) => {
                     let token = PreprocessedToken {
                         value: PreprocessedTokenValue::Comment(text),
@@ -826,6 +837,7 @@ impl<'src> Parser<'src> {
                 }
             },
 
+            PreprocessedTokenValue::BlankLine => (ExpressionValue::BlankLine, token.location),
             PreprocessedTokenValue::Comment(text) => (ExpressionValue::Comment(text), token.location),
             PreprocessedTokenValue::BlockComment(text) => {
                 (ExpressionValue::BlockComment(text), token.location)
@@ -906,6 +918,11 @@ impl<'src> Parser<'src> {
     fn skip_comments<I: Iterator<Item = PreprocessedToken<'src>>>(&mut self, tokens: &mut Peekable<I>) {
         while let Some(token) = tokens.peek() {
             match token.value {
+                PreprocessedTokenValue::BlankLine => {
+                    // Don't transfer this over, it has no meaning
+                    // and formatting wants to strip it out anyways
+                    tokens.next();
+                },
                 PreprocessedTokenValue::Comment(text) => {
                     let token = Expression {
                         value: ExpressionValue::Comment(text),

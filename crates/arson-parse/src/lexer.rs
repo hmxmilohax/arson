@@ -260,6 +260,11 @@ make_tokens! {
         value_display: |f| f.write_str("#endif"),
     },
 
+    #[regex(r#"\r?\n[ \v\t\r\n\f]*\r?\n[ \v\t\r\f]*"#)]
+    BlankLine {
+        kind_display: "newline",
+        value_display: |f| f.write_char('\n'),
+    },
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
     Comment(&'src str) {
         kind_display: "comment",
@@ -559,6 +564,69 @@ mod tests {
         assert_tokens("\r\n", vec![]);
         assert_tokens("\n\t", vec![]);
         assert_tokens(" \x0b\t\r\n\x0c", vec![]); // " \v\t\r\n\f"
+
+        assert_token("\n\n", TokenValue::BlankLine, 0..2);
+        assert_token("\n\n\n\n\n\n", TokenValue::BlankLine, 0..6);
+        assert_token("\n     \n", TokenValue::BlankLine, 0..7);
+        assert_token("\n\t\n", TokenValue::BlankLine, 0..3);
+        assert_token("\r\n\r\r\n", TokenValue::BlankLine, 0..5);
+
+        assert_tokens("(symbol\n\n)", vec![
+            (TokenValue::ArrayOpen, 0..1),
+            (TokenValue::Symbol("symbol"), 1..7),
+            (TokenValue::BlankLine, 7..9),
+            (TokenValue::ArrayClose, 9..10),
+        ]);
+        assert_tokens(
+            "(foo\
+           \n\
+           \n   (bar 50)\
+           \n\
+           \n   (quz 100)\
+           \n\
+           \n)",
+            vec![
+                (TokenValue::ArrayOpen, 0..1),
+                (TokenValue::Symbol("foo"), 1..4),
+                (TokenValue::BlankLine, 4..9),
+                (TokenValue::ArrayOpen, 9..10),
+                (TokenValue::Symbol("bar"), 10..13),
+                (TokenValue::Integer(50), 14..16),
+                (TokenValue::ArrayClose, 16..17),
+                (TokenValue::BlankLine, 17..22),
+                (TokenValue::ArrayOpen, 22..23),
+                (TokenValue::Symbol("quz"), 23..26),
+                (TokenValue::Integer(100), 27..30),
+                (TokenValue::ArrayClose, 30..31),
+                (TokenValue::BlankLine, 31..33),
+                (TokenValue::ArrayClose, 33..34),
+            ],
+        );
+        assert_tokens(
+            "#ifdef kDefine\
+           \n\
+           \n(foo 50)\
+           \n\
+           \n(bar 100)\
+           \n\
+           \n#endif",
+            vec![
+                (TokenValue::Ifdef, 0..6),
+                (TokenValue::Symbol("kDefine"), 7..14),
+                (TokenValue::BlankLine, 14..16),
+                (TokenValue::ArrayOpen, 16..17),
+                (TokenValue::Symbol("foo"), 17..20),
+                (TokenValue::Integer(50), 21..23),
+                (TokenValue::ArrayClose, 23..24),
+                (TokenValue::BlankLine, 24..26),
+                (TokenValue::ArrayOpen, 26..27),
+                (TokenValue::Symbol("bar"), 27..30),
+                (TokenValue::Integer(100), 31..34),
+                (TokenValue::ArrayClose, 34..35),
+                (TokenValue::BlankLine, 35..37),
+                (TokenValue::Endif, 37..43),
+            ],
+        );
     }
 
     mod display {}
