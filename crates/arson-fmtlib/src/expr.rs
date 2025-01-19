@@ -9,7 +9,7 @@ use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
 use crate::{Indentation, Options, COMMAND_SAME_LINE_ARGS};
 
-/// Formats the given input text to a new string.
+/// Formats the given input text to a new string using the expression-based formatter.
 ///
 /// # Example
 ///
@@ -31,13 +31,7 @@ pub fn format_to_string(input: &str, options: Options) -> Result<String, ParseEr
     Formatter::new(input, options).map(|f| f.to_string())
 }
 
-/// The formatter for DTA text.
-///
-/// This formatter does output through the [`std::fmt::Display`] trait
-/// to make it possible to output to both [`std::fmt::Write`] and [`std::io::Write`]
-/// without going through an intermediate [`String`].
-/// Use [`format`], [`write`], or [`to_string`](ToString::to_string) to perform the
-/// actual formatting and output.
+/// The expression-based formatter for DTA text.
 ///
 /// # Example
 ///

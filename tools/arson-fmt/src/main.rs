@@ -1,27 +1,45 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context};
-use arson_fmtlib::expr::Formatter;
-use arson_fmtlib::Options;
+use arson_fmtlib::{expr, token, Formatter, Options};
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
+use arson_parse::ParseError;
 use clap::Parser;
 use encoding_rs::{UTF_8, WINDOWS_1252};
 
 /// A formatter for DTA files.
 #[derive(clap::Parser, Debug)]
 struct Arguments {
+    /// The formatter mode to use.
+    #[arg(short, long)]
+    mode: Option<FormatMode>,
+
+    /// Suppress parsing errors that occur as part of formatting the output file.
+    #[arg(short, long)]
+    suppress_errors: bool,
+
     /// The input file to be formatted.
     input_path: PathBuf,
 
     /// The file to output to.
     ///
     /// Defaults to modifying the input file.
-    #[arg(long, short)]
     output_path: Option<PathBuf>,
+}
+
+/// The formatter mode to use.
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+enum FormatMode {
+    /// Richer expression-based formatting.
+    /// Requires text to be fully parsable.
+    Expression,
+    /// Less capable token-based formatting.
+    /// Formats text regardless of parsability.
+    Token,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -40,24 +58,42 @@ fn main() -> anyhow::Result<()> {
     drop(file_bytes); // conserve memory
 
     let options = Options::default(); // TODO
-    let output_text = match Formatter::new(&file_text, options).map(|f| f.to_string()) {
-        Ok(text) => text,
-        Err(error) => {
-            let writer = StandardStream::stderr(ColorChoice::Auto);
-            let config = term::Config { chars: Chars::ascii(), ..Default::default() };
-
-            let file = SimpleFile::new(args.input_path.to_string_lossy(), &file_text);
-            for error in error.diagnostics {
-                let _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
-            }
-
-            bail!("failed to parse file")
+    let formatter = match args.mode {
+        Some(FormatMode::Expression) => match expr::Formatter::new(&file_text, options) {
+            Ok(formatter) => Formatter::Expression(formatter),
+            Err(error) => {
+                if !args.suppress_errors {
+                    write_parse_errors(error, &args.input_path, &file_text);
+                }
+                bail!("failed to parse file")
+            },
+        },
+        Some(FormatMode::Token) => Formatter::Token(token::Formatter::new(&file_text, options)),
+        None => match Formatter::new(&file_text, options) {
+            Ok(formatter) => formatter,
+            Err((formatter, error)) => {
+                if !args.suppress_errors {
+                    write_parse_errors(error, &args.input_path, &file_text);
+                }
+                formatter
+            },
         },
     };
 
+    let output_text = formatter.to_string();
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.clone());
     let output_bytes = encoding.encode(&output_text).0;
     std::fs::write(&output_path, &output_bytes).context("failed to write output file")?;
 
     Ok(())
+}
+
+fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) {
+    let writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config { chars: Chars::ascii(), ..Default::default() };
+
+    let file = SimpleFile::new(input_path.to_string_lossy(), input_text);
+    for error in error.diagnostics {
+        _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
+    }
 }

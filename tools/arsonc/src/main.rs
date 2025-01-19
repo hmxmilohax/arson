@@ -65,6 +65,9 @@ enum CompilerMode {
         /// Allow output path to overwrite an existing file.
         #[arg(short = 'o', long)]
         allow_overwrite: bool,
+        /// Suppress parsing errors that occur as part of formatting the output file.
+        #[arg(short, long)]
+        suppress_parse_errors: bool,
     },
     /// Changes the encryption of a compiled script file (.dtb).
     CrossCrypt {
@@ -144,7 +147,8 @@ fn main() -> anyhow::Result<()> {
             input_path,
             output_path,
             allow_overwrite,
-        } => decompile(decryption, input_path, output_path, allow_overwrite),
+            suppress_parse_errors,
+        } => decompile(decryption, input_path, output_path, allow_overwrite, suppress_parse_errors),
         CompilerMode::CrossCrypt {
             decryption,
             encryption,
@@ -233,6 +237,7 @@ fn decompile(
     input_path: PathBuf,
     output_path: Option<PathBuf>,
     allow_overwrite: bool,
+    suppress_parse_errors: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dta"));
     validate_paths(&input_path, &output_path, "DTB", "DTA")?;
@@ -252,23 +257,22 @@ fn decompile(
     for token in tokens {
         use std::fmt::Write;
 
-        let result = match token {
-            // This should never happen, fail immediately if it does
-            TokenValue::Error(error) => bail!("encountered error when tokenizing decompiled file: {error}"),
+        if let TokenValue::Error(error) = token {
+            bail!("encountered error when tokenizing decompiled file: {error}");
+        }
 
-            _ => write!(unformatted, "{token}"),
-        };
-        result.context("couldn't format token buffer")?;
-
+        write!(unformatted, "{token}").context("couldn't format token buffer")?;
         unformatted.push(' ');
     }
 
     let options = arson_fmtlib::Options::default();
-    let formatter = match arson_fmtlib::expr::Formatter::new(&unformatted, options) {
+    let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
         Ok(formatter) => formatter,
-        Err(error) => {
-            write_parse_errors(error, &input_path, &unformatted);
-            bail!("failed to parse decompiled text");
+        Err((formatter, error)) => {
+            if !suppress_parse_errors {
+                write_parse_errors(error, &input_path, &unformatted);
+            }
+            formatter
         },
     };
 
