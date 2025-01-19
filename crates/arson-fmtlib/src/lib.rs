@@ -123,12 +123,12 @@ pub enum Formatter<'src> {
 
 impl<'src> Formatter<'src> {
     /// Creates a new [`Formatter`] with the given input and options.
-    pub fn new(input: &'src str, options: Options) -> Result<Self, (Self, ParseError)> {
+    pub fn new(input: &'src str, options: Options) -> (Self, Option<ParseError>) {
         match expr::Formatter::new(input, options.clone()) {
-            Ok(formatter) => Ok(Self::Expression(formatter)),
+            Ok(formatter) => (Self::Expression(formatter), None),
             Err(error) => {
                 let formatter = token::Formatter::new(input, options);
-                Err((Self::Token(formatter), error))
+                (Self::Token(formatter), Some(error))
             },
         }
     }

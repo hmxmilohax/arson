@@ -286,7 +286,7 @@ impl<'src> InnerFormatter<'src> {
         self.indent_level.set(self.indent_level.get() + 1);
 
         fn pop_front<T>(vec: &mut Vec<T>) -> Option<T> {
-            if vec.len() == 0 {
+            if vec.is_empty() {
                 None
             } else {
                 let remaining = vec.split_off(1);

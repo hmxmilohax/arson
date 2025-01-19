@@ -267,8 +267,8 @@ fn decompile(
 
     let options = arson_fmtlib::Options::default();
     let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
-        Ok(formatter) => formatter,
-        Err((formatter, error)) => {
+        (formatter, None) => formatter,
+        (formatter, Some(error)) => {
             if !suppress_parse_errors {
                 write_parse_errors(error, &input_path, &unformatted);
             }

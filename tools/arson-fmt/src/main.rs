@@ -70,8 +70,8 @@ fn main() -> anyhow::Result<()> {
         },
         Some(FormatMode::Token) => Formatter::Token(token::Formatter::new(&file_text, options)),
         None => match Formatter::new(&file_text, options) {
-            Ok(formatter) => formatter,
-            Err((formatter, error)) => {
+            (formatter, None) => formatter,
+            (formatter, Some(error)) => {
                 if !args.suppress_errors {
                     write_parse_errors(error, &args.input_path, &file_text);
                 }
