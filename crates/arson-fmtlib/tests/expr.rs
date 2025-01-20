@@ -150,24 +150,8 @@ fn inner_arrays() {
        \n   )\
        \n)",
     );
-    assert_format(
-        "(sym1 {sym2 (foo 5) (bar 10)})",
-        "(sym1\
-       \n   {sym2\
-       \n      (foo 5)\
-       \n      (bar 10)\
-       \n   }\
-       \n)",
-    );
-    assert_format(
-        "(sym1 [sym2 (foo 5) (bar 10)])",
-        "(sym1\
-       \n   [sym2\
-       \n      (foo 5)\
-       \n      (bar 10)\
-       \n   ]\
-       \n)",
-    );
+    assert_preserved("(sym1 {sym2 (foo 5) (bar 10)})");
+    assert_preserved("(sym1 [sym2 (foo 5) (bar 10)])");
 }
 
 #[test]
@@ -475,25 +459,60 @@ fn command_args() {
     );
 
     assert_format(
+        "{$object foreach_thing $thing {print $thing} {...}}",
+        "{$object foreach_thing $thing\
+       \n   {print $thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
         "{$object with_thing $the_thing {print $the_thing} {...}}",
-        "{$object with_thing\
-       \n   $the_thing\
+        "{$object with_thing $the_thing\
        \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+
+    assert_format(
+        "{\"object\" foreach_thing $thing {print $thing} {...}}",
+        "{\"object\" foreach_thing $thing\
+       \n   {print $thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{\"object\" with_thing $the_thing {print $the_thing} {...}}",
+        "{\"object\" with_thing $the_thing\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+
+    assert_format(
+        "{{get_thing} foreach_thing $thing {print $thing} {...}}",
+        "{{get_thing} foreach_thing $thing\
+       \n   {print $thing}\
        \n   {...}\
        \n}",
     );
     assert_format(
         "{{get_thing} with_thing $the_thing {print $the_thing} {...}}",
-        "{{get_thing} with_thing\
-       \n   $the_thing\
+        "{{get_thing} with_thing $the_thing\
        \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+
+    assert_format(
+        "{[thing] foreach_thing $thing {print $thing} {...}}",
+        "{[thing] foreach_thing $thing\
+       \n   {print $thing}\
        \n   {...}\
        \n}",
     );
     assert_format(
         "{[thing] with_thing $the_thing {print $the_thing} {...}}",
-        "{[thing] with_thing\
-       \n   $the_thing\
+        "{[thing] with_thing $the_thing\
        \n   {print $the_thing}\
        \n   {...}\
        \n}",

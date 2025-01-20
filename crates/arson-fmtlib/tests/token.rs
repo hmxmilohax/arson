@@ -461,13 +461,35 @@ fn command_args() {
     );
 
     assert_format(
+        "{$object foreach_thing $thing {print $thing} {...}}",
+        "{$object foreach_thing $thing\
+       \n   {print $thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
         "{$object with_thing $the_thing {print $the_thing} {...}}",
-        "{$object with_thing\
-       \n   $the_thing\
+        "{$object with_thing $the_thing\
        \n   {print $the_thing}\
        \n   {...}\
        \n}",
     );
+
+    assert_format(
+        "{\"object\" foreach_thing $thing {print $thing} {...}}",
+        "{\"object\" foreach_thing $thing\
+       \n   {print $thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
+        "{\"object\" with_thing $the_thing {print $the_thing} {...}}",
+        "{\"object\" with_thing $the_thing\
+       \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+
     assert_format(
         "{{get_thing} with_thing $the_thing {print $the_thing} {...}}",
         "{\

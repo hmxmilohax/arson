@@ -6,6 +6,7 @@
 //! this formatter doesn't have the same characteristics as the expression-based one,
 //! and is best used as a fallback.
 
+use std::collections::VecDeque;
 use std::fmt::{self, Write};
 
 use arson_parse::{ArrayKind, Token, TokenValue, Tokenizer};
@@ -328,23 +329,15 @@ impl<'src> InnerFormatter<'src> {
         // Checked later, checking here would format things incorrectly
         // self.format_possible_comments(&open_token, f)?;
 
-        let (mut array_tokens, stop_cause) = match self.probe_array() {
+        let (array_tokens, stop_cause) = match self.probe_array() {
             Ok(short_str) => return f.write_str(&short_str),
             Err(tokens) => tokens,
         };
+        let mut array_tokens = VecDeque::from(array_tokens);
 
         self.indent_level += 1;
 
-        fn pop_front<T>(vec: &mut Vec<T>) -> Option<T> {
-            if vec.is_empty() {
-                None
-            } else {
-                let remaining = vec.split_off(1);
-                std::mem::replace(vec, remaining).pop()
-            }
-        }
-
-        if let Some(ref first) = pop_front(&mut array_tokens) {
+        if let Some(ref first) = array_tokens.pop_front() {
             match first.value {
                 TokenValue::Symbol(name) => {
                     // Display leading symbol on the same line as the array opening
@@ -354,30 +347,7 @@ impl<'src> InnerFormatter<'src> {
                     if matches!(kind, ArrayKind::Command) {
                         // Additional arguments which should be displayed on the same line
                         if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
-                            let mut count = array_tokens.len().min(*arg_count);
-
-                            while count > 0 {
-                                count -= 1;
-
-                                let token = pop_front(&mut array_tokens).unwrap();
-                                match token.value {
-                                    TokenValue::Integer(_)
-                                    | TokenValue::Float(_)
-                                    | TokenValue::String(_)
-                                    | TokenValue::Symbol(_)
-                                    | TokenValue::Variable(_)
-                                    | TokenValue::Unhandled => {
-                                        self.write_token_spaced(&token, f)?;
-                                        self.format_possible_comment(&token, f)?;
-                                    },
-                                    _ => {
-                                        f.write_char('\n')?;
-                                        self.write_token_indented(&token, f)?;
-                                        self.format_possible_comment(&token, f)?;
-                                        break;
-                                    },
-                                }
-                            }
+                            self.format_command_args(*arg_count, &mut array_tokens, f)?;
                         }
                     }
 
@@ -396,14 +366,7 @@ impl<'src> InnerFormatter<'src> {
                     self.format_possible_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
-                        // Also display the next following symbol on the same line
-                        if let Some(next) = array_tokens.first() {
-                            if matches!(next.value, TokenValue::Symbol(_)) {
-                                self.write_token_spaced(next, f)?;
-                                self.format_possible_comment(first, f)?;
-                                pop_front(&mut array_tokens);
-                            }
-                        }
+                        self.format_object_args(&mut array_tokens, f)?;
                     }
 
                     f.write_char('\n')?;
@@ -416,13 +379,8 @@ impl<'src> InnerFormatter<'src> {
                     self.write_token_unindented(first, f)?;
                     self.format_possible_comment(first, f)?;
 
-                    // Also display the next following symbol on the same line
-                    if let Some(next) = array_tokens.first() {
-                        if matches!(next.value, TokenValue::Symbol(_)) {
-                            self.write_token_spaced(next, f)?;
-                            self.format_possible_comment(next, f)?;
-                            pop_front(&mut array_tokens);
-                        }
+                    if matches!(kind, ArrayKind::Command) {
+                        self.format_object_args(&mut array_tokens, f)?;
                     }
 
                     f.write_char('\n')?;
@@ -438,6 +396,62 @@ impl<'src> InnerFormatter<'src> {
 
         for token in array_tokens {
             self.write_token_line(&token, f)?;
+        }
+
+        Ok(())
+    }
+
+    fn format_object_args(
+        &mut self,
+        remaining: &mut VecDeque<Token<'src>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        // Display the first symbol following the object on the same line
+        let Some(next) = remaining.front() else {
+            return Ok(());
+        };
+
+        if let TokenValue::Symbol(name) = next.value {
+            self.write_token_spaced(next, f)?;
+            self.format_possible_comment(next, f)?;
+            remaining.pop_front().unwrap();
+
+            // Display the argument after that on the same line
+            // if this is a `foreach` or `with` func
+            if name.starts_with("foreach_") || name.starts_with("with_") {
+                self.format_command_args(1, remaining, f)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn format_command_args(
+        &mut self,
+        mut count: usize,
+        remaining: &mut VecDeque<Token<'src>>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        while count > 0 {
+            count -= 1;
+
+            let Some(arg) = remaining.front() else {
+                break;
+            };
+
+            match arg.value {
+                TokenValue::Integer(_)
+                | TokenValue::Float(_)
+                | TokenValue::String(_)
+                | TokenValue::Symbol(_)
+                | TokenValue::Variable(_)
+                | TokenValue::Unhandled => {
+                    self.write_token_spaced(arg, f)?;
+                    self.format_possible_comment(arg, f)?;
+                    remaining.pop_front().unwrap();
+                },
+                _ => break,
+            }
         }
 
         Ok(())

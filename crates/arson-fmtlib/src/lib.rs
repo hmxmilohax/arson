@@ -4,7 +4,7 @@
 
 #![warn(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use arson_parse::ParseError;
@@ -43,6 +43,21 @@ impl Default for Options {
         }
     }
 }
+
+pub(crate) static BLOCK_COMMANDS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
+    HashSet::from_iter([
+        "do",
+        "foreach",
+        "foreach_int",
+        "func",
+        "if",
+        "if_else",
+        "switch",
+        "unless",
+        "with",
+        "while",
+    ])
+});
 
 pub(crate) static COMMAND_SAME_LINE_ARGS: LazyLock<HashMap<&str, usize>> = LazyLock::new(|| {
     HashMap::from_iter([

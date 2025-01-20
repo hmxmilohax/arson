@@ -7,7 +7,7 @@ use std::iter::Peekable;
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
-use crate::{Indentation, Options, COMMAND_SAME_LINE_ARGS};
+use crate::{Indentation, Options, BLOCK_COMMANDS, COMMAND_SAME_LINE_ARGS};
 
 /// Formats the given input text to a new string using the expression-based formatter.
 ///
@@ -111,9 +111,16 @@ impl Drop for IndentGuard<'_, '_> {
     }
 }
 
+#[derive(Debug, Default)]
 struct ArrayProbeStats {
-    arrays: usize,
+    all_arrays: usize,
+    medium_arrays: usize,
     large_arrays: usize,
+
+    arrays: usize,
+    commands: usize,
+    properties: usize,
+
     directives: usize,
     conditionals: usize,
 }
@@ -125,11 +132,11 @@ fn is_any_array(expr: &Expression<'_>) -> bool {
     )
 }
 
-fn is_populated_array(expr: &Expression<'_>) -> bool {
+fn is_array_longer_than(expr: &Expression<'_>, limit: usize) -> bool {
     match &expr.value {
         ExpressionValue::Array(array)
         | ExpressionValue::Command(array)
-        | ExpressionValue::Property(array) => array.len() > 1,
+        | ExpressionValue::Property(array) => array.len() > limit,
         _ => false,
     }
 }
@@ -261,12 +268,16 @@ impl<'src> InnerFormatter<'src> {
     fn probe_array_(&mut self, buffer: &mut String, array: &[Expression<'src>], kind: ArrayKind) -> bool {
         let (l, r) = kind.delimiters();
         buffer.push(l);
-        let result = self.probe_array(array).inspect(|short| buffer.push_str(short));
+        let result = self.probe_array(array, kind).inspect(|short| buffer.push_str(short));
         buffer.push(r);
         result.is_ok()
     }
 
-    fn probe_array(&mut self, array: &[Expression<'src>]) -> Result<String, ArrayProbeStats> {
+    fn probe_array(
+        &mut self,
+        array: &[Expression<'src>],
+        kind: ArrayKind,
+    ) -> Result<String, ArrayProbeStats> {
         if array.is_empty() {
             return Ok(String::new());
         }
@@ -279,27 +290,63 @@ impl<'src> InnerFormatter<'src> {
             }
         }
 
-        let stats = array.iter().fold(
-            ArrayProbeStats {
-                arrays: 0,
-                large_arrays: 0,
-                directives: 0,
-                conditionals: 0,
+        let stats = array.iter().fold(ArrayProbeStats::default(), |mut stats, n| {
+            stats.all_arrays += is_any_array(n) as usize;
+            stats.medium_arrays += is_array_longer_than(n, 1) as usize;
+            stats.large_arrays += is_array_longer_than(n, 3) as usize;
+
+            stats.arrays += matches!(n.value, ExpressionValue::Array(_)) as usize;
+            stats.commands += matches!(n.value, ExpressionValue::Command(_)) as usize;
+            stats.properties += matches!(n.value, ExpressionValue::Property(_)) as usize;
+
+            stats.directives += is_directive(n) as usize;
+            stats.conditionals += is_conditional(n) as usize;
+
+            stats
+        });
+
+        let try_compact = match kind {
+            // Arrays should be compacted if either:
+            // - they contain one inner array with many elements
+            // - they contain fewer than 4 small arrays and have no large arrays
+            ArrayKind::Array => {
+                (stats.all_arrays == 1 && stats.medium_arrays == 1)
+                    || (stats.all_arrays <= 3 && stats.medium_arrays < 1)
             },
-            |mut stats, n| {
-                stats.arrays += is_any_array(n) as usize;
-                stats.large_arrays += is_populated_array(n) as usize;
-                stats.directives += is_directive(n) as usize;
-                stats.conditionals += is_conditional(n) as usize;
-                stats
+
+            // Commands should be compacted if both:
+            // - they are not recognized specifically as commands which execute blocks
+            // - they contain no large arrays
+            ArrayKind::Command => {
+                let compact = match &array[0].value {
+                    ExpressionValue::Symbol(name) => !(*BLOCK_COMMANDS).contains(name),
+
+                    ExpressionValue::String(_)
+                    | ExpressionValue::Variable(_)
+                    | ExpressionValue::Command(_)
+                    | ExpressionValue::Property(_) => {
+                        if let Some(name) = array.get(1) {
+                            if let ExpressionValue::Symbol(name) = &name.value {
+                                !name.starts_with("foreach_") && !name.starts_with("with_")
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    },
+
+                    _ => true,
+                };
+                compact && stats.large_arrays < 1
             },
-        );
+
+            // Properties should be compacted if they contain no large arrays
+            ArrayKind::Property => stats.large_arrays < 1,
+        };
 
         // Attempt compact array
-        if (stats.arrays == 1 && stats.large_arrays == 1 || (stats.arrays <= 3 && stats.large_arrays < 1))
-            && stats.directives < 1
-            && stats.conditionals < 1
-        {
+        if try_compact && stats.directives < 1 && stats.conditionals < 1 {
             // Max width - 2, to account for array delimiters
             let max_len = self.options.max_array_width - 2;
             let mut limit_buffer = String::new();
@@ -347,7 +394,7 @@ impl<'src> InnerFormatter<'src> {
         }
 
         // Attempt short representation of the array
-        let stats = match self.probe_array(array) {
+        let stats = match self.probe_array(array, kind) {
             Ok(short) => return f.write_str(&short),
             Err(stats) => stats,
         };
@@ -365,18 +412,8 @@ impl<'src> InnerFormatter<'src> {
 
                 if matches!(kind, ArrayKind::Command) {
                     // Additional arguments which should be displayed on the same line
-                    if let Some(&arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
-                        let count = remaining.len().min(arg_count);
-                        let (args, _remaining) = remaining.split_at(count);
-
-                        if let Ok(short) = self.probe_array(args) {
-                            f.write_char(' ')?;
-                            f.write_str(&short)?;
-                            if let Some(last_arg) = args.last() {
-                                last = last_arg;
-                            }
-                            remaining = _remaining;
-                        }
+                    if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
+                        self.format_command_args(*arg_count, &mut remaining, &mut last, f)?;
                     }
                 }
             },
@@ -390,14 +427,7 @@ impl<'src> InnerFormatter<'src> {
                 self.write_original(first, f)?;
 
                 if matches!(kind, ArrayKind::Command) {
-                    // Also display the next following symbol on the same line
-                    if let Some((next, _remaining)) = remaining.split_first() {
-                        if matches!(next.value, ExpressionValue::Symbol(_)) {
-                            self.write_expr_spaced(next, f)?;
-                            last = next;
-                            remaining = _remaining;
-                        }
-                    }
+                    self.format_object_args(&mut remaining, &mut last, f)?;
                 }
             },
             ExpressionValue::String(_) if matches!(kind, ArrayKind::Command) || stats.arrays > 0 => {
@@ -406,13 +436,8 @@ impl<'src> InnerFormatter<'src> {
                 // is most likely an object key (weird choice though)
                 self.write_original(first, f)?;
 
-                // Also display the next following symbol on the same line
-                if let Some((next, _remaining)) = remaining.split_first() {
-                    if matches!(next.value, ExpressionValue::Symbol(_)) {
-                        self.write_expr_spaced(next, f)?;
-                        last = next;
-                        remaining = _remaining;
-                    }
+                if matches!(kind, ArrayKind::Command) {
+                    self.format_object_args(&mut remaining, &mut last, f)?;
                 }
             },
             _ => {
@@ -421,6 +446,61 @@ impl<'src> InnerFormatter<'src> {
         };
 
         self.format_array_long(remaining, Some(last), f)
+    }
+
+    fn format_object_args<'a>(
+        &mut self,
+        remaining: &mut &'a [Expression<'src>],
+        last: &mut &'a Expression<'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        // Display the first symbol following the object on the same line
+        let Some((next, _remaining)) = remaining.split_first() else {
+            return Ok(());
+        };
+
+        if let ExpressionValue::Symbol(name) = &next.value {
+            self.write_expr_spaced(next, f)?;
+            *last = next;
+            *remaining = _remaining;
+
+            // Display the argument after that on the same line
+            // if this is a `foreach` or `with` func
+            if name.starts_with("foreach_") || name.starts_with("with_") {
+                self.format_command_args(1, remaining, last, f)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn format_command_args<'a>(
+        &mut self,
+        mut count: usize,
+        remaining: &mut &'a [Expression<'src>],
+        last: &mut &'a Expression<'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        while count > 0 {
+            count -= 1;
+
+            let Some((arg, _remaining)) = remaining.split_first() else {
+                break;
+            };
+
+            let mut buffer = String::new();
+            if !self.probe_node(arg, &mut buffer) {
+                break;
+            }
+
+            f.write_char(' ')?;
+            f.write_str(&buffer)?;
+
+            *last = arg;
+            *remaining = _remaining;
+        }
+
+        Ok(())
     }
 
     fn format_array_long(
@@ -524,7 +604,7 @@ impl<'src> InnerFormatter<'src> {
 
         if !body.is_empty() {
             // Attempt short representation
-            if let Ok(short) = self.probe_array(body) {
+            if let Ok(short) = self.probe_array(body, ArrayKind::Array) {
                 f.write_str(&short)?;
             } else {
                 self.format_array_long(body, None, f)?;
