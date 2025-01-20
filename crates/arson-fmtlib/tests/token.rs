@@ -1048,6 +1048,33 @@ fn blank_lines() {
        \n   ; comment\
        \n)",
     );
+
+    assert_format(
+        "(array1 10) \
+       \n\
+       \n(array2 50) \
+       \n\
+       \n(array3 250)",
+        "(array1 10)\
+       \n\
+       \n(array2 50)\
+       \n\
+       \n(array3 250)",
+    );
+    assert_format(
+        "(foo \
+       \n\
+       \n   (bar 50) \
+       \n\
+       \n   (quz 100) \
+       \n\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n\
+       \n   (quz 100)\
+       \n)",
+    );
 }
 
 #[test]

@@ -260,7 +260,9 @@ make_tokens! {
         value_display: |f| f.write_str("#endif"),
     },
 
-    #[regex(r#"\r?\n[ \v\t\r\n\f]*\r?\n[ \v\t\r\f]*"#)]
+    // this regex is stupidly complex because the skip case
+    // overrides this regex if we're not overly specific
+    #[regex(r#"[ \v\t\r\f]*\r?\n[ \v\t\r\n\f]*\r?\n[ \v\t\r\f]*"#)]
     BlankLine {
         kind_display: "newline",
         value_display: |f| f.write_char('\n'),
@@ -582,7 +584,7 @@ mod tests {
            \n\
            \n   (bar 50)\
            \n\
-           \n   (quz 100)\
+           \n   (quz 100) \
            \n\
            \n)",
             vec![
@@ -598,8 +600,8 @@ mod tests {
                 (TokenValue::Symbol("quz"), 23..26),
                 (TokenValue::Integer(100), 27..30),
                 (TokenValue::ArrayClose, 30..31),
-                (TokenValue::BlankLine, 31..33),
-                (TokenValue::ArrayClose, 33..34),
+                (TokenValue::BlankLine, 31..34),
+                (TokenValue::ArrayClose, 34..35),
             ],
         );
         assert_tokens(
