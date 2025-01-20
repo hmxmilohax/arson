@@ -18,6 +18,15 @@ struct Arguments {
     #[arg(short, long)]
     mode: Option<FormatMode>,
 
+    /// The maximum width of arrays in the output.
+    #[arg(short = 'a', long)]
+    max_array_width: Option<usize>,
+
+    // TODO: not implemented currently
+    // /// The maximum width of lines in the output.
+    // #[arg(short = 'l', long)]
+    // max_line_width: Option<usize>,
+
     /// Suppress parsing errors that occur as part of formatting the output file.
     #[arg(short, long)]
     suppress_errors: bool,
@@ -57,7 +66,10 @@ fn main() -> anyhow::Result<()> {
     let file_text = file_text.into_owned();
     drop(file_bytes); // conserve memory
 
-    let options = Options::default(); // TODO
+    let mut options = Options::default();
+    args.max_array_width.inspect(|value| options.max_array_width = *value);
+    // args.max_line_width.inspect(|value| options.max_line_width = *value);
+
     let formatter = match args.mode {
         Some(FormatMode::Expression) => match expr::Formatter::new(&file_text, options) {
             Ok(formatter) => Formatter::Expression(formatter),
