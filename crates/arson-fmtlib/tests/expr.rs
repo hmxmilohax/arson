@@ -10,8 +10,8 @@ fn assert_format(input: &str, expected: &str) {
 
     fn assert_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>], msg: &str) {
         fn check_ast_eq(left: &[Expression<'_>], right: &[Expression<'_>]) -> Result<(), ()> {
-            let mut left_i = left.iter().filter(|e| matches!(e.value, ExpressionValue::BlankLine));
-            let mut right_i = right.iter().filter(|e| matches!(e.value, ExpressionValue::BlankLine));
+            let mut left_i = left.iter().filter(|e| !matches!(e.value, ExpressionValue::BlankLine));
+            let mut right_i = right.iter().filter(|e| !matches!(e.value, ExpressionValue::BlankLine));
 
             while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
                 match (&left.value, &right.value) {

@@ -11,8 +11,8 @@ fn assert_format(input: &str, expected: &str) {
 
     fn assert_token_eq(left: &[Token<'_>], right: &[Token<'_>], msg: &str) {
         fn check_token_eq(left: &[Token<'_>], right: &[Token<'_>]) -> Result<(), ()> {
-            let mut left_i = left.iter().filter(|e| matches!(e.value, TokenValue::BlankLine));
-            let mut right_i = right.iter().filter(|e| matches!(e.value, TokenValue::BlankLine));
+            let mut left_i = left.iter().filter(|e| !matches!(e.value, TokenValue::BlankLine));
+            let mut right_i = right.iter().filter(|e| !matches!(e.value, TokenValue::BlankLine));
 
             while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
                 if &left.value != &right.value {
