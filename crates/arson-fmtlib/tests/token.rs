@@ -15,7 +15,16 @@ fn assert_format(input: &str, expected: &str) {
             let mut right_i = right.iter().filter(|e| !matches!(e.value, TokenValue::BlankLine));
 
             while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
-                if &left.value != &right.value {
+                let eq = match (&left.value, &right.value) {
+                    (TokenValue::BlockComment(left), TokenValue::BlockComment(right)) => {
+                        left.open.0 == right.open.0
+                            && left.body.0 == right.body.0
+                            && left.close.0 == right.close.0
+                    },
+                    (left, right) => left == right,
+                };
+
+                if !eq {
                     return Err(());
                 }
             }

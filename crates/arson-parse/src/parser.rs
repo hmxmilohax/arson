@@ -5,7 +5,7 @@ use std::iter::Peekable;
 use logos::Span;
 
 use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
-use crate::{ArrayKind, DirectiveArgumentDescription, FloatValue, IntegerValue};
+use crate::{ArrayKind, BlockCommentToken, DirectiveArgumentDescription, FloatValue, IntegerValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
@@ -63,7 +63,7 @@ enum PreprocessedTokenValue<'src> {
 
     BlankLine,
     Comment(&'src str),
-    BlockComment(&'src str),
+    BlockComment(BlockCommentToken<'src>),
 }
 
 impl PreprocessedTokenValue<'_> {
@@ -135,7 +135,7 @@ pub enum ExpressionValue<'src> {
 
     BlankLine,
     Comment(&'src str),
-    BlockComment(&'src str),
+    BlockComment(BlockCommentToken<'src>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -530,7 +530,7 @@ impl<'src> Preprocessor<'src> {
 
     fn skip_comments(&mut self, tokens: &mut Tokenizer<'src>) {
         while let Some(token) = tokens.peek() {
-            match token.value {
+            match &token.value {
                 TokenValue::BlankLine => {
                     // Don't transfer this over, it has no meaning
                     // and formatting wants to strip it out anyways
@@ -546,7 +546,7 @@ impl<'src> Preprocessor<'src> {
                 },
                 TokenValue::BlockComment(text) => {
                     let token = PreprocessedToken {
-                        value: PreprocessedTokenValue::BlockComment(text),
+                        value: PreprocessedTokenValue::BlockComment(text.clone()),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
@@ -917,7 +917,7 @@ impl<'src> Parser<'src> {
 
     fn skip_comments<I: Iterator<Item = PreprocessedToken<'src>>>(&mut self, tokens: &mut Peekable<I>) {
         while let Some(token) = tokens.peek() {
-            match token.value {
+            match &token.value {
                 PreprocessedTokenValue::BlankLine => {
                     // Don't transfer this over, it has no meaning
                     // and formatting wants to strip it out anyways
@@ -933,7 +933,7 @@ impl<'src> Parser<'src> {
                 },
                 PreprocessedTokenValue::BlockComment(text) => {
                     let token = Expression {
-                        value: ExpressionValue::BlockComment(text),
+                        value: ExpressionValue::BlockComment(text.clone()),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
@@ -1163,7 +1163,11 @@ mod tests {
                 0..9,
             )]);
             assert_tokens("/* block comment */", vec![new_pretoken(
-                PreprocessedTokenValue::BlockComment("/* block comment */"),
+                PreprocessedTokenValue::BlockComment(BlockCommentToken {
+                    open: ("/*", 0..2),
+                    body: (" block comment ", 2..17),
+                    close: ("*/", 17..19),
+                }),
                 0..19,
             )]);
             assert_tokens("/*symbol*/", vec![new_pretoken(
@@ -1504,7 +1508,11 @@ mod tests {
                 0..9,
             )]);
             assert_parsed("/* block comment */", vec![new_expression(
-                ExpressionValue::BlockComment("/* block comment */"),
+                ExpressionValue::BlockComment(BlockCommentToken {
+                    open: ("/*", 0..2),
+                    body: (" block comment ", 2..17),
+                    close: ("*/", 17..19),
+                }),
                 0..19,
             )]);
             assert_parsed("/*symbol*/", vec![new_expression(

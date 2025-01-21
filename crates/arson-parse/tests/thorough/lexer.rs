@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use arson_parse::{DiagnosticKind, IntegerValue, Token, TokenValue, Tokenizer};
+use arson_parse::{BlockCommentToken, DiagnosticKind, IntegerValue, Token, TokenValue, Tokenizer};
 
 #[test]
 fn thorough() {
@@ -17,6 +17,15 @@ fn thorough() {
         ($length:literal) => {
             vec![(BlankLine, -1..$length - 1)]
         };
+    }
+
+    fn block_comment<'src>(
+        start: usize,
+        open: &'src str,
+        body: &'src str,
+        close: &'src str,
+    ) -> TokenValue<'src> {
+        TokenValue::BlockComment(BlockCommentToken::new(start, open, body, close))
     }
 
     // Format for this behemoth:
@@ -152,18 +161,21 @@ fn thorough() {
         (116, vec![(Comment("nospace"), 0..8)]),
         (117, vec![(Symbol("asdf;jkl"), 0..8), (Comment(" invalid, lexed as part of the symbol"), 9..47)]),
         (118, blank!()),
-        (119, vec![(BlockComment(
-            "/*\n\
-            block comment\n\
-            */"
+        (119, vec![(block_comment(
+            0,
+            "/*",
+            "\
+           \nblock comment\
+           \n",
+            "*/",
         ), 0..19)]),
         (122, blank!()),
         (123, vec![(Symbol("/*asdf*/"), 0..8), (Comment(" invalid, lexed as a symbol"), 9..37)]),
-        (124, vec![(BlockComment("/*jkl */"), 0..8)]),
+        (124, vec![(block_comment(0, "/*", "jkl ", "*/"), 0..8)]),
         (125, blank!()),
         (126, vec![(Symbol("/**/"), 0..4), (Comment(" invalid, lexed as a symbol"), 5..33)]),
-        (127, vec![(BlockComment("/* */"), 0..5)]),
-        (128, vec![(BlockComment("/*\t*/"), 0..5)]),
+        (127, vec![(block_comment(0, "/*", " ", "*/"), 0..5 )]),
+        (128, vec![(block_comment(0, "/*", "\t", "*/"), 0..5)]),
         (129, blank!()),
         (130, vec![(Comment(" stray block-comment close, lexed as a symbol"), 0..46)]),
         (131, vec![(Symbol("*/"), 0..2)]),
@@ -172,13 +184,16 @@ fn thorough() {
         (134, blank!()),
         (135, vec![(Symbol("/*****"), 0..6), (Comment(" invalid, lexed as a symbol"), 7..35)]),
         (136, blank!(6)),
-        (137, vec![(BlockComment(
-            "/*\
-            \n\
-            \n    *****\n\
-            \n\
-            ***/"
-        ), 4..23)]),
+        (137, vec![(block_comment(
+            4,
+            "/*",
+            "\
+           \n\
+           \n    *****\
+           \n\
+           \n",
+            "***/",
+        ),  4..23)]),
         (142, blank!()),
         (143, vec![(Comment(" comments between directives"), 0..29)]),
         (144, vec![(IncludeOptional, 0..12), (Comment(" asdf"), 13..19)]),
@@ -203,17 +218,17 @@ fn thorough() {
         (163, vec![(Endif, 0..6), (Comment(" asdf"), 7..13)]),
         (164, blank!()),
         (165, vec![(Comment(" block comments between directives"), 0..35)]),
-        (166, vec![(BlockComment("/* asdf */"), 0..10), (IncludeOptional, 11..23), (BlockComment("/* asdf */"), 24..34), (Symbol("../file.dta"), 35..46), (BlockComment("/* asdf */"), 47..57)]),
-        (167, vec![(BlockComment("/* asdf */"), 0..10), (Include, 11..19), (BlockComment("/* asdf */"), 20..30), (Symbol("../file.dta"), 31..42), (BlockComment("/* asdf */"), 43..53)]),
-        (168, vec![(BlockComment("/* asdf */"), 0..10), (Merge, 11..17), (BlockComment("/* asdf */"), 18..28), (Symbol("../file.dta"), 29..40), (BlockComment("/* asdf */"), 41..51)]),
-        (169, vec![(BlockComment("/* asdf */"), 0..10), (Ifdef, 11..17), (BlockComment("/* asdf */"), 18..28), (Symbol("kDefine"), 29..36), (BlockComment("/* asdf */"), 37..47)]),
-        (170, vec![(BlockComment("/* asdf */"), 0..10), (Undefine, 11..17), (BlockComment("/* asdf */"), 18..28), (Symbol("kDefine"), 29..36), (BlockComment("/* asdf */"), 37..47)]),
-        (171, vec![(BlockComment("/* asdf */"), 0..10), (Endif, 11..17), (BlockComment("/* asdf */"), 18..28)]),
-        (172, vec![(BlockComment("/* asdf */"), 0..10), (Ifndef, 11..18), (BlockComment("/* asdf */"), 19..29), (Symbol("kDefine"), 30..37), (BlockComment("/* asdf */"), 38..48)]),
-        (173, vec![(BlockComment("/* asdf */"), 0..10), (Define, 11..18), (BlockComment("/* asdf */"), 19..29), (Symbol("kDefine"), 30..37), (BlockComment("/* asdf */"), 38..48), (ArrayOpen, 49..50), (Integer(1), 50..51), (ArrayClose, 51..52), (BlockComment("/* asdf */"), 53..63)]),
-        (174, vec![(BlockComment("/* asdf */"), 0..10), (Else, 11..16), (BlockComment("/* asdf */"), 17..27)]),
-        (175, vec![(BlockComment("/* asdf */"), 0..10), (Autorun, 11..19), (BlockComment("/* asdf */"), 20..30), (CommandOpen, 31..32), (Symbol("action"), 32..38), (CommandClose, 38..39), (BlockComment("/* asdf */"), 40..50)]),
-        (176, vec![(BlockComment("/* asdf */"), 0..10), (Endif, 11..17), (BlockComment("/* asdf */"), 18..28)]),
+        (166, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (IncludeOptional, 11..23), (block_comment(24, "/*", " asdf ", "*/"), 24..34), (Symbol("../file.dta"), 35..46), (block_comment(47, "/*", " asdf ", "*/"), 47..57)]),
+        (167, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Include, 11..19), (block_comment(20, "/*", " asdf ", "*/"), 20..30), (Symbol("../file.dta"), 31..42), (block_comment(43, "/*", " asdf ", "*/"), 43..53)]),
+        (168, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Merge, 11..17), (block_comment(18, "/*", " asdf ", "*/"), 18..28), (Symbol("../file.dta"), 29..40), (block_comment(41, "/*", " asdf ", "*/"), 41..51)]),
+        (169, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Ifdef, 11..17), (block_comment(18, "/*", " asdf ", "*/"), 18..28), (Symbol("kDefine"), 29..36), (block_comment(37, "/*", " asdf ", "*/"), 37..47)]),
+        (170, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Undefine, 11..17), (block_comment(18, "/*", " asdf ", "*/"), 18..28), (Symbol("kDefine"), 29..36), (block_comment(37, "/*", " asdf ", "*/"), 37..47)]),
+        (171, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Endif, 11..17), (block_comment(18, "/*", " asdf ", "*/"), 18..28)]),
+        (172, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Ifndef, 11..18), (block_comment(19, "/*", " asdf ", "*/"), 19..29), (Symbol("kDefine"), 30..37), (block_comment(38, "/*", " asdf ", "*/"), 38..48)]),
+        (173, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Define, 11..18), (block_comment(19, "/*", " asdf ", "*/"), 19..29), (Symbol("kDefine"), 30..37), (block_comment(38, "/*", " asdf ", "*/"), 38..48), (ArrayOpen, 49..50), (Integer(1), 50..51), (ArrayClose, 51..52), (block_comment(53, "/*", " asdf ", "*/"), 53..63)]),
+        (174, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Else, 11..16), (block_comment(17, "/*", " asdf ", "*/"), 17..27)]),
+        (175, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Autorun, 11..19), (block_comment(20, "/*", " asdf ", "*/"), 20..30), (CommandOpen, 31..32), (Symbol("action"), 32..38), (CommandClose, 38..39), (block_comment(40, "/*", " asdf ", "*/"), 40..50)]),
+        (176, vec![(block_comment(0, "/*", " asdf ", "*/"), 0..10), (Endif, 11..17), (block_comment(18, "/*", " asdf ", "*/"), 18..28)]),
     ];
 
     // Apply proper locations to tokens
@@ -232,11 +247,19 @@ fn thorough() {
 
         let mut adjusted_tokens = vec![];
         for (line_number, token_line) in tokens {
-            let location = line_locations[line_number - 1];
+            let line_location = line_locations[line_number - 1];
             for token in token_line {
-                let new_start = (location as isize + token.1.start) as usize;
-                let new_end = (location as isize + token.1.end) as usize;
-                adjusted_tokens.push((token.0, new_start..new_end))
+                let new_start = (line_location as isize + token.1.start) as usize;
+                let new_end = (line_location as isize + token.1.end) as usize;
+
+                let value = match token.0 {
+                    BlockComment(BlockCommentToken { open, body, close }) => {
+                        BlockComment(BlockCommentToken::new(new_start, open.0, body.0, close.0))
+                    },
+                    value => value,
+                };
+
+                adjusted_tokens.push((value, new_start..new_end))
             }
         }
 

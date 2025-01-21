@@ -53,6 +53,36 @@ impl std::fmt::Display for ArrayKind {
     }
 }
 
+pub type TextToken<'src> = (&'src str, Span);
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct BlockCommentToken<'src> {
+    pub open: TextToken<'src>,
+    pub body: TextToken<'src>,
+    pub close: TextToken<'src>,
+}
+
+impl<'src> BlockCommentToken<'src> {
+    pub fn new(start_pos: usize, open: &'src str, body: &'src str, close: &'src str) -> Self {
+        let open = (open, start_pos..start_pos + open.len());
+        let body = (body, open.1.end..open.1.end + body.len());
+        let close = (close, body.1.end..body.1.end + close.len());
+        Self { open, body, close }
+    }
+
+    pub fn contains(&self, pat: &str) -> bool {
+        self.open.0.contains(pat) || self.body.0.contains(pat) || self.close.0.contains(pat)
+    }
+}
+
+impl std::fmt::Display for BlockCommentToken<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.open.0)?;
+        f.write_str(self.body.0)?;
+        f.write_str(self.close.0)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
     pub value: TokenValue<'src>,
@@ -274,9 +304,9 @@ make_tokens! {
     },
     // These block comment regexes are very particular, for compatibility reasons
     #[regex(r#"(\/\*)+[^\n*]*"#, parse_block_comment)]
-    BlockComment(&'src str) {
+    BlockComment(BlockCommentToken<'src>) {
         kind_display: "block comment",
-        value_display: |f, value| f.write_str(value),
+        value_display: |f, value| value.fmt(f),
     },
     // Handled in parse_block_comment
     // #[regex(r#"\*+\/"#)]
@@ -318,15 +348,41 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, std::num::ParseFloatEr
     }
 }
 
-fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<&'src str, DiagnosticKind> {
-    let remainder = lex.remainder();
-    let Some(found) = regex!(r#"\*+\/"#).find(remainder).map(|m| m.range()) else {
-        lex.bump(remainder.len());
+fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<BlockCommentToken<'src>, DiagnosticKind> {
+    let matched_range = lex.span();
+    let close_offset = matched_range.end - matched_range.start;
+
+    let open_range = regex!(r#"(\/\*)+"#)
+        .find(lex.slice())
+        .map(|m| m.range())
+        .expect("token can't match without matching this pattern");
+
+    let Some(close_range) = regex!(r#"\*+\/"#).find(lex.remainder()).map(|m| m.range()) else {
+        lex.bump(lex.remainder().len());
         return Err(DiagnosticKind::UnclosedBlockComment);
     };
+    lex.bump(close_range.end);
 
-    lex.bump(found.end);
-    Ok(lex.slice())
+    let full_text = lex.slice();
+    let range_start = lex.span().start;
+
+    let close_range = (close_range.start + close_offset)..(close_range.end + close_offset);
+    let body_range = open_range.end..close_range.start;
+
+    Ok(BlockCommentToken {
+        open: (
+            &full_text[open_range.clone()],
+            open_range.start + range_start..open_range.end + range_start,
+        ),
+        body: (
+            &full_text[body_range.clone()],
+            body_range.start + range_start..body_range.end + range_start,
+        ),
+        close: (
+            &full_text[close_range.clone()],
+            close_range.start + range_start..close_range.end + range_start,
+        ),
+    })
 }
 
 pub struct Tokenizer<'src> {
@@ -520,39 +576,95 @@ mod tests {
 
     #[test]
     fn comments() {
+        fn new_block_comment<'src>(
+            start: usize,
+            open: &'src str,
+            body: &'src str,
+            close: &'src str,
+        ) -> TokenValue<'src> {
+            TokenValue::BlockComment(BlockCommentToken::new(start, open, body, close))
+        }
+
         assert_token("; comment", TokenValue::Comment(" comment"), 0..9);
         assert_token(";comment", TokenValue::Comment("comment"), 0..8);
-        assert_token("/* comment */", TokenValue::BlockComment("/* comment */"), 0..13);
+        assert_token("/* comment */", new_block_comment(0, "/*", " comment ", "*/"), 0..13);
+        assert_token("/*comment */", new_block_comment(0, "/*", "comment ", "*/"), 0..12);
+        assert_token("/* comment*/", new_block_comment(0, "/*", " comment", "*/"), 0..12);
         assert_token(
-            "/*\n\
-            multi\n\
-            line\n\
-            comment\n\
-            */",
-            TokenValue::BlockComment(
-                "/*\n\
-                multi\n\
-                line\n\
-                comment\n\
-                */",
+            "/*\
+           \nmulti\
+           \nline\
+           \ncomment\
+           \n*/",
+            new_block_comment(
+                0,
+                "/*",
+                "\
+               \nmulti\
+               \nline\
+               \ncomment\
+               \n",
+                "*/",
             ),
             0..24,
         );
 
         // These get parsed as symbols in the original lexer
         assert_token("a;symbol", TokenValue::Symbol("a;symbol"), 0..8);
+        assert_token("/**", TokenValue::Symbol("/**"), 0..3);
         assert_token("/**/", TokenValue::Symbol("/**/"), 0..4);
+        assert_token("/*****", TokenValue::Symbol("/*****"), 0..6);
         assert_token("/*****/", TokenValue::Symbol("/*****/"), 0..7);
         assert_token("/*comment*/", TokenValue::Symbol("/*comment*/"), 0..11);
 
+        // Block comment requirements are weird
+        assert_token(
+            "/*/*/* comment */",
+            new_block_comment(0, "/*/*/*", " comment ", "*/"),
+            0..17,
+        );
+        assert_tokens("/**/** comment */", vec![
+            (TokenValue::Symbol("/**/**"), 0..6),
+            (TokenValue::Symbol("comment"), 7..14),
+            (TokenValue::Symbol("*/"), 15..17),
+        ]);
+        assert_tokens("/***** comment */", vec![
+            (TokenValue::Symbol("/*****"), 0..6),
+            (TokenValue::Symbol("comment"), 7..14),
+            (TokenValue::Symbol("*/"), 15..17),
+        ]);
+        assert_token(
+            "/* comment *****/",
+            new_block_comment(0, "/*", " comment ", "*****/"),
+            0..17,
+        );
+        assert_tokens("/* comment **/**/", vec![
+            (new_block_comment(0, "/*", " comment ", "**/"), 0..14),
+            (TokenValue::Symbol("**/"), 14..17),
+        ]);
+        assert_tokens("/* comment */*/*/", vec![
+            (new_block_comment(0, "/*", " comment ", "*/"), 0..13),
+            (TokenValue::Symbol("*/*/"), 13..17),
+        ]);
+
         // Ensure block comment ends aren't swallowed up by delimiters for other tokens
-        assert_token("/* $*/", TokenValue::BlockComment("/* $*/"), 0..6);
-        assert_token("/* \"*/", TokenValue::BlockComment("/* \"*/"), 0..6);
-        assert_token("/* '*/", TokenValue::BlockComment("/* '*/"), 0..6);
-        assert_token("/* ;*/", TokenValue::BlockComment("/* ;*/"), 0..6);
-        assert_token("/* #*/", TokenValue::BlockComment("/* #*/"), 0..6);
+        fn assert_block_comment_with_delimiter(delimiter: char) {
+            assert_token(
+                &format!("/* {delimiter}*/"),
+                new_block_comment(0, "/*", &format!(" {delimiter}"), "*/"),
+                0..6,
+            );
+        }
+
+        assert_block_comment_with_delimiter('$');
+        assert_block_comment_with_delimiter('\"');
+        assert_block_comment_with_delimiter('\'');
+        assert_block_comment_with_delimiter(';');
+        assert_block_comment_with_delimiter('#');
 
         assert_token("/*", TokenValue::Error(DiagnosticKind::UnclosedBlockComment), 0..2);
+        assert_token("/*/", TokenValue::Error(DiagnosticKind::UnclosedBlockComment), 0..3);
+        assert_token("/*/*/*", TokenValue::Error(DiagnosticKind::UnclosedBlockComment), 0..6);
         assert_token(
             "/*a bunch of\ntext",
             TokenValue::Error(DiagnosticKind::UnclosedBlockComment),

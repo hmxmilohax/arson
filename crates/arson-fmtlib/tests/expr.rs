@@ -14,70 +14,69 @@ fn assert_format(input: &str, expected: &str) {
             let mut right_i = right.iter().filter(|e| !matches!(e.value, ExpressionValue::BlankLine));
 
             while let (Some(left), Some(right)) = (left_i.next(), right_i.next()) {
-                match (&left.value, &right.value) {
+                let eq = match (&left.value, &right.value) {
                     (ExpressionValue::Array(left), ExpressionValue::Array(right))
                     | (ExpressionValue::Command(left), ExpressionValue::Command(right))
                     | (ExpressionValue::Property(left), ExpressionValue::Property(right)) => {
                         check_ast_eq(left, right)?;
+                        true
                     },
 
                     (ExpressionValue::Undefine(left), ExpressionValue::Undefine(right))
                     | (ExpressionValue::Include(left), ExpressionValue::Include(right))
                     | (ExpressionValue::IncludeOptional(left), ExpressionValue::IncludeOptional(right))
                     | (ExpressionValue::Merge(left), ExpressionValue::Merge(right)) => {
-                        if left.text != right.text {
-                            return Err(());
-                        }
+                        left.text == right.text
                     },
 
-                    (
-                        ExpressionValue::Define(left_name, left),
-                        ExpressionValue::Define(right_name, right),
-                    ) => {
-                        if left_name.text != right_name.text {
-                            return Err(());
-                        }
-
+                    (ExpressionValue::Define(l_name, left), ExpressionValue::Define(r_name, right)) => {
                         check_ast_eq(&left.exprs, &right.exprs)?;
+                        l_name.text == r_name.text
                     },
                     (ExpressionValue::Autorun(left), ExpressionValue::Autorun(right)) => {
                         check_ast_eq(&left.exprs, &right.exprs)?;
+                        true
                     },
 
                     (
                         ExpressionValue::Conditional {
-                            is_positive: left_positive,
-                            symbol: left_name,
-                            true_branch: left_true,
-                            false_branch: left_false,
+                            is_positive: l_positive,
+                            symbol: l_name,
+                            true_branch: l_true,
+                            false_branch: l_false,
                         },
                         ExpressionValue::Conditional {
-                            is_positive: right_positive,
-                            symbol: right_name,
-                            true_branch: right_true,
-                            false_branch: right_false,
+                            is_positive: r_positive,
+                            symbol: r_name,
+                            true_branch: r_true,
+                            false_branch: r_false,
                         },
                     ) => {
-                        if left_positive != right_positive || left_name.text != right_name.text {
-                            return Err(());
-                        }
+                        check_ast_eq(&l_true.exprs, &r_true.exprs)?;
 
-                        check_ast_eq(&left_true.exprs, &right_true.exprs)?;
-
-                        match (left_false, right_false) {
-                            (Some(left_false), Some(right_false)) => {
-                                check_ast_eq(&left_false.exprs, &right_false.exprs)?
-                            },
-                            (None, None) => (),
-                            _ => return Err(()),
-                        }
+                        l_positive == r_positive
+                            && l_name.text == r_name.text
+                            && match (l_false, r_false) {
+                                (Some(l_false), Some(r_false)) => {
+                                    check_ast_eq(&l_false.exprs, &r_false.exprs)?;
+                                    true
+                                },
+                                (None, None) => true,
+                                _ => false,
+                            }
                     },
 
-                    (left, right) => {
-                        if left != right {
-                            return Err(());
-                        }
+                    (ExpressionValue::BlockComment(left), ExpressionValue::BlockComment(right)) => {
+                        left.open.0 == right.open.0
+                            && left.body.0 == right.body.0
+                            && left.close.0 == right.close.0
                     },
+
+                    (left, right) => left == right,
+                };
+
+                if !eq {
+                    return Err(());
                 }
             }
 

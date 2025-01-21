@@ -256,9 +256,8 @@ impl<'src> InnerFormatter<'src> {
             ExpressionValue::BlankLine => true,
 
             ExpressionValue::Comment(_) => false,
-            ExpressionValue::BlockComment(text) => {
-                buffer.push_str(text);
-                !text.contains('\n')
+            ExpressionValue::BlockComment(comment) => {
+                self.write_original(expr, buffer).is_ok() && !comment.contains("\n")
             },
 
             _ => self.format_expr_unindented(expr, buffer).is_ok(),

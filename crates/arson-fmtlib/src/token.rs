@@ -228,7 +228,7 @@ impl<'src> InnerFormatter<'src> {
         }
 
         while let Some(token) = self.tokens.peek() {
-            match token.value {
+            match &token.value {
                 TokenValue::ArrayClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
@@ -276,7 +276,7 @@ impl<'src> InnerFormatter<'src> {
                     is_short = false;
                     break;
                 },
-                TokenValue::BlockComment(text) if text.contains('\n') => {
+                TokenValue::BlockComment(comment) if comment.contains("\n") => {
                     stop_cause = ProbeStopCause::Comment;
                     is_short = false;
                     break;
