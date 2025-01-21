@@ -349,6 +349,9 @@ impl<'src> InnerFormatter<'src> {
                         if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
                             self.format_command_args(*arg_count, &mut array_tokens, f)?;
                         }
+
+                        // Otherwise, format it like an object
+                        self.format_object_args(&mut array_tokens, f)?;
                     }
 
                     f.write_char('\n')?;

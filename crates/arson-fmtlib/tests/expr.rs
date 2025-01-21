@@ -458,6 +458,38 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{some_object do_thing $var}");
+    assert_format(
+        "{some_object do_big_thing {other_object get var1} {other_object get var2} {other_object get var3}}",
+        "{some_object do_big_thing\
+       \n   {other_object get var1}\
+       \n   {other_object get var2}\
+       \n   {other_object get var3}\
+       \n}",
+    );
+    assert_format(
+        "{some_object foreach_thing $thing {print $thing}}",
+        "{some_object foreach_thing $thing\
+       \n   {print $thing}\
+       \n}",
+    );
+    assert_format(
+        "{some_object with_thing $the_thing {print $the_thing} {print [thing]}}",
+        "{some_object with_thing $the_thing\
+       \n   {print $the_thing}\
+       \n   {print [thing]}\
+       \n}",
+    );
+
+    assert_preserved("{$object do_thing $var}");
+    assert_format(
+        "{$object do_big_thing {$other_object get var1} {$other_object get var2} {$other_object get var3}}",
+        "{$object do_big_thing\
+       \n   {$other_object get var1}\
+       \n   {$other_object get var2}\
+       \n   {$other_object get var3}\
+       \n}",
+    );
     assert_format(
         "{$object foreach_thing $thing {print $thing} {...}}",
         "{$object foreach_thing $thing\
@@ -473,6 +505,15 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{\"object\" do_thing $var}");
+    assert_format(
+        "{\"object\" do_big_thing {\"other_object\" get var1} {\"other_object\" get var2} {\"other_object\" get var3}}",
+        "{\"object\" do_big_thing\
+       \n   {\"other_object\" get var1}\
+       \n   {\"other_object\" get var2}\
+       \n   {\"other_object\" get var3}\
+       \n}",
+    );
     assert_format(
         "{\"object\" foreach_thing $thing {print $thing} {...}}",
         "{\"object\" foreach_thing $thing\
@@ -488,6 +529,15 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{{get_thing} do_thing $var}");
+    assert_format(
+        "{{get_thing} do_big_thing {{get_other_thing} get var1} {{get_other_thing} get var2} {{get_other_thing} get var3}}",
+        "{{get_thing} do_big_thing\
+       \n   {{get_other_thing} get var1}\
+       \n   {{get_other_thing} get var2}\
+       \n   {{get_other_thing} get var3}\
+       \n}",
+    );
     assert_format(
         "{{get_thing} foreach_thing $thing {print $thing} {...}}",
         "{{get_thing} foreach_thing $thing\
@@ -503,6 +553,15 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{[thing] do_thing $var}");
+    assert_format(
+        "{[thing] do_big_thing {[other_thing] get var1} {[other_thing] get var2} {[other_thing] get var3}}",
+        "{[thing] do_big_thing\
+       \n   {[other_thing] get var1}\
+       \n   {[other_thing] get var2}\
+       \n   {[other_thing] get var3}\
+       \n}",
+    );
     assert_format(
         "{[thing] foreach_thing $thing {print $thing} {...}}",
         "{[thing] foreach_thing $thing\

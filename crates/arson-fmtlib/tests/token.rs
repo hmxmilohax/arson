@@ -460,6 +460,40 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{some_object do_thing $var}");
+    assert_format(
+        "{some_object do_big_thing {other_object get var1} {other_object get var2} {other_object get var3}}",
+        "{some_object do_big_thing\
+       \n   {other_object get var1}\
+       \n   {other_object get var2}\
+       \n   {other_object get var3}\
+       \n}",
+    );
+    assert_format(
+        "{some_object foreach_thing $thing {print $thing}}",
+        "{some_object foreach_thing $thing\
+       \n   {print $thing}\
+       \n}",
+    );
+    assert_format(
+        "{some_object with_thing $the_thing {print $the_thing} {print [thing]}}",
+        "{some_object with_thing $the_thing\
+       \n   {print $the_thing}\
+       \n   {print\
+       \n      [thing]\
+       \n   }\
+       \n}",
+    );
+
+    assert_preserved("{$object do_thing $var}");
+    assert_format(
+        "{$object do_big_thing {$other_object get var1} {$other_object get var2} {$other_object get var3}}",
+        "{$object do_big_thing\
+       \n   {$other_object get var1}\
+       \n   {$other_object get var2}\
+       \n   {$other_object get var3}\
+       \n}",
+    );
     assert_format(
         "{$object foreach_thing $thing {print $thing} {...}}",
         "{$object foreach_thing $thing\
@@ -475,6 +509,15 @@ fn command_args() {
        \n}",
     );
 
+    assert_preserved("{\"object\" do_thing $var}");
+    assert_format(
+        "{\"object\" do_big_thing {\"other_object\" get var1} {\"other_object\" get var2} {\"other_object\" get var3}}",
+        "{\"object\" do_big_thing\
+       \n   {\"other_object\" get var1}\
+       \n   {\"other_object\" get var2}\
+       \n   {\"other_object\" get var3}\
+       \n}",
+    );
     assert_format(
         "{\"object\" foreach_thing $thing {print $thing} {...}}",
         "{\"object\" foreach_thing $thing\
@@ -491,12 +534,93 @@ fn command_args() {
     );
 
     assert_format(
+        "{{get_thing} do_thing $var}",
+        "{\
+       \n   {get_thing}\
+       \n   do_thing\
+       \n   $var\
+       \n}",
+    );
+    assert_format(
+        "{{get_thing} do_big_thing {{get_other_thing} get var1} {{get_other_thing} get var2} {{get_other_thing} get var3}}",
+        "{\
+       \n   {get_thing}\
+       \n   do_big_thing\
+       \n   {\
+       \n      {get_other_thing}\
+       \n      get\
+       \n      var1\
+       \n   }\
+       \n   {\
+       \n      {get_other_thing}\
+       \n      get\
+       \n      var2\
+       \n   }\
+       \n   {\
+       \n      {get_other_thing}\
+       \n      get\
+       \n      var3\
+       \n   }\
+       \n}",
+    );
+    assert_format(
+        "{{get_thing} foreach_thing $thing {print $thing} {...}}",
+        "{\
+       \n   {get_thing}\
+       \n   foreach_thing\
+       \n   $thing\
+       \n   {print $thing}\
+       \n   {...}\
+       \n}",
+    );
+    assert_format(
         "{{get_thing} with_thing $the_thing {print $the_thing} {...}}",
         "{\
        \n   {get_thing}\
        \n   with_thing\
        \n   $the_thing\
        \n   {print $the_thing}\
+       \n   {...}\
+       \n}",
+    );
+
+    assert_format(
+        "{[thing] do_thing $var}",
+        "{\
+       \n   [thing]\
+       \n   do_thing\
+       \n   $var\
+       \n}",
+    );
+    assert_format(
+        "{[thing] do_big_thing {[other_thing] get var1} {[other_thing] get var2} {[other_thing] get var3}}",
+        "{\
+       \n   [thing]\
+       \n   do_big_thing\
+       \n   {\
+       \n      [other_thing]\
+       \n      get\
+       \n      var1\
+       \n   }\
+       \n   {\
+       \n      [other_thing]\
+       \n      get\
+       \n      var2\
+       \n   }\
+       \n   {\
+       \n      [other_thing]\
+       \n      get\
+       \n      var3\
+       \n   }\
+       \n}",
+    );
+    assert_format(
+        "{[thing] foreach_thing $thing {print $thing} {...}}",
+        "{\
+       \n   [thing]\
+       \n   foreach_thing\
+       \n   $thing\
+       \n   {print $thing}\
        \n   {...}\
        \n}",
     );

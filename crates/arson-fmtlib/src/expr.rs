@@ -308,7 +308,7 @@ impl<'src> InnerFormatter<'src> {
         let try_compact = match kind {
             // Arrays should be compacted if either:
             // - they contain one inner array with many elements
-            // - they contain fewer than 4 small arrays and have no large arrays
+            // - they contain fewer than 4 small arrays and have no medium/large arrays
             ArrayKind::Array => {
                 (stats.all_arrays == 1 && stats.medium_arrays == 1)
                     || (stats.all_arrays <= 3 && stats.medium_arrays < 1)
@@ -318,27 +318,28 @@ impl<'src> InnerFormatter<'src> {
             // - they are not recognized specifically as commands which execute blocks
             // - they contain no large arrays
             ArrayKind::Command => {
-                let compact = match &array[0].value {
-                    ExpressionValue::Symbol(name) => !(*BLOCK_COMMANDS).contains(name),
+                let large = match &array[0].value {
+                    ExpressionValue::Symbol(name) if (*BLOCK_COMMANDS).contains(name) => true,
 
-                    ExpressionValue::String(_)
+                    ExpressionValue::Symbol(_)
+                    | ExpressionValue::String(_)
                     | ExpressionValue::Variable(_)
                     | ExpressionValue::Command(_)
-                    | ExpressionValue::Property(_) => {
+                    | ExpressionValue::Property(_) => 'a: {
+                        // First element is (most likely) retrieving an object; if the method being
+                        // called is a `foreach` or `with`, it's most likely executing a block
                         if let Some(name) = array.get(1) {
                             if let ExpressionValue::Symbol(name) = &name.value {
-                                !name.starts_with("foreach_") && !name.starts_with("with_")
-                            } else {
-                                true
+                                break 'a name.starts_with("foreach_") || name.starts_with("with_");
                             }
-                        } else {
-                            true
                         }
+
+                        false
                     },
 
-                    _ => true,
+                    _ => false,
                 };
-                compact && stats.large_arrays < 1
+                !large && stats.large_arrays < 1
             },
 
             // Properties should be compacted if they contain no large arrays
@@ -415,6 +416,9 @@ impl<'src> InnerFormatter<'src> {
                     if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
                         self.format_command_args(*arg_count, &mut remaining, &mut last, f)?;
                     }
+
+                    // Otherwise, format it like an object
+                    self.format_object_args(&mut remaining, &mut last, f)?;
                 }
             },
             ExpressionValue::Integer(_) if remaining.iter().any(|n| is_any_array(n)) => {
