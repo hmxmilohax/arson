@@ -357,12 +357,12 @@ impl<'src> InnerFormatter<'src> {
 
                     if matches!(kind, ArrayKind::Command) {
                         // Additional arguments which should be displayed on the same line
-                        if let Some(arg_count) = (*consts::COMMAND_SAME_LINE_ARGS).get(name) {
-                            self.format_command_args(*arg_count, &mut array_tokens, f)?;
+                        if let Some(arg_count) = consts::pack_args_on_same_line(name) {
+                            self.format_command_args(arg_count, &mut array_tokens, f)?;
+                        } else {
+                            // Otherwise, format it like an object
+                            self.format_object_args(&mut array_tokens, f)?;
                         }
-
-                        // Otherwise, format it like an object
-                        self.format_object_args(&mut array_tokens, f)?;
                     }
 
                     f.write_char('\n')?;

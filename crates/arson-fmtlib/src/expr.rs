@@ -323,7 +323,7 @@ impl<'src> InnerFormatter<'src> {
             // - they contain no large arrays
             ArrayKind::Command => {
                 let large = match &array[0].value {
-                    ExpressionValue::Symbol(name) if (*consts::BLOCK_COMMANDS).contains(name) => true,
+                    ExpressionValue::Symbol(name) if (*consts::BLOCK_COMMANDS).contains_key(name) => true,
 
                     ExpressionValue::Symbol(_)
                     | ExpressionValue::String(_)
@@ -424,12 +424,12 @@ impl<'src> InnerFormatter<'src> {
 
                 if matches!(kind, ArrayKind::Command) {
                     // Additional arguments which should be displayed on the same line
-                    if let Some(arg_count) = (*consts::COMMAND_SAME_LINE_ARGS).get(name) {
-                        self.format_command_args(*arg_count, &mut remaining, &mut last, f)?;
+                    if let Some(arg_count) = consts::pack_args_on_same_line(name) {
+                        self.format_command_args(arg_count, &mut remaining, &mut last, f)?;
+                    } else {
+                        // Otherwise, format it like an object
+                        self.format_object_args(&mut remaining, &mut last, f)?;
                     }
-
-                    // Otherwise, format it like an object
-                    self.format_object_args(&mut remaining, &mut last, f)?;
                 }
             },
             ExpressionValue::Integer(_) if remaining.iter().any(|n| is_any_array(n)) => {
