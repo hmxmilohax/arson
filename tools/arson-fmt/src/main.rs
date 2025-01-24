@@ -22,11 +22,6 @@ struct Arguments {
     #[arg(short = 'a', long)]
     max_array_width: Option<usize>,
 
-    // TODO: not implemented currently
-    // /// The maximum width of lines in the output.
-    // #[arg(short = 'l', long)]
-    // max_line_width: Option<usize>,
-
     /// Suppress parsing errors that occur as part of formatting the output file.
     #[arg(short, long)]
     suppress_errors: bool,
