@@ -96,6 +96,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "arson-fmt"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arson-fmtlib",
+ "arson-parse",
+ "clap",
+ "encoding_rs",
+ "thiserror",
+]
+
+[[package]]
+name = "arson-fmtlib"
+version = "0.1.0"
+dependencies = [
+ "arson-parse",
+ "thiserror",
+]
+
+[[package]]
 name = "arson-fs"
 version = "0.1.0"
 dependencies = [
@@ -116,6 +136,7 @@ dependencies = [
 name = "arson-repl"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arson",
  "clap",
  "rustyline",
@@ -136,6 +157,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arson-dtb",
+ "arson-fmtlib",
  "arson-parse",
  "clap",
 ]

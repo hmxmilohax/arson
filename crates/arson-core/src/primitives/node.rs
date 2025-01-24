@@ -845,7 +845,7 @@ impl fmt::Display for NodeValue {
         match self {
             Self::Integer(value) => Display::fmt(value, f),
             Self::Float(value) => {
-                // Debug display used to always display decimal points
+                // Debug display used since it acts as a general format specifier
                 write!(f, "{value:?}")
             },
             Self::String(value) => Display::fmt(value, f),

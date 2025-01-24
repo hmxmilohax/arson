@@ -1,5 +1,5 @@
 [package]
-name = "arson-repl"
+name = "arson-fmt"
 
 version.workspace = true
 edition.workspace = true
@@ -9,8 +9,10 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-arson = { path = "../../crates/arson", features = ["parse-reporting"] }
+arson-fmtlib = { path = "../../crates/arson-fmtlib" }
+arson-parse = { path = "../../crates/arson-parse", features = ["reporting"] }
 
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
-rustyline = "15.0.0"
+encoding_rs = "0.8.35"
+thiserror = "1.0.65"

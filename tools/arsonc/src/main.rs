@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -11,6 +12,7 @@ use arson_dtb::ReadError;
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
+use arson_parse::{ParseError, TokenValue};
 use clap::Parser;
 
 /// The Arson DTA<->DTB compiler/decompiler.
@@ -43,6 +45,9 @@ enum CompilerMode {
         ///
         /// Defaults to the input path with the extension changed to .dtb.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
     },
     /// Decompile a compiled script file (.dtb) into textual form (.dta).
     Decompile {
@@ -57,6 +62,12 @@ enum CompilerMode {
         ///
         /// Defaults to the input path with the extension changed to .dta.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
+        /// Suppress parsing errors that occur as part of formatting the output file.
+        #[arg(short, long)]
+        suppress_parse_errors: bool,
     },
     /// Changes the encryption of a compiled script file (.dtb).
     CrossCrypt {
@@ -79,6 +90,9 @@ enum CompilerMode {
         ///
         /// Defaults to appending `_encrypted` to the file name.
         output_path: Option<PathBuf>,
+        /// Allow output path to overwrite an existing file.
+        #[arg(short = 'o', long)]
+        allow_overwrite: bool,
     },
 }
 
@@ -113,19 +127,36 @@ fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
 
     match args.mode {
-        CompilerMode::Compile { encryption, key, encoding, input_path, output_path } => {
-            compile(encryption, key, encoding, input_path, output_path)
-        },
-        CompilerMode::Decompile { decryption, input_path, output_path } => {
-            decompile(decryption, input_path, output_path)
-        },
+        CompilerMode::Compile {
+            encryption,
+            key,
+            encoding,
+            input_path,
+            output_path,
+            allow_overwrite,
+        } => compile(
+            encryption,
+            key,
+            encoding,
+            &input_path,
+            output_path.as_deref(),
+            allow_overwrite,
+        ),
+        CompilerMode::Decompile {
+            decryption,
+            input_path,
+            output_path,
+            allow_overwrite,
+            suppress_parse_errors,
+        } => decompile(decryption, input_path, output_path, allow_overwrite, suppress_parse_errors),
         CompilerMode::CrossCrypt {
             decryption,
             encryption,
             key,
             input_path,
             output_path,
-        } => cross_crypt(decryption, encryption, key, input_path, output_path),
+            allow_overwrite,
+        } => cross_crypt(decryption, encryption, key, input_path, output_path, allow_overwrite),
     }
 }
 
@@ -152,13 +183,16 @@ fn compile(
     encryption: EncryptionMode,
     key: Option<u32>,
     encoding: Encoding,
-    input_path: PathBuf,
-    output_path: Option<PathBuf>,
+    input_path: &Path,
+    output_path: Option<&Path>,
+    allow_overwrite: bool,
 ) -> anyhow::Result<()> {
-    let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dtb"));
-    validate_paths(&input_path, &output_path, "DTA", "DTB")?;
+    let output_path = output_path
+        .map(Cow::Borrowed)
+        .unwrap_or_else(|| Cow::Owned(input_path.with_extension("dtb")));
+    validate_paths(input_path, &output_path, "DTA", "DTB")?;
 
-    let input_file = File::open(&input_path)
+    let input_file = File::open(input_path)
         .and_then(std::io::read_to_string)
         .context("couldn't read input file")?;
 
@@ -166,24 +200,14 @@ fn compile(
         Ok(ast) => ast,
         Err(error) => match error {
             arson_dtb::DataParseError::Parse(error) => {
-                let writer = StandardStream::stderr(ColorChoice::Auto);
-                let config = term::Config { chars: Chars::ascii(), ..Default::default() };
-
-                let file = SimpleFile::new(input_path.to_string_lossy(), &input_file);
-                for error in error.diagnostics {
-                    _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
-                }
-
-                std::process::abort();
+                write_parse_errors(error, input_path, &input_file);
+                bail!("failed to parse input file");
             },
             _ => bail!("couldn't load input file: {error}"),
         },
     };
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
-
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
     let settings = WriteSettings {
         encoding: match encoding {
             Encoding::UTF8 => WriteEncoding::UTF8,
@@ -212,11 +236,13 @@ fn decompile(
     decryption: Option<EncryptionMode>,
     input_path: PathBuf,
     output_path: Option<PathBuf>,
+    allow_overwrite: bool,
+    suppress_parse_errors: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dta"));
     validate_paths(&input_path, &output_path, "DTB", "DTA")?;
 
-    let mut file = File::open(input_path).map(BufReader::new).context("couldn't open file")?;
+    let mut file = File::open(&input_path).map(BufReader::new).context("couldn't open file")?;
 
     let result = match decryption {
         Some(EncryptionMode::None) => arson_dtb::read_unencrypted(&mut file),
@@ -227,12 +253,31 @@ fn decompile(
     let array = result.context("couldn't read input file")?;
     let tokens = array.to_tokens();
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
+    let mut unformatted = String::with_capacity(tokens.len() * 5);
+    for token in tokens {
+        use std::fmt::Write;
 
-    let result = tokens.iter().try_for_each(|token| write!(output_file, "{token} "));
-    result.with_context(|| {
+        if let TokenValue::Error(error) = token {
+            bail!("encountered error when tokenizing decompiled file: {error}");
+        }
+
+        write!(unformatted, "{token}").context("couldn't format token buffer")?;
+        unformatted.push(' ');
+    }
+
+    let options = arson_fmtlib::Options::default();
+    let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
+        (formatter, None) => formatter,
+        (formatter, Some(error)) => {
+            if !suppress_parse_errors {
+                write_parse_errors(error, &input_path, &unformatted);
+            }
+            formatter
+        },
+    };
+
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
+    write!(output_file, "{formatter}").with_context(|| {
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
     })
@@ -244,6 +289,7 @@ fn cross_crypt(
     key: Option<u32>,
     input_path: PathBuf,
     output_path: Option<PathBuf>,
+    allow_overwrite: bool,
 ) -> anyhow::Result<()> {
     let output_path = output_path.unwrap_or_else(|| {
         let suffix = match encryption {
@@ -282,10 +328,7 @@ fn cross_crypt(
     };
     let bytes = result.context("couldn't read input file")?;
 
-    let mut output_file = File::create_new(&output_path)
-        .map(BufWriter::new)
-        .context("couldn't create output file")?;
-
+    let mut output_file = create_file(&output_path, allow_overwrite)?;
     let result = match encryption {
         EncryptionMode::None => output_file.write_all(&bytes),
         EncryptionMode::Old => match key {
@@ -302,4 +345,22 @@ fn cross_crypt(
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
     })
+}
+
+fn create_file(path: &Path, allow_overwrite: bool) -> anyhow::Result<BufWriter<File>> {
+    let file = match allow_overwrite {
+        true => File::create(path),
+        false => File::create_new(path),
+    };
+    file.map(BufWriter::new).context("couldn't create output file")
+}
+
+fn write_parse_errors(error: ParseError, input_path: &Path, input_text: &str) {
+    let writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config { chars: Chars::ascii(), ..Default::default() };
+
+    let file = SimpleFile::new(input_path.to_string_lossy(), input_text);
+    for error in error.diagnostics {
+        _ = term::emit(&mut writer.lock(), &config, &file, &error.to_codespan(()));
+    }
 }

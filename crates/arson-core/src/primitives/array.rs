@@ -2091,27 +2091,13 @@ impl<'a> ArrayDisplay<'a> {
         use std::fmt::Display;
 
         match node.unevaluated() {
-            NodeValue::Integer(value) => Display::fmt(value, f),
-            NodeValue::Float(value) => {
-                // Debug display used to always display decimal points
-                write!(f, "{value:?}")
-            },
             NodeValue::String(value) => {
                 // Apply escapes where necessary
                 let value = value.replace('\"', "\\q").replace('\n', "\\n");
                 write!(f, "\"{value}\"")
             },
-            NodeValue::Symbol(value) => Display::fmt(value, f),
-            NodeValue::Variable(value) => Display::fmt(value, f),
-
-            NodeValue::Function(value) => Display::fmt(value, f),
             NodeValue::Object(value) => write!(f, "<object {value}>"),
-
-            NodeValue::Array(array) => Display::fmt(array, f),
-            NodeValue::Command(array) => Display::fmt(array, f),
-            NodeValue::Property(array) => Display::fmt(array, f),
-
-            NodeValue::Unhandled => write!(f, "kDataUnhandled"),
+            value => value.fmt(f),
         }
     }
 
