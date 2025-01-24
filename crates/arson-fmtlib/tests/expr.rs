@@ -972,6 +972,159 @@ fn conditional_comments() {
 }
 
 #[test]
+fn formatter_directives() {
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n; arson-fmt off\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n; arson-fmt on\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif\
+       \n; arson-fmt off\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n; arson-fmt on\
+       \n#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "(\
+       \n\
+       \n   foo\
+       \n; arson-fmt off: test\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n; arson-fmt on: test\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n)",
+        "(foo\
+       \n   ; arson-fmt off: test\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n   ; arson-fmt on: test\
+       \n   (bar 100)\
+       \n   (baz \"asdf\")\
+       \n)",
+    );
+    assert_format(
+        "(foo\
+       \n   ; arson-fmt off: test\
+       \n (bar 100)     \
+       \n)\
+       \n; arson-fmt on: test",
+        "(foo\
+       \n   ; arson-fmt off: test\
+       \n (bar 100)\
+       \n   ; arson-fmt on: (formatter warning: missing 'arson-fmt on', 'off' only applies to the current array scope)\
+       \n)\
+       \n; arson-fmt on: test",
+    );
+    assert_format(
+        "   ; arson-fmt off: test \
+       \nasdf\
+       \n   ; arson-fmt on: test ",
+        "; arson-fmt off: test \
+       \nasdf\
+       \n; arson-fmt on: test ",
+    );
+    assert_preserved(
+        "; arson-fmt off\
+       \n; arson-fmt on",
+    );
+
+    assert_format(
+        "#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n/* arson-fmt off */\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n/* arson-fmt on */\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif",
+        "#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif\
+       \n/* arson-fmt off */\
+       \n#ifdef kDefine (array1 50) #else (array2 100) #endif\
+       \n/* arson-fmt on */\
+       \n#ifdef kDefine\
+       \n(array1 50)\
+       \n#else\
+       \n(array2 100)\
+       \n#endif",
+    );
+    assert_format(
+        "(\
+       \n\
+       \n   foo\
+       \n/* arson-fmt off: test */\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n/* arson-fmt on: test */\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n)",
+        "(foo\
+       \n   /* arson-fmt off: test */\
+       \n (bar 100)     \
+       \n      (baz\
+       \n                 \"asdf\")\
+       \n\
+       \n   /* arson-fmt on: test */\
+       \n   (bar 100)\
+       \n   (baz \"asdf\")\
+       \n)",
+    );
+    assert_format(
+        "/* arson-fmt off */ asdf /* arson-fmt on */",
+        "/* arson-fmt off */\
+       \n asdf\
+       \n/* arson-fmt on */",
+    );
+    assert_format(
+        "(foo\
+       \n   /* arson-fmt off: test */\
+       \n (bar 100)     \
+       \n)\
+       \n/* arson-fmt on: test */",
+        "(foo\
+       \n   /* arson-fmt off: test */\
+       \n (bar 100)\
+       \n   /* arson-fmt on: (formatter warning: missing 'arson-fmt on', 'off' only applies to the current array scope) */\
+       \n)\
+       \n/* arson-fmt on: test */",
+    );
+    assert_format(
+        "   /* arson-fmt off: test */ \
+       \nasdf\
+       \n   /* arson-fmt on: test */ ",
+        "/* arson-fmt off: test */ \
+       \nasdf\
+       \n/* arson-fmt on: test */",
+    );
+    assert_preserved(
+        "/* arson-fmt off */\
+       \n/* arson-fmt on */",
+    );
+}
+
+#[test]
 fn blank_lines() {
     assert_format(
         "(array1 10)\
@@ -1003,6 +1156,18 @@ fn blank_lines() {
        \n(array3 250)",
     );
 
+    assert_format(
+        "(\
+       \n\
+       \n   foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+        "(foo\
+       \n   (bar 50)\
+       \n   (quz 100)\
+       \n)",
+    );
     assert_format(
         "(foo\
        \n\

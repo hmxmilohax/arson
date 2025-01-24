@@ -4,11 +4,9 @@
 
 #![warn(missing_docs)]
 
-use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
-
 use arson_parse::ParseError;
 
+mod consts;
 pub mod expr;
 pub mod token;
 
@@ -43,36 +41,6 @@ impl Default for Options {
         }
     }
 }
-
-pub(crate) static BLOCK_COMMANDS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
-    HashSet::from_iter([
-        "do",
-        "foreach",
-        "foreach_int",
-        "func",
-        "if",
-        "if_else",
-        "switch",
-        "unless",
-        "with",
-        "while",
-    ])
-});
-
-pub(crate) static COMMAND_SAME_LINE_ARGS: LazyLock<HashMap<&str, usize>> = LazyLock::new(|| {
-    HashMap::from_iter([
-        ("foreach", 2),     // {foreach $var $array {...} ...}
-        ("foreach_int", 3), // {foreach_int $var 0 5 {...} ...}
-        ("func", 1),        // {func name ($arg1 ...) {...} ...}
-        ("if", 1),          // {if {condition} {...} ...}
-        ("if_else", 1),     // {if_else {condition} {...} {...}}
-        ("set", 1),         // {set $var {...}}
-        ("switch", 1),      // {switch $var (case_1 ...) (case_2 ...) ...}
-        ("unless", 1),      // {unless {condition} {...} ...}
-        ("with", 1),        // {with $object {...} ...}
-        ("while", 1),       // {while {condition} {...} ...}
-    ])
-});
 
 /// Formats the given input text to a new string.
 ///

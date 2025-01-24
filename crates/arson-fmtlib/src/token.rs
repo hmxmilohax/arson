@@ -11,7 +11,8 @@ use std::fmt::{self, Write};
 
 use arson_parse::{ArrayKind, Token, TokenValue, Tokenizer};
 
-use crate::{Indentation, Options, COMMAND_SAME_LINE_ARGS};
+use crate::consts::{self, CommentDirective};
+use crate::{Indentation, Options};
 
 /// Formats the given input text to a new string using the token-based formatter.
 ///
@@ -87,15 +88,6 @@ struct InnerFormatter<'src> {
     indent_text: String,
 }
 
-enum ProbeStopCause {
-    Array,
-    Directive,
-    Conditional,
-    Comment,
-    Length,
-    Error,
-}
-
 impl<'src> InnerFormatter<'src> {
     fn new(options: Options, input: &'src str) -> Self {
         let indent_text = match options.indentation {
@@ -113,7 +105,18 @@ impl<'src> InnerFormatter<'src> {
             indent_text,
         }
     }
+}
 
+enum ProbeStopCause {
+    Array,
+    Directive,
+    Conditional,
+    Comment,
+    Length,
+    Error,
+}
+
+impl<'src> InnerFormatter<'src> {
     fn format_input(&mut self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         while let Some(token) = self.tokens.next() {
             self.format_token(&token, f)?;
@@ -129,7 +132,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn write_token_line(&mut self, token: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
         self.write_token_indented(token, f)?;
-        self.format_possible_comment(token, f)?;
+        self.try_trailing_comment(token, f)?;
         self.write_possible_line(f)
     }
 
@@ -149,8 +152,8 @@ impl<'src> InnerFormatter<'src> {
         Ok(())
     }
 
-    fn format_token(&mut self, token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match token.value {
+    fn format_token(&mut self, token: &Token<'src>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &token.value {
             TokenValue::Integer(_) => self.write_token_line(token, f)?,
             TokenValue::Float(_) => self.write_token_line(token, f)?,
             TokenValue::String(_) => self.write_token_line(token, f)?,
@@ -193,8 +196,8 @@ impl<'src> InnerFormatter<'src> {
                     }
                 }
             },
-            TokenValue::Comment(_) => self.write_token_line(token, f)?,
-            TokenValue::BlockComment(_) => self.write_token_line(token, f)?,
+            TokenValue::Comment(text) => self.format_comment(token, text, f)?,
+            TokenValue::BlockComment(comment) => self.format_comment(token, comment.body.0, f)?,
 
             TokenValue::Error(_) => self.write_token_line(token, f)?,
         }
@@ -232,19 +235,19 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::ArrayClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
-                    try_write!(self.format_possible_comment(&token, &mut short_str));
+                    try_write!(self.try_trailing_comment(&token, &mut short_str));
                     break;
                 },
                 TokenValue::CommandClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
-                    try_write!(self.format_possible_comment(&token, &mut short_str));
+                    try_write!(self.try_trailing_comment(&token, &mut short_str));
                     break;
                 },
                 TokenValue::PropertyClose => {
                     let token = self.tokens.next().unwrap();
                     try_write!(self.write_token_unindented(&token, &mut short_str));
-                    try_write!(self.format_possible_comment(&token, &mut short_str));
+                    try_write!(self.try_trailing_comment(&token, &mut short_str));
                     break;
                 },
 
@@ -271,12 +274,14 @@ impl<'src> InnerFormatter<'src> {
                     break;
                 },
 
-                TokenValue::Comment(_) | TokenValue::Error(_) => {
+                TokenValue::Comment(_) => {
                     stop_cause = ProbeStopCause::Comment;
                     is_short = false;
                     break;
                 },
-                TokenValue::BlockComment(comment) if comment.contains("\n") => {
+                TokenValue::BlockComment(comment)
+                    if comment.contains("\n") || CommentDirective::try_from(token).is_ok() =>
+                {
                     stop_cause = ProbeStopCause::Comment;
                     is_short = false;
                     break;
@@ -287,6 +292,12 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::BlankLine => {
                     self.tokens.next().unwrap();
                     continue;
+                },
+
+                TokenValue::Error(_) => {
+                    stop_cause = ProbeStopCause::Error;
+                    is_short = false;
+                    break;
                 },
 
                 _ => {
@@ -342,11 +353,11 @@ impl<'src> InnerFormatter<'src> {
                 TokenValue::Symbol(name) => {
                     // Display leading symbol on the same line as the array opening
                     self.write_token_unindented(first, f)?;
-                    self.format_possible_comment(first, f)?;
+                    self.try_trailing_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
                         // Additional arguments which should be displayed on the same line
-                        if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
+                        if let Some(arg_count) = (*consts::COMMAND_SAME_LINE_ARGS).get(name) {
                             self.format_command_args(*arg_count, &mut array_tokens, f)?;
                         }
 
@@ -360,13 +371,13 @@ impl<'src> InnerFormatter<'src> {
                     // More than likely this is used as a data key if we're in a large array,
                     // print on the same line as the opening
                     self.write_token_unindented(first, f)?;
-                    self.format_possible_comment(first, f)?;
+                    self.try_trailing_comment(first, f)?;
                     f.write_char('\n')?;
                 },
                 TokenValue::Variable(_) => {
                     // Display leading variable on the same line as the array opening
                     self.write_token_unindented(first, f)?;
-                    self.format_possible_comment(first, f)?;
+                    self.try_trailing_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
                         self.format_object_args(&mut array_tokens, f)?;
@@ -380,7 +391,7 @@ impl<'src> InnerFormatter<'src> {
                     // The first argument of a command being a string means to look up an object,
                     // format it similarly to variables
                     self.write_token_unindented(first, f)?;
-                    self.format_possible_comment(first, f)?;
+                    self.try_trailing_comment(first, f)?;
 
                     if matches!(kind, ArrayKind::Command) {
                         self.format_object_args(&mut array_tokens, f)?;
@@ -416,7 +427,7 @@ impl<'src> InnerFormatter<'src> {
 
         if let TokenValue::Symbol(name) = next.value {
             self.write_token_spaced(next, f)?;
-            self.format_possible_comment(next, f)?;
+            self.try_trailing_comment(next, f)?;
             remaining.pop_front().unwrap();
 
             // Display the argument after that on the same line
@@ -450,7 +461,7 @@ impl<'src> InnerFormatter<'src> {
                 | TokenValue::Variable(_)
                 | TokenValue::Unhandled => {
                     self.write_token_spaced(arg, f)?;
-                    self.format_possible_comment(arg, f)?;
+                    self.try_trailing_comment(arg, f)?;
                     remaining.pop_front().unwrap();
                 },
                 _ => break,
@@ -466,33 +477,19 @@ impl<'src> InnerFormatter<'src> {
         self.write_token_line(close_token, f)
     }
 
-    fn format_possible_comment(&mut self, last: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
-        if let Some(comment) = self.tokens.peek() {
-            if matches!(comment.value, TokenValue::Comment(_) | TokenValue::BlockComment(_)) {
-                let between = &self.input[last.location.end..comment.location.start];
-                if !between.contains('\n') {
-                    let token = self.tokens.next().unwrap();
-                    self.write_token_spaced(&token, f)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn format_symbol_directive(
         &mut self,
         directive_token: &Token<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         self.write_token_indented(directive_token, f)?;
-        self.format_possible_comment(directive_token, f)?;
+        self.try_trailing_comment(directive_token, f)?;
 
         if let Some(next) = self.tokens.peek() {
             if matches!(next.value, TokenValue::Symbol(_)) {
                 let next = self.tokens.next().unwrap();
                 self.write_token_spaced(&next, f)?;
-                self.format_possible_comment(&next, f)?;
+                self.try_trailing_comment(&next, f)?;
             }
         }
 
@@ -540,7 +537,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn format_autorun(&mut self, directive_token: &Token<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_token_indented(directive_token, f)?;
-        self.format_possible_comment(directive_token, f)?;
+        self.try_trailing_comment(directive_token, f)?;
         self.skip_possible_blank()?;
 
         if let Some(next) = self.tokens.peek() {
@@ -551,6 +548,68 @@ impl<'src> InnerFormatter<'src> {
             }
 
             return f.write_char('\n');
+        }
+
+        Ok(())
+    }
+
+    fn format_comment(&mut self, token: &Token<'src>, text: &str, f: &mut impl fmt::Write) -> fmt::Result {
+        if let Ok(directive) = text.parse::<CommentDirective>() {
+            match directive {
+                CommentDirective::FormattingOn => {
+                    // handled in write_unformatted_block
+                    self.write_token_line(token, f)
+                },
+                CommentDirective::FormattingOff => {
+                    self.write_token_indented(token, f)?;
+                    self.write_unformatted_block(token, f)
+                },
+            }
+        } else {
+            self.write_token_line(token, f)
+        }
+    }
+
+    fn write_unformatted_block(&mut self, start: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
+        let mut end = None;
+        while let Some(next) = self.tokens.peek() {
+            if matches!(CommentDirective::try_from(next), Ok(CommentDirective::FormattingOn)) {
+                break;
+            }
+
+            end = self.tokens.next();
+        }
+
+        if let Some(end) = end {
+            let block = &self.input[start.location.end..end.location.end];
+            // Force block onto a new line if it isn't already
+            if !block.trim_start_matches([' ', '\t']).starts_with('\n') {
+                f.write_char('\n')?;
+            }
+
+            f.write_str(block)?;
+
+            if !matches!(end.value, TokenValue::BlankLine) {
+                self.write_possible_line(f)?;
+            }
+        } else {
+            self.write_possible_line(f)?;
+        }
+
+        Ok(())
+    }
+
+    fn try_trailing_comment(&mut self, prev: &Token<'_>, f: &mut impl fmt::Write) -> fmt::Result {
+        if let Some(comment) = self.tokens.peek() {
+            if matches!(comment.value, TokenValue::Comment(_) | TokenValue::BlockComment(_))
+                && CommentDirective::try_from(comment).is_err()
+            {
+                let between = &self.input[prev.location.end..comment.location.start];
+                if !between.contains('\n') {
+                    let token = self.tokens.next().unwrap();
+                    self.write_token_spaced(&token, f)?;
+                }
+            }
         }
 
         Ok(())

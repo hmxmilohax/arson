@@ -7,7 +7,8 @@ use std::iter::Peekable;
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
-use crate::{Indentation, Options, BLOCK_COMMANDS, COMMAND_SAME_LINE_ARGS};
+use crate::consts::{self, CommentDirective};
+use crate::{Indentation, Options};
 
 /// Formats the given input text to a new string using the expression-based formatter.
 ///
@@ -125,6 +126,8 @@ struct ArrayProbeStats {
     conditionals: usize,
 }
 
+type ExpressionIter<'a, 'src> = Peekable<std::slice::Iter<'a, Expression<'src>>>;
+
 fn is_any_array(expr: &Expression<'_>) -> bool {
     matches!(
         expr.value,
@@ -158,34 +161,34 @@ fn is_conditional(expr: &Expression<'_>) -> bool {
 }
 
 impl<'src> InnerFormatter<'src> {
-    fn write_original(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
-        f.write_str(&self.input[expr.location.clone()])
-    }
-
-    fn write_expr_spaced(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
-        f.write_char(' ')?;
-        self.write_original(expr, f)
-    }
-
     fn format_input(&mut self, array: &[Expression<'src>], f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut iter = array.iter().peekable();
         self.format_block_loop(&mut iter, f)
     }
 
-    fn format_expr(&mut self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
-        self.write_indent(f)?;
-        self.format_expr_unindented(expr, f)
+    fn write_expr_unindented(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
+        f.write_str(&self.input[expr.location.clone()])
     }
 
-    fn format_expr_unindented(&mut self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
-        match &expr.value {
-            ExpressionValue::Integer(_) => self.write_original(expr, f)?,
-            ExpressionValue::Float(_) => self.write_original(expr, f)?,
-            ExpressionValue::String(_) => self.write_original(expr, f)?,
+    fn write_expr_spaced(&self, expr: &Expression<'src>, f: &mut impl fmt::Write) -> fmt::Result {
+        f.write_char(' ')?;
+        self.write_expr_unindented(expr, f)
+    }
 
-            ExpressionValue::Symbol(_) => self.write_original(expr, f)?,
-            ExpressionValue::Variable(_) => self.write_original(expr, f)?,
-            ExpressionValue::Unhandled => self.write_original(expr, f)?,
+    fn format_expr(
+        &mut self,
+        expr: &Expression<'src>,
+        iter: &mut ExpressionIter<'_, 'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        match &expr.value {
+            ExpressionValue::Integer(_) => self.write_expr_unindented(expr, f)?,
+            ExpressionValue::Float(_) => self.write_expr_unindented(expr, f)?,
+            ExpressionValue::String(_) => self.write_expr_unindented(expr, f)?,
+
+            ExpressionValue::Symbol(_) => self.write_expr_unindented(expr, f)?,
+            ExpressionValue::Variable(_) => self.write_expr_unindented(expr, f)?,
+            ExpressionValue::Unhandled => self.write_expr_unindented(expr, f)?,
 
             ExpressionValue::Array(body) => self.format_array(body, ArrayKind::Array, f)?,
             ExpressionValue::Command(body) => self.format_array(body, ArrayKind::Command, f)?,
@@ -226,9 +229,9 @@ impl<'src> InnerFormatter<'src> {
                 f.write_str("#endif")?;
             },
 
-            ExpressionValue::BlankLine => (), // f.write_str("\n\n")?,
-            ExpressionValue::Comment(_) => self.write_original(expr, f)?,
-            ExpressionValue::BlockComment(_) => self.write_original(expr, f)?,
+            ExpressionValue::BlankLine => (),
+            ExpressionValue::Comment(text) => self.format_comment(expr, text, iter, f)?,
+            ExpressionValue::BlockComment(comment) => self.format_comment(expr, comment.body.0, iter, f)?,
         }
 
         Ok(())
@@ -257,10 +260,12 @@ impl<'src> InnerFormatter<'src> {
 
             ExpressionValue::Comment(_) => false,
             ExpressionValue::BlockComment(comment) => {
-                self.write_original(expr, buffer).is_ok() && !comment.contains("\n")
+                !comment.contains("\n")
+                    && CommentDirective::try_from(expr).is_err()
+                    && self.write_expr_unindented(expr, buffer).is_ok()
             },
 
-            _ => self.format_expr_unindented(expr, buffer).is_ok(),
+            _ => self.format_expr(expr, &mut [].iter().peekable(), buffer).is_ok(),
         }
     }
 
@@ -318,7 +323,7 @@ impl<'src> InnerFormatter<'src> {
             // - they contain no large arrays
             ArrayKind::Command => {
                 let large = match &array[0].value {
-                    ExpressionValue::Symbol(name) if (*BLOCK_COMMANDS).contains(name) => true,
+                    ExpressionValue::Symbol(name) if (*consts::BLOCK_COMMANDS).contains(name) => true,
 
                     ExpressionValue::Symbol(_)
                     | ExpressionValue::String(_)
@@ -399,6 +404,13 @@ impl<'src> InnerFormatter<'src> {
             Err(stats) => stats,
         };
 
+        // Skip leading blank lines
+        let last_blank = array
+            .iter()
+            .take_while(|e| matches!(e.value, ExpressionValue::BlankLine))
+            .count();
+        let (_, array) = array.split_at(last_blank);
+
         // Inspect first element of the array
         let Some((first, mut remaining)) = array.split_first() else {
             return Ok(());
@@ -408,11 +420,11 @@ impl<'src> InnerFormatter<'src> {
         match first.value {
             ExpressionValue::Symbol(name) => {
                 // Display leading symbol on the same line as the array opening
-                self.write_original(first, f)?;
+                self.write_expr_unindented(first, f)?;
 
                 if matches!(kind, ArrayKind::Command) {
                     // Additional arguments which should be displayed on the same line
-                    if let Some(arg_count) = (*COMMAND_SAME_LINE_ARGS).get(name) {
+                    if let Some(arg_count) = (*consts::COMMAND_SAME_LINE_ARGS).get(name) {
                         self.format_command_args(*arg_count, &mut remaining, &mut last, f)?;
                     }
 
@@ -423,11 +435,11 @@ impl<'src> InnerFormatter<'src> {
             ExpressionValue::Integer(_) if remaining.iter().any(|n| is_any_array(n)) => {
                 // Display integers used as data keys or case values on the
                 // same line as the array opening
-                self.write_original(first, f)?;
+                self.write_expr_unindented(first, f)?;
             },
             ExpressionValue::Variable(_) | ExpressionValue::Command(_) | ExpressionValue::Property(_) => {
                 // Display leading variable on the same line as the array opening
-                self.write_original(first, f)?;
+                self.write_expr_unindented(first, f)?;
 
                 if matches!(kind, ArrayKind::Command) {
                     self.format_object_args(&mut remaining, &mut last, f)?;
@@ -437,7 +449,7 @@ impl<'src> InnerFormatter<'src> {
                 // The first argument of a command being a string means to look up an object.
                 // Additionally, if the rest of the array contains more arrays, the string
                 // is most likely an object key (weird choice though)
-                self.write_original(first, f)?;
+                self.write_expr_unindented(first, f)?;
 
                 if matches!(kind, ArrayKind::Command) {
                     self.format_object_args(&mut remaining, &mut last, f)?;
@@ -533,7 +545,7 @@ impl<'src> InnerFormatter<'src> {
         let mut iter = array.iter().peekable();
 
         if let Some(last) = last {
-            self.format_possible_comment(last, &mut iter, f)?;
+            self.try_trailing_comment(last, &mut iter, f)?;
         }
 
         f.write_char('\n')?;
@@ -545,7 +557,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn format_block_loop(
         &mut self,
-        iter: &mut Peekable<std::slice::Iter<'_, Expression<'src>>>,
+        iter: &mut ExpressionIter<'_, 'src>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
         if let Some(expr) = iter.peek() {
@@ -569,33 +581,12 @@ impl<'src> InnerFormatter<'src> {
                     f.write_char('\n')?;
                 }
 
-                self.format_expr(expr, f)?;
-                self.format_possible_comment(expr, iter, f)?;
+                self.write_indent(f)?;
+                self.format_expr(expr, iter, f)?;
+                self.try_trailing_comment(expr, iter, f)?;
             }
 
             first = false;
-        }
-
-        Ok(())
-    }
-
-    fn format_possible_comment(
-        &mut self,
-        last: &Expression<'src>,
-        iter: &mut Peekable<std::slice::Iter<'_, Expression<'src>>>,
-        f: &mut impl fmt::Write,
-    ) -> fmt::Result {
-        if let Some(comment) = iter.peek() {
-            if matches!(
-                comment.value,
-                ExpressionValue::Comment(_) | ExpressionValue::BlockComment(_)
-            ) {
-                let between = &self.input[last.location.end..comment.location.start];
-                if !between.contains('\n') {
-                    let token = iter.next().unwrap();
-                    self.write_expr_spaced(token, f)?;
-                }
-            }
         }
 
         Ok(())
@@ -633,6 +624,113 @@ impl<'src> InnerFormatter<'src> {
 
         // Restore indentation
         drop(guard);
+
+        Ok(())
+    }
+
+    fn format_comment(
+        &mut self,
+        expr: &Expression<'src>,
+        text: &str,
+        iter: &mut ExpressionIter<'_, 'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        if let Ok(directive) = text.parse::<CommentDirective>() {
+            match directive {
+                CommentDirective::FormattingOn => {
+                    // handled in write_unformatted_block
+                    self.write_expr_unindented(expr, f)
+                },
+                CommentDirective::FormattingOff => {
+                    self.write_expr_unindented(expr, f)?;
+                    self.write_unformatted_block(expr, iter, f)
+                },
+            }
+        } else {
+            self.write_expr_unindented(expr, f)
+        }
+    }
+
+    fn write_unformatted_block(
+        &mut self,
+        start: &Expression<'src>,
+        iter: &mut ExpressionIter<'_, 'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        let mut end = None;
+        while let Some(next) = iter.peek() {
+            if matches!(CommentDirective::try_from(*next), Ok(CommentDirective::FormattingOn)) {
+                break;
+            }
+
+            end = iter.next();
+        }
+
+        if let Some(end) = end {
+            let end_pos = match end.value {
+                // Skip one of the newlines from blank lines to prevent writing
+                // an extra newline before the 'arson-fmt on' comment
+                ExpressionValue::BlankLine => end.location.end - 1,
+                _ => end.location.end,
+            };
+
+            let block = &self.input[start.location.end..end_pos];
+            // Force block onto a new line if it isn't already
+            if !block.trim_start_matches([' ', '\t']).starts_with('\n') {
+                f.write_char('\n')?;
+            }
+
+            f.write_str(block)?;
+        }
+
+        if iter.peek().is_none() {
+            // For simplicity, formatting skipping only applies to the scope of the current array,
+            // but if we get here that means there was no matching comment found.
+            // Insert a new 'arson-fmt on' comment to indicate this behavior.
+            const FALLBACK_OFF: &str = "arson-fmt on: (formatter warning: missing 'arson-fmt on', 'off' only applies to the current array scope)";
+
+            f.write_char('\n')?;
+            self.write_indent(f)?;
+
+            match &start.value {
+                ExpressionValue::Comment(_) => {
+                    f.write_str("; ")?;
+                    f.write_str(FALLBACK_OFF)?
+                },
+                ExpressionValue::BlockComment(_) => {
+                    f.write_str("/* ")?;
+                    f.write_str(FALLBACK_OFF)?;
+                    f.write_str(" */")?
+                },
+                _ => unreachable!("only ever called with comments"),
+            }
+
+            // Ideally we'd also remove the mismatched 'arson-fmt on',
+            // but that's more complexity than I feel like dealing with right now lol
+        }
+
+        Ok(())
+    }
+
+    fn try_trailing_comment(
+        &mut self,
+        last: &Expression<'src>,
+        iter: &mut ExpressionIter<'_, 'src>,
+        f: &mut impl fmt::Write,
+    ) -> fmt::Result {
+        if let Some(comment) = iter.peek() {
+            if matches!(
+                comment.value,
+                ExpressionValue::Comment(_) | ExpressionValue::BlockComment(_)
+            ) && CommentDirective::try_from(*comment).is_err()
+            {
+                let between = &self.input[last.location.end..comment.location.start];
+                if !between.contains('\n') {
+                    let token = iter.next().unwrap();
+                    self.write_expr_spaced(token, f)?;
+                }
+            }
+        }
 
         Ok(())
     }
