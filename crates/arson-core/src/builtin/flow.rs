@@ -83,13 +83,13 @@ mod r#loop {
     fn foreach_int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         fn run_loop(
             context: &mut Context,
-            args: &NodeSlice,
+            block: &NodeSlice,
             variable: &Variable,
             values: impl Iterator<Item = i64>,
         ) -> ExecuteResult {
             for value in values {
                 variable.set(context, value);
-                for node in args.get(3..)? {
+                for node in block {
                     node.command()?.execute(context)?;
                 }
             }
@@ -100,12 +100,12 @@ mod r#loop {
         let variable = args.variable(0)?;
         let start = args.integer(context, 1)?.0;
         let end = args.integer(context, 2)?.0;
-        let args = args.slice(3..)?;
+        let block = args.slice(3..)?;
 
         if start > end {
-            run_loop(context, args, variable, (end..start).rev())
+            run_loop(context, block, variable, (end..start).rev())
         } else {
-            run_loop(context, args, variable, start..end)
+            run_loop(context, block, variable, start..end)
         }
     }
 }
