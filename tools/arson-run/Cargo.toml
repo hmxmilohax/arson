@@ -1,0 +1,15 @@
+[package]
+name = "arson-run"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+publish = false
+
+[dependencies]
+arson = { path = "../../crates/arson", features = ["parse-reporting"] }
+
+anyhow = "1.0.95"
+clap = { version = "4.5.23", features = ["derive"] }

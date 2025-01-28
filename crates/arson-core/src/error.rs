@@ -27,7 +27,7 @@ impl self::Error {
         }
     }
 
-    pub fn from_custom<E: std::error::Error + Send + 'static>(error: E) -> Self {
+    pub fn from_custom<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
         Self::new(ErrorKind::Custom(Box::new(error)))
     }
 
@@ -85,7 +85,7 @@ pub enum ErrorKind {
     LoadError(#[from] LoadError),
 
     #[error("{0}")]
-    Custom(#[source] Box<dyn std::error::Error + Send>),
+    Custom(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl From<std::io::ErrorKind> for crate::ErrorKind {
