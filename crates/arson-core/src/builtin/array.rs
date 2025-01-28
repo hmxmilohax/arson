@@ -3,7 +3,7 @@
 use std::panic::AssertUnwindSafe;
 
 use crate::prelude::*;
-use crate::ExecutionError;
+use crate::{ExecutionError, EvaluationError};
 
 pub fn register_funcs(context: &mut Context) {
     size::register_funcs(context);
@@ -11,6 +11,19 @@ pub fn register_funcs(context: &mut Context) {
     manip::register_funcs(context);
     search::register_funcs(context);
     algo::register_funcs(context);
+}
+
+fn with_array(array: &NodeValue, f: impl FnOnce(&NodeSlice) -> ExecuteResult) -> ExecuteResult {
+    match array {
+        NodeValue::Array(array) => f(&array.borrow()?),
+        NodeValue::Command(array) => f(array),
+        NodeValue::Property(array) => f(array),
+        _ => Err(EvaluationError::NotConvertible {
+            src: array.get_kind(),
+            dest: NodeKind::Array,
+        }
+        .into())
+    }
 }
 
 mod size {
@@ -24,9 +37,9 @@ mod size {
 
     fn size(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        let array = args.array(context, 0)?;
+        let array = args.evaluate(context, 0)?;
 
-        array.borrow().and_then(|a| a.len().try_into())
+        with_array(&array, |array| array.len().try_into())
     }
 
     fn resize(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -60,33 +73,34 @@ mod elem {
 
     fn elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
-        let array = args.array(context, 0)?;
+        let array = args.evaluate(context, 0)?;
         let index = args.size_integer(context, 1)?;
 
-        let borrow = array.borrow()?;
-        borrow.get(index).cloned()
+        with_array(&array, |array| array.get(index).cloned())
     }
 
     fn first_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        let array = args.array(context, 0)?;
-        let borrow = array.borrow()?;
+        let array = args.evaluate(context, 0)?;
 
-        match borrow.first() {
-            Some(last) => Ok(last.into()),
-            None => arson_fail!("cannot get the first element of an empty array"),
-        }
+        with_array(&array, |array| {
+            match array.first() {
+                Some(last) => Ok(last.into()),
+                None => arson_fail!("cannot get the first element of an empty array"),
+            }
+        })
     }
 
     fn last_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        let array = args.array(context, 0)?;
-        let borrow = array.borrow()?;
+        let array = args.evaluate(context, 0)?;
 
-        match borrow.last() {
-            Some(last) => Ok(last.into()),
-            None => arson_fail!("cannot get the last element of an empty array"),
-        }
+        with_array(&array, |array| {
+            match array.last() {
+                Some(last) => Ok(last.into()),
+                None => arson_fail!("cannot get the last element of an empty array"),
+            }
+        })
     }
 
     fn set_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -191,11 +205,12 @@ mod search {
 
     fn contains(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
-        let array = args.array(context, 0)?;
+        let array = args.evaluate(context, 0)?;
         let value: Node = args.evaluate(context, 1)?.into();
 
-        let borrow = array.borrow()?;
-        Ok(borrow.contains(&value).into())
+        with_array(&array, |array| {
+            Ok(array.contains(&value).into())
+        })
     }
 
     fn find(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -236,24 +251,25 @@ mod search {
 
     fn find_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
-        let array = args.array(context, 0)?;
+        let array = args.evaluate(context, 0)?;
         let target: Node = args.evaluate(context, 1)?.into();
 
-        let borrow = array.borrow()?;
-        for (i, value) in borrow.iter().enumerate() {
-            if *value != target {
-                continue;
+        with_array(&array, |array| {
+            for (i, value) in array.iter().enumerate() {
+                if *value != target {
+                    continue;
+                }
+    
+                if let Some(var) = args.get_opt(2) {
+                    let i: Node = i.try_into()?;
+                    var.variable()?.set(context, i);
+                }
+    
+                return Ok(Node::TRUE);
             }
-
-            if let Some(var) = args.get_opt(2) {
-                let i: Node = i.try_into()?;
-                var.variable()?.set(context, i);
-            }
-
-            return Ok(Node::TRUE);
-        }
-
-        Ok(Node::FALSE)
+    
+            Ok(Node::FALSE)
+        })
     }
 }
 
