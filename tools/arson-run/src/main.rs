@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::stdlib::StdlibOptions;
 use arson::LoadOptions;
@@ -22,8 +22,17 @@ struct Arguments {
 fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
 
-    let mount_dir = args.mount_dir.unwrap_or_else(|| args.path.parent().unwrap().to_path_buf());
-    let Ok(file_path) = args.path.strip_prefix(&mount_dir) else {
+    fn canon_fail(path: &Path) -> String {
+        format!("failed to resolve path {}", path.display())
+    }
+
+    let path = args.path.canonicalize().with_context(|| canon_fail(&args.path))?;
+    let mount_dir = match args.mount_dir {
+        Some(mount_dir) => mount_dir.canonicalize().with_context(|| canon_fail(&mount_dir))?,
+        None => path.parent().unwrap().to_path_buf(),
+    };
+
+    let Ok(file_path) = path.strip_prefix(&mount_dir) else {
         // TODO: find a way to remove this limitation?
         bail!("script is not contained within mount directory");
     };
