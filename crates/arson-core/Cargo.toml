@@ -27,3 +27,6 @@ arson-parse = { path = "../arson-parse", optional = true }
 arson-fs = { path = "../arson-fs", optional = true }
 
 thiserror = "1.0.65"
+
+[build-dependencies]
+autocfg = "1.4.0"

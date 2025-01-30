@@ -44,6 +44,11 @@ impl std::error::Error for self::Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.data.kind)
     }
+
+    #[cfg(error_generic_member_access)]
+    fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        request.provide_ref::<Backtrace>(self.backtrace());
+    }
 }
 
 impl std::fmt::Debug for self::Error {

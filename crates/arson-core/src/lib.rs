@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+#![cfg_attr(error_generic_member_access, feature(error_generic_member_access))]
+
 /// Transform one fragment into another.
 macro_rules! meta_morph {
     ($_:tt => $($i:tt)*) => {
