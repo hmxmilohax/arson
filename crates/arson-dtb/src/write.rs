@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::io::{self, Write};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 
@@ -138,8 +138,18 @@ fn write_encrypted(
     Ok(())
 }
 
-static NEWSTYLE_SEEDER: Mutex<NewRandom> = Mutex::new(NewRandom::new(NewRandom::DEFAULT_SEED));
-static OLDSTYLE_SEEDER: Mutex<OldRandom> = Mutex::new(OldRandom::new(OldRandom::DEFAULT_SEED));
+static SEED_SALT: LazyLock<u32> = LazyLock::new(|| {
+    use std::time::SystemTime;
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u32)
+        .unwrap_or(0)
+});
+
+static NEWSTYLE_SEEDER: LazyLock<Mutex<NewRandom>> =
+    LazyLock::new(|| Mutex::new(NewRandom::new(NewRandom::DEFAULT_SEED.wrapping_mul(*SEED_SALT as i32))));
+static OLDSTYLE_SEEDER: LazyLock<Mutex<OldRandom>> =
+    LazyLock::new(|| Mutex::new(OldRandom::new(OldRandom::DEFAULT_SEED.wrapping_mul(*SEED_SALT))));
 
 fn make_seed<T>(seed: Option<T>, default: T, seeder: &Mutex<impl Iterator<Item = T>>) -> T {
     seed.unwrap_or_else(|| seeder.lock().ok().and_then(|mut g| g.next()).unwrap_or(default))
