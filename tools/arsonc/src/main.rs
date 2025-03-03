@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
 use arson_dtb::prelude::*;
-use arson_dtb::ReadError;
+use arson_dtb::{ReadError, ToTokensOptions};
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
@@ -69,6 +69,12 @@ struct DecompileArgs {
     #[arg(short, long)]
     decryption: Option<EncryptionMode>,
 
+    /// Output line number information to the file.
+    #[arg(short = 'l', long)]
+    line_numbers: bool,
+    /// Output array ID information to the file.
+    #[arg(short = 'i', long)]
+    array_ids: bool,
     /// Suppress parsing errors that occur as part of formatting the output file.
     #[arg(short, long)]
     print_format_errors: bool,
@@ -223,7 +229,10 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
         None => arson_dtb::read(&mut file),
     };
     let array = result.context("couldn't read input file")?;
-    let tokens = array.to_tokens();
+    let tokens = array.to_tokens(ToTokensOptions {
+        line_numbers: args.line_numbers,
+        array_ids: args.array_ids,
+    });
 
     let mut unformatted = String::with_capacity(tokens.len() * 5);
     for token in tokens {

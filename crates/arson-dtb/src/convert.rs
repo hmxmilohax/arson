@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::num::TryFromIntError;
 
 use arson_parse::{
     ArrayKind,
+    BlockCommentToken,
     Expression,
     ExpressionKind,
     ExpressionValue,
     ParseError,
     ParseRecoveryError,
+    TextToken,
     TokenValue,
 };
 
@@ -32,6 +35,12 @@ impl<'src> From<ParseRecoveryError<'src>> for DataParseError {
     }
 }
 
+#[derive(Clone)]
+pub struct ToTokensOptions {
+    pub line_numbers: bool,
+    pub array_ids: bool,
+}
+
 impl DataArray {
     pub fn parse(text: &str) -> Result<Self, DataParseError> {
         let ast = arson_parse::parse_text(text)?;
@@ -50,8 +59,8 @@ impl DataArray {
         convert_to_array(&ast, &(0..text.len()), &lines)
     }
 
-    pub fn to_tokens(&self) -> Vec<TokenValue<'_>> {
-        convert_to_tokens(self)
+    pub fn to_tokens(&self, options: ToTokensOptions) -> Vec<TokenValue<'_>> {
+        convert_to_tokens(self, &options)
     }
 }
 
@@ -142,9 +151,7 @@ fn convert_to_array(
     convert_inner(&mut state, ast, location, lines)
 }
 
-fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
-    let mut tokens = Vec::new();
-
+fn convert_to_tokens<'src>(array: &'src DataArray, options: &ToTokensOptions) -> Vec<TokenValue<'src>> {
     fn symbol_pair<'src>(
         tokens: &mut Vec<TokenValue<'src>>,
         token: TokenValue<'src>,
@@ -156,14 +163,38 @@ fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
 
     fn convert_array<'src>(
         tokens: &mut Vec<TokenValue<'src>>,
+        options: &ToTokensOptions,
         kind: ArrayKind,
         array: &'src DataArray,
     ) -> TokenValue<'src> {
         let (open, close) = kind.delimiter_tokens();
         tokens.push(open);
-        tokens.append(&mut convert_to_tokens(array));
+
+        let mut array_tokens = convert_to_tokens(array, options);
+
+        // Display line/ID info if enabled
+        'info_comment: {
+            let comment = match (options.line_numbers, options.array_ids) {
+                (true, true) => format!("Line: {}, ID: {}", array.line(), array.id()),
+                (true, false) => format!("Line: {}", array.line()),
+                (false, true) => format!("ID: {}", array.id()),
+                (false, false) => break 'info_comment,
+            };
+
+            let token = TokenValue::BlockComment(BlockCommentToken {
+                open: TextToken::new("/* ", 0..0),
+                body: TextToken::from_cow(Cow::Owned(comment), 0..0),
+                close: TextToken::new(" */", 0..0),
+            });
+
+            array_tokens.insert(0, token);
+        }
+
+        tokens.append(&mut array_tokens);
         close
     }
+
+    let mut tokens = Vec::new();
 
     for node in array {
         let expr = match node {
@@ -179,23 +210,23 @@ fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
             DataNode::Else => TokenValue::Else,
             DataNode::Endif => TokenValue::Endif,
 
-            DataNode::Array(body) => convert_array(&mut tokens, ArrayKind::Array, body),
-            DataNode::Command(body) => convert_array(&mut tokens, ArrayKind::Command, body),
+            DataNode::Array(body) => convert_array(&mut tokens, options, ArrayKind::Array, body),
+            DataNode::Command(body) => convert_array(&mut tokens, options, ArrayKind::Command, body),
             DataNode::String(value) => TokenValue::make_string(value),
-            DataNode::Property(body) => convert_array(&mut tokens, ArrayKind::Property, body),
+            DataNode::Property(body) => convert_array(&mut tokens, options, ArrayKind::Property, body),
             DataNode::Glob(_value) => todo!("DataNode::Glob"),
 
             DataNode::Define(name, body) => {
                 let token = symbol_pair(&mut tokens, TokenValue::Include, name);
                 tokens.push(token);
-                convert_array(&mut tokens, ArrayKind::Array, body)
+                convert_array(&mut tokens, options, ArrayKind::Array, body)
             },
             DataNode::Include(path) => symbol_pair(&mut tokens, TokenValue::Include, path),
             DataNode::Merge(path) => symbol_pair(&mut tokens, TokenValue::Merge, path),
             DataNode::Ifndef(name) => symbol_pair(&mut tokens, TokenValue::Ifndef, name),
             DataNode::Autorun(body) => {
                 tokens.push(TokenValue::Autorun);
-                convert_array(&mut tokens, ArrayKind::Command, body)
+                convert_array(&mut tokens, options, ArrayKind::Command, body)
             },
             DataNode::Undefine(name) => symbol_pair(&mut tokens, TokenValue::Undefine, name),
         };
