@@ -47,7 +47,7 @@ impl Writer<'_, '_> {
 
         self.writer.write_i16::<LittleEndian>(shorten(array.len())?)?;
         self.writer.write_i16::<LittleEndian>(shorten(array.line())?)?;
-        self.writer.write_i16::<LittleEndian>(0)?;
+        self.writer.write_i16::<LittleEndian>(shorten(array.id())?)?;
 
         for node in array {
             self.write_node(node)?;
@@ -264,12 +264,12 @@ mod tests {
         assert_node_bytes(DataNode::Endif, &[9, 0, 0, 0, 0, 0, 0, 0]);
 
         #[rustfmt::skip]
-        const fn array_bytes<const KIND: u8>() -> &'static [u8] {
+        const fn array_bytes<const KIND: u8, const LINE: u8, const ID: u8>() -> &'static [u8] {
             &[
                 KIND, 0, 0, 0,
                 3, 0, // size
-                1, 0, // line
-                0, 0, // deprecated field
+                LINE, 0, // line
+                ID, 0, // id
                 0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
                 1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
                 5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
@@ -277,42 +277,42 @@ mod tests {
         }
 
         assert_node_bytes(
-            DataNode::Array(DataArray::from_nodes(1, vec![
+            DataNode::Array(DataArray::from_nodes(13, 0, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
             ])),
-            array_bytes::<16>(),
+            array_bytes::<16, 13, 0>(),
         );
         assert_node_bytes(
-            DataNode::Command(DataArray::from_nodes(1, vec![
+            DataNode::Command(DataArray::from_nodes(14, 1, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
             ])),
-            array_bytes::<17>(),
+            array_bytes::<17, 14, 1>(),
         );
         assert_node_bytes(DataNode::String("foo".to_owned()), &[
             18, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
         ]);
         assert_node_bytes(
-            DataNode::Property(DataArray::from_nodes(1, vec![
+            DataNode::Property(DataArray::from_nodes(16, 2, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
             ])),
-            array_bytes::<19>(),
+            array_bytes::<19, 16, 2>(),
         );
         assert_node_bytes(DataNode::Glob(vec![b'f', b'o', b'o']), &[
             20, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
         ]);
 
         let mut bytes = [32, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'].to_vec();
-        bytes.extend_from_slice(array_bytes::<16>());
+        bytes.extend_from_slice(array_bytes::<16, 19, 3>());
         assert_node_bytes(
             DataNode::Define(
                 "foo".to_owned(),
-                DataArray::from_nodes(1, vec![
+                DataArray::from_nodes(19, 3, vec![
                     DataNode::Integer(10),
                     DataNode::Float(1.0),
                     DataNode::Symbol("foo".to_owned()),
@@ -330,9 +330,9 @@ mod tests {
             35, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
         ]);
         let mut bytes = [36, 0, 0, 0, 0, 0, 0, 0].to_vec();
-        bytes.extend_from_slice(array_bytes::<17>());
+        bytes.extend_from_slice(array_bytes::<17, 23, 4>());
         assert_node_bytes(
-            DataNode::Autorun(DataArray::from_nodes(1, vec![
+            DataNode::Autorun(DataArray::from_nodes(23, 4, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),

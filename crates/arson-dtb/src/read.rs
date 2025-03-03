@@ -39,9 +39,9 @@ fn read_array(reader: &mut CryptReader<'_, '_>) -> Result<DataArray, ReadError> 
 
     let size = lengthen(reader.read_i16::<LittleEndian>()?)?;
     let line = lengthen(reader.read_i16::<LittleEndian>()?)?;
-    let _deprecated = reader.read_i16::<LittleEndian>()?;
+    let id = lengthen(reader.read_i16::<LittleEndian>()?)?;
 
-    let mut array = DataArray::with_capacity(line, size);
+    let mut array = DataArray::with_capacity(line, id, size);
     for _i in 0..size {
         let data = read_node(reader)?;
         array.push(data);
@@ -171,7 +171,7 @@ fn read_encrypted(
 
     let exists = crypt_reader.read_u8()?;
     match exists {
-        0 => Ok(DataArray::default()),
+        0 => Ok(DataArray::new(1, 0)),
         1 => match read_array(&mut crypt_reader) {
             Ok(value) => Ok(value),
             Err(err) => match err {
@@ -330,12 +330,12 @@ mod tests {
         assert_node_bytes(&[9, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC], DataNode::Endif);
 
         #[rustfmt::skip]
-        const fn array_bytes<const KIND: u8>() -> &'static [u8] {
+        const fn array_bytes<const KIND: u8, const LINE: u8, const ID: u8>() -> &'static [u8] {
             &[
                 KIND, 0, 0, 0,
                 3, 0, // size
-                1, 0, // line
-                0, 0, // deprecated field
+                LINE, 0, // line
+                ID, 0, // id
                 0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
                 1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
                 5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
@@ -343,16 +343,16 @@ mod tests {
         }
 
         assert_node_bytes(
-            array_bytes::<16>(),
-            DataNode::Array(DataArray::from_nodes(1, vec![
+            array_bytes::<16, 13, 0>(),
+            DataNode::Array(DataArray::from_nodes(13, 0, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
             ])),
         );
         assert_node_bytes(
-            array_bytes::<17>(),
-            DataNode::Command(DataArray::from_nodes(1, vec![
+            array_bytes::<17, 14, 1>(),
+            DataNode::Command(DataArray::from_nodes(14, 1, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -363,8 +363,8 @@ mod tests {
             DataNode::String("foo".to_owned()),
         );
         assert_node_bytes(
-            array_bytes::<19>(),
-            DataNode::Property(DataArray::from_nodes(1, vec![
+            array_bytes::<19, 16, 2>(),
+            DataNode::Property(DataArray::from_nodes(16, 2, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -376,12 +376,12 @@ mod tests {
         );
 
         let mut bytes = [32, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o'].to_vec();
-        bytes.extend_from_slice(array_bytes::<16>());
+        bytes.extend_from_slice(array_bytes::<16, 19, 3>());
         assert_node_bytes(
             &bytes,
             DataNode::Define(
                 "foo".to_owned(),
-                DataArray::from_nodes(1, vec![
+                DataArray::from_nodes(19, 3, vec![
                     DataNode::Integer(10),
                     DataNode::Float(1.0),
                     DataNode::Symbol("foo".to_owned()),
@@ -401,10 +401,10 @@ mod tests {
             DataNode::Ifndef("foo".to_owned()),
         );
         let mut bytes = [36, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC].to_vec();
-        bytes.extend_from_slice(array_bytes::<17>());
+        bytes.extend_from_slice(array_bytes::<17, 23, 4>());
         assert_node_bytes(
             &bytes,
-            DataNode::Autorun(DataArray::from_nodes(1, vec![
+            DataNode::Autorun(DataArray::from_nodes(23, 4, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),

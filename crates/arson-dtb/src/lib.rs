@@ -143,30 +143,29 @@ impl DataNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataArray {
     line: usize,
+    id: usize,
     nodes: Vec<DataNode>,
 }
 
 impl DataArray {
-    pub fn new(line: usize) -> Self {
-        Self { line, nodes: Vec::new() }
+    pub fn new(line: usize, id: usize) -> Self {
+        Self { line, id, nodes: Vec::new() }
     }
 
-    pub fn with_capacity(line: usize, capacity: usize) -> Self {
-        Self { line, nodes: Vec::with_capacity(capacity) }
+    pub fn with_capacity(line: usize, id: usize, capacity: usize) -> Self {
+        Self { line, id, nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn from_nodes(line: usize, nodes: Vec<DataNode>) -> Self {
-        Self { line, nodes }
+    pub fn from_nodes(line: usize, id: usize, nodes: Vec<DataNode>) -> Self {
+        Self { line, id, nodes }
     }
 
     pub fn line(&self) -> usize {
         self.line
     }
-}
 
-impl Default for DataArray {
-    fn default() -> Self {
-        Self::new(1)
+    pub fn id(&self) -> usize {
+        self.id
     }
 }
 

@@ -60,65 +60,86 @@ fn convert_to_array(
     location: &std::ops::Range<usize>,
     lines: &Vec<usize>,
 ) -> Result<DataArray, DataParseError> {
-    let line = lines.binary_search(&location.start).unwrap_or_else(|i| i);
-    let mut array = DataArray::new(line);
-
-    for expr in ast {
-        let node = match &expr.value {
-            ExpressionValue::Integer(value) => DataNode::Integer(i32::try_from(*value)?),
-            ExpressionValue::Float(value) => DataNode::Float(*value as f32),
-            ExpressionValue::String(value) => DataNode::String((*value).to_owned()),
-            ExpressionValue::Symbol(value) => DataNode::Symbol((*value).to_owned()),
-            ExpressionValue::Variable(value) => DataNode::Variable((*value).to_owned()),
-            ExpressionValue::Unhandled => DataNode::Unhandled,
-
-            ExpressionValue::Array(ast) => DataNode::Array(convert_to_array(ast, &expr.location, lines)?),
-            ExpressionValue::Command(ast) => DataNode::Command(convert_to_array(ast, &expr.location, lines)?),
-            ExpressionValue::Property(ast) => {
-                DataNode::Property(convert_to_array(ast, &expr.location, lines)?)
-            },
-
-            ExpressionValue::Define(name, ast) => {
-                DataNode::Define(name.text.to_owned(), convert_to_array(&ast.exprs, &ast.location, lines)?)
-            },
-            ExpressionValue::Undefine(name) => DataNode::Variable(name.text.to_owned()),
-            ExpressionValue::Include(path) => DataNode::Variable(path.text.to_owned()),
-            ExpressionValue::IncludeOptional(_) => {
-                return Err(DataParseError::UnsupportedExpression(ExpressionKind::IncludeOptional));
-            },
-            ExpressionValue::Merge(path) => DataNode::Variable(path.text.to_owned()),
-            ExpressionValue::Autorun(ast) => {
-                DataNode::Autorun(convert_to_array(&ast.exprs, &ast.location, lines)?)
-            },
-
-            ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
-                match is_positive {
-                    true => array.push(DataNode::Ifdef(symbol.text.to_owned())),
-                    false => array.push(DataNode::Ifndef(symbol.text.to_owned())),
-                };
-
-                let mut true_branch = convert_to_array(&true_branch.exprs, &true_branch.location, lines)?;
-                array.append(&mut true_branch);
-
-                if let Some(false_branch) = false_branch {
-                    array.push(DataNode::Else);
-                    let mut false_branch =
-                        convert_to_array(&false_branch.exprs, &false_branch.location, lines)?;
-                    array.append(&mut false_branch);
-                }
-
-                array.push(DataNode::Endif);
-                continue;
-            },
-
-            ExpressionValue::BlankLine => continue,
-            ExpressionValue::Comment(_) => continue,
-            ExpressionValue::BlockComment(_) => continue,
-        };
-        array.push(node);
+    struct ConvertState {
+        array_id: usize,
     }
 
-    Ok(array)
+    fn convert_inner(
+        state: &mut ConvertState,
+        ast: &Vec<Expression<'_>>,
+        location: &std::ops::Range<usize>,
+        lines: &Vec<usize>,
+    ) -> Result<DataArray, DataParseError> {
+        let line = lines.binary_search(&location.start).unwrap_or_else(|i| i);
+        let mut array = DataArray::new(line, state.array_id);
+        state.array_id += 1;
+
+        for expr in ast {
+            let node = match &expr.value {
+                ExpressionValue::Integer(value) => DataNode::Integer(i32::try_from(*value)?),
+                ExpressionValue::Float(value) => DataNode::Float(*value as f32),
+                ExpressionValue::String(value) => DataNode::String((*value).to_owned()),
+                ExpressionValue::Symbol(value) => DataNode::Symbol((*value).to_owned()),
+                ExpressionValue::Variable(value) => DataNode::Variable((*value).to_owned()),
+                ExpressionValue::Unhandled => DataNode::Unhandled,
+
+                ExpressionValue::Array(ast) => {
+                    DataNode::Array(convert_inner(state, ast, &expr.location, lines)?)
+                },
+                ExpressionValue::Command(ast) => {
+                    DataNode::Command(convert_inner(state, ast, &expr.location, lines)?)
+                },
+                ExpressionValue::Property(ast) => {
+                    DataNode::Property(convert_inner(state, ast, &expr.location, lines)?)
+                },
+
+                ExpressionValue::Define(name, ast) => DataNode::Define(
+                    name.text.to_owned(),
+                    convert_inner(state, &ast.exprs, &ast.location, lines)?,
+                ),
+                ExpressionValue::Undefine(name) => DataNode::Variable(name.text.to_owned()),
+                ExpressionValue::Include(path) => DataNode::Variable(path.text.to_owned()),
+                ExpressionValue::IncludeOptional(_) => {
+                    return Err(DataParseError::UnsupportedExpression(ExpressionKind::IncludeOptional));
+                },
+                ExpressionValue::Merge(path) => DataNode::Variable(path.text.to_owned()),
+                ExpressionValue::Autorun(ast) => {
+                    DataNode::Autorun(convert_inner(state, &ast.exprs, &ast.location, lines)?)
+                },
+
+                ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
+                    match is_positive {
+                        true => array.push(DataNode::Ifdef(symbol.text.to_owned())),
+                        false => array.push(DataNode::Ifndef(symbol.text.to_owned())),
+                    };
+
+                    let mut true_branch =
+                        convert_inner(state, &true_branch.exprs, &true_branch.location, lines)?;
+                    array.append(&mut true_branch);
+
+                    if let Some(false_branch) = false_branch {
+                        array.push(DataNode::Else);
+                        let mut false_branch =
+                            convert_inner(state, &false_branch.exprs, &false_branch.location, lines)?;
+                        array.append(&mut false_branch);
+                    }
+
+                    array.push(DataNode::Endif);
+                    continue;
+                },
+
+                ExpressionValue::BlankLine => continue,
+                ExpressionValue::Comment(_) => continue,
+                ExpressionValue::BlockComment(_) => continue,
+            };
+            array.push(node);
+        }
+
+        Ok(array)
+    }
+
+    let mut state = ConvertState { array_id: 0 };
+    convert_inner(&mut state, ast, location, lines)
 }
 
 fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {

@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use arson_dtb::{DataArray, DataNode, WriteEncoding, WriteSettings};
 
 static TEST_ARRAY: LazyLock<DataArray> = LazyLock::new(|| {
-    DataArray::from_nodes(1, vec![
+    DataArray::from_nodes(1, 0, vec![
         DataNode::Integer(10),
         DataNode::Float(1.0),
         DataNode::Variable("foo".to_owned()),
@@ -22,7 +22,7 @@ static TEST_DATA_UNENCRYPTED: &[u8] = &[
     1, // "exists" flag
     7, 0, // size
     1, 0, // line
-    0, 0, // deprecated field
+    0, 0, // id
 
     0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
     1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
