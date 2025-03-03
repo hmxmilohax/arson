@@ -78,9 +78,9 @@ fn convert_to_array(
             let node = match &expr.value {
                 ExpressionValue::Integer(value) => DataNode::Integer(i32::try_from(*value)?),
                 ExpressionValue::Float(value) => DataNode::Float(*value as f32),
-                ExpressionValue::String(value) => DataNode::String((*value).to_owned()),
-                ExpressionValue::Symbol(value) => DataNode::Symbol((*value).to_owned()),
-                ExpressionValue::Variable(value) => DataNode::Variable((*value).to_owned()),
+                ExpressionValue::String(value) => DataNode::String(value.as_ref().to_owned()),
+                ExpressionValue::Symbol(value) => DataNode::Symbol(value.as_ref().to_owned()),
+                ExpressionValue::Variable(value) => DataNode::Variable(value.as_ref().to_owned()),
                 ExpressionValue::Unhandled => DataNode::Unhandled,
 
                 ExpressionValue::Array(ast) => {
@@ -94,23 +94,23 @@ fn convert_to_array(
                 },
 
                 ExpressionValue::Define(name, ast) => DataNode::Define(
-                    name.text.to_owned(),
+                    name.text.as_ref().to_owned(),
                     convert_inner(state, &ast.exprs, &ast.location, lines)?,
                 ),
-                ExpressionValue::Undefine(name) => DataNode::Variable(name.text.to_owned()),
-                ExpressionValue::Include(path) => DataNode::Variable(path.text.to_owned()),
+                ExpressionValue::Undefine(name) => DataNode::Variable(name.text.as_ref().to_owned()),
+                ExpressionValue::Include(path) => DataNode::Variable(path.text.as_ref().to_owned()),
                 ExpressionValue::IncludeOptional(_) => {
                     return Err(DataParseError::UnsupportedExpression(ExpressionKind::IncludeOptional));
                 },
-                ExpressionValue::Merge(path) => DataNode::Variable(path.text.to_owned()),
+                ExpressionValue::Merge(path) => DataNode::Variable(path.text.as_ref().to_owned()),
                 ExpressionValue::Autorun(ast) => {
                     DataNode::Autorun(convert_inner(state, &ast.exprs, &ast.location, lines)?)
                 },
 
                 ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
                     match is_positive {
-                        true => array.push(DataNode::Ifdef(symbol.text.to_owned())),
-                        false => array.push(DataNode::Ifndef(symbol.text.to_owned())),
+                        true => array.push(DataNode::Ifdef(symbol.text.as_ref().to_owned())),
+                        false => array.push(DataNode::Ifndef(symbol.text.as_ref().to_owned())),
                     };
 
                     let mut true_branch =
@@ -151,7 +151,7 @@ fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
         name: &'src str,
     ) -> TokenValue<'src> {
         tokens.push(token);
-        TokenValue::Symbol(name)
+        TokenValue::make_symbol(name)
     }
 
     fn convert_array<'src>(
@@ -169,10 +169,10 @@ fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
         let expr = match node {
             DataNode::Integer(value) => TokenValue::Integer(*value as i64),
             DataNode::Float(value) => TokenValue::Float(*value as f64),
-            DataNode::Variable(name) => TokenValue::Variable(name),
+            DataNode::Variable(name) => TokenValue::make_variable(name),
             DataNode::Function(_name) => todo!("DataNode::Function"),
             DataNode::Object(_name) => todo!("DataNode::Object"),
-            DataNode::Symbol(name) => TokenValue::Symbol(name),
+            DataNode::Symbol(name) => TokenValue::make_symbol(name),
             DataNode::Unhandled => TokenValue::Unhandled,
 
             DataNode::Ifdef(name) => symbol_pair(&mut tokens, TokenValue::Ifdef, name),
@@ -181,7 +181,7 @@ fn convert_to_tokens(array: &DataArray) -> Vec<TokenValue<'_>> {
 
             DataNode::Array(body) => convert_array(&mut tokens, ArrayKind::Array, body),
             DataNode::Command(body) => convert_array(&mut tokens, ArrayKind::Command, body),
-            DataNode::String(value) => TokenValue::String(value),
+            DataNode::String(value) => TokenValue::make_string(value),
             DataNode::Property(body) => convert_array(&mut tokens, ArrayKind::Property, body),
             DataNode::Glob(_value) => todo!("DataNode::Glob"),
 

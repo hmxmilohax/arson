@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::iter::Peekable;
 
 use logos::Span;
@@ -9,12 +10,16 @@ use crate::{ArrayKind, BlockCommentToken, DirectiveArgumentDescription, FloatVal
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
-    pub text: &'src str,
+    pub text: Cow<'src, str>,
     pub location: Span,
 }
 
 impl<'src> StrExpression<'src> {
     pub fn new(text: &'src str, location: Span) -> Self {
+        Self { text: Cow::Borrowed(text), location }
+    }
+
+    pub fn from_cow(text: Cow<'src, str>, location: Span) -> Self {
         Self { text, location }
     }
 }
@@ -35,9 +40,9 @@ impl<'src> ArrayExpression<'src> {
 enum PreprocessedTokenValue<'src> {
     Integer(IntegerValue),
     Float(FloatValue),
-    String(&'src str),
-    Symbol(&'src str),
-    Variable(&'src str),
+    String(Cow<'src, str>),
+    Symbol(Cow<'src, str>),
+    Variable(Cow<'src, str>),
     Unhandled,
 
     ArrayOpen,
@@ -62,11 +67,31 @@ enum PreprocessedTokenValue<'src> {
     },
 
     BlankLine,
-    Comment(&'src str),
+    Comment(Cow<'src, str>),
     BlockComment(BlockCommentToken<'src>),
 }
 
-impl PreprocessedTokenValue<'_> {
+impl<'src> PreprocessedTokenValue<'src> {
+    #[allow(dead_code, reason = "used by tests")]
+    const fn make_string(text: &'src str) -> Self {
+        PreprocessedTokenValue::String(Cow::Borrowed(text))
+    }
+
+    #[allow(dead_code, reason = "used by tests")]
+    const fn make_symbol(text: &'src str) -> Self {
+        PreprocessedTokenValue::Symbol(Cow::Borrowed(text))
+    }
+
+    #[allow(dead_code, reason = "used by tests")]
+    const fn make_variable(text: &'src str) -> Self {
+        PreprocessedTokenValue::Variable(Cow::Borrowed(text))
+    }
+
+    #[allow(dead_code, reason = "used by tests")]
+    const fn make_comment(text: &'src str) -> Self {
+        PreprocessedTokenValue::Comment(Cow::Borrowed(text))
+    }
+
     fn get_kind(&self) -> TokenKind {
         match self {
             Self::Integer(_) => TokenKind::Integer,
@@ -109,10 +134,10 @@ struct PreprocessedToken<'src> {
 pub enum ExpressionValue<'src> {
     Integer(IntegerValue),
     Float(FloatValue),
-    String(&'src str),
+    String(Cow<'src, str>),
 
-    Symbol(&'src str),
-    Variable(&'src str),
+    Symbol(Cow<'src, str>),
+    Variable(Cow<'src, str>),
     Unhandled,
 
     Array(Vec<Expression<'src>>),
@@ -134,7 +159,7 @@ pub enum ExpressionValue<'src> {
     },
 
     BlankLine,
-    Comment(&'src str),
+    Comment(Cow<'src, str>),
     BlockComment(BlockCommentToken<'src>),
 }
 
@@ -172,7 +197,23 @@ pub struct Expression<'src> {
     pub location: Span,
 }
 
-impl ExpressionValue<'_> {
+impl<'src> ExpressionValue<'src> {
+    pub const fn make_string(text: &'src str) -> Self {
+        ExpressionValue::String(Cow::Borrowed(text))
+    }
+
+    pub const fn make_symbol(text: &'src str) -> Self {
+        ExpressionValue::Symbol(Cow::Borrowed(text))
+    }
+
+    pub const fn make_variable(text: &'src str) -> Self {
+        ExpressionValue::Variable(Cow::Borrowed(text))
+    }
+
+    pub const fn make_comment(text: &'src str) -> Self {
+        ExpressionValue::Comment(Cow::Borrowed(text))
+    }
+
     pub fn get_kind(&self) -> ExpressionKind {
         match self {
             Self::Integer(_) => ExpressionKind::Integer,
@@ -305,7 +346,7 @@ impl<'src> Preprocessor<'src> {
         };
 
         let name_location = name_token.location.clone();
-        let TokenValue::Symbol(name) = name_token.value else {
+        let TokenValue::Symbol(_) = name_token.value else {
             return ProcessResult::Error(
                 DiagnosticKind::IncorrectDirectiveArgument {
                     expected: TokenKind::Symbol,
@@ -316,9 +357,11 @@ impl<'src> Preprocessor<'src> {
                 name_location.clone(),
             );
         };
-        tokens.next();
 
-        let name = StrExpression::new(name, name_location.clone());
+        let name_token = tokens.next().unwrap();
+        let name = match_unwrap!(name_token.value, TokenValue::Symbol(name) => name);
+
+        let name = StrExpression::from_cow(name, name_location.clone());
         let location = location.start..name_location.end;
         ProcessResult::Result(PreprocessedToken { value: kind(name), location })
     }
@@ -463,9 +506,9 @@ impl<'src> Preprocessor<'src> {
 
         let define_location = define_token.location.clone();
         let define_name = match define_token.value {
-            TokenValue::Symbol(value) => {
-                tokens.next();
-                value
+            TokenValue::Symbol(_) => {
+                let token = tokens.next().unwrap();
+                match_unwrap!(token.value, TokenValue::Symbol(text) => text)
             },
             _ => {
                 self.push_error(
@@ -478,14 +521,14 @@ impl<'src> Preprocessor<'src> {
                     define_location.clone(),
                 );
                 // Recover with a dummy name instead of bailing
-                "<invalid>"
+                Cow::Borrowed("<invalid>")
             },
         };
 
         self.handle_conditional(tokens, start.clone(), ConditionalMarker {
             location: start,
             is_positive: positive,
-            symbol: StrExpression::new(define_name, define_location),
+            symbol: StrExpression::from_cow(define_name, define_location),
             false_location: None,
             false_branch: None,
         })
@@ -536,21 +579,23 @@ impl<'src> Preprocessor<'src> {
                     // and formatting wants to strip it out anyways
                     tokens.next();
                 },
-                TokenValue::Comment(text) => {
+                TokenValue::Comment(_) => {
+                    let token = tokens.next().unwrap();
+                    let text = match_unwrap!(token.value, TokenValue::Comment(text) => text);
                     let token = PreprocessedToken {
                         value: PreprocessedTokenValue::Comment(text),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
-                    tokens.next();
                 },
-                TokenValue::BlockComment(text) => {
+                TokenValue::BlockComment(_) => {
+                    let token = tokens.next().unwrap();
+                    let text = match_unwrap!(token.value, TokenValue::BlockComment(text) => text);
                     let token = PreprocessedToken {
                         value: PreprocessedTokenValue::BlockComment(text.clone()),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
-                    tokens.next();
                 },
                 _ => break,
             }
@@ -923,21 +968,23 @@ impl<'src> Parser<'src> {
                     // and formatting wants to strip it out anyways
                     tokens.next();
                 },
-                PreprocessedTokenValue::Comment(text) => {
+                PreprocessedTokenValue::Comment(_) => {
+                    let token = tokens.next().unwrap();
+                    let text = match_unwrap!(token.value, PreprocessedTokenValue::Comment(text) => text);
                     let token = Expression {
                         value: ExpressionValue::Comment(text),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
-                    tokens.next();
                 },
-                PreprocessedTokenValue::BlockComment(text) => {
+                PreprocessedTokenValue::BlockComment(_) => {
+                    let token = tokens.next().unwrap();
+                    let text = match_unwrap!(token.value, PreprocessedTokenValue::BlockComment(text) => text);
                     let token = Expression {
                         value: ExpressionValue::BlockComment(text.clone()),
                         location: token.location.clone(),
                     };
                     self.expressions.push(token);
-                    tokens.next();
                 },
                 _ => break,
             }
@@ -981,6 +1028,7 @@ pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, ParseR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TextToken;
 
     fn assert_directive_symbol_error(
         directive: &str,
@@ -1102,26 +1150,26 @@ mod tests {
         #[test]
         fn string() {
             assert_tokens("\"a\" \"b\" \"c\"", vec![
-                new_pretoken(PreprocessedTokenValue::String("a"), 0..3),
-                new_pretoken(PreprocessedTokenValue::String("b"), 4..7),
-                new_pretoken(PreprocessedTokenValue::String("c"), 8..11),
+                new_pretoken(PreprocessedTokenValue::make_string("a"), 0..3),
+                new_pretoken(PreprocessedTokenValue::make_string("b"), 4..7),
+                new_pretoken(PreprocessedTokenValue::make_string("c"), 8..11),
             ]);
         }
 
         #[test]
         fn symbol() {
             assert_tokens("asdf + '10'", vec![
-                new_pretoken(PreprocessedTokenValue::Symbol("asdf"), 0..4),
-                new_pretoken(PreprocessedTokenValue::Symbol("+"), 5..6),
-                new_pretoken(PreprocessedTokenValue::Symbol("10"), 7..11),
+                new_pretoken(PreprocessedTokenValue::make_symbol("asdf"), 0..4),
+                new_pretoken(PreprocessedTokenValue::make_symbol("+"), 5..6),
+                new_pretoken(PreprocessedTokenValue::make_symbol("10"), 7..11),
             ]);
         }
 
         #[test]
         fn variable() {
             assert_tokens("$asdf $this", vec![
-                new_pretoken(PreprocessedTokenValue::Variable("asdf"), 0..5),
-                new_pretoken(PreprocessedTokenValue::Variable("this"), 6..11),
+                new_pretoken(PreprocessedTokenValue::make_variable("asdf"), 0..5),
+                new_pretoken(PreprocessedTokenValue::make_variable("this"), 6..11),
             ]);
         }
 
@@ -1137,21 +1185,21 @@ mod tests {
         fn arrays() {
             assert_tokens("(asdf \"text\" 1)", vec![
                 new_pretoken(PreprocessedTokenValue::ArrayOpen, 0..1),
-                new_pretoken(PreprocessedTokenValue::Symbol("asdf"), 1..5),
-                new_pretoken(PreprocessedTokenValue::String("text"), 6..12),
+                new_pretoken(PreprocessedTokenValue::make_symbol("asdf"), 1..5),
+                new_pretoken(PreprocessedTokenValue::make_string("text"), 6..12),
                 new_pretoken(PreprocessedTokenValue::Integer(1), 13..14),
                 new_pretoken(PreprocessedTokenValue::ArrayClose, 14..15),
             ]);
             assert_tokens("{set $var \"asdf\"}", vec![
                 new_pretoken(PreprocessedTokenValue::CommandOpen, 0..1),
-                new_pretoken(PreprocessedTokenValue::Symbol("set"), 1..4),
-                new_pretoken(PreprocessedTokenValue::Variable("var"), 5..9),
-                new_pretoken(PreprocessedTokenValue::String("asdf"), 10..16),
+                new_pretoken(PreprocessedTokenValue::make_symbol("set"), 1..4),
+                new_pretoken(PreprocessedTokenValue::make_variable("var"), 5..9),
+                new_pretoken(PreprocessedTokenValue::make_string("asdf"), 10..16),
                 new_pretoken(PreprocessedTokenValue::CommandClose, 16..17),
             ]);
             assert_tokens("[property]", vec![
                 new_pretoken(PreprocessedTokenValue::PropertyOpen, 0..1),
-                new_pretoken(PreprocessedTokenValue::Symbol("property"), 1..9),
+                new_pretoken(PreprocessedTokenValue::make_symbol("property"), 1..9),
                 new_pretoken(PreprocessedTokenValue::PropertyClose, 9..10),
             ]);
         }
@@ -1159,22 +1207,22 @@ mod tests {
         #[test]
         fn comments() {
             assert_tokens("; comment", vec![new_pretoken(
-                PreprocessedTokenValue::Comment(" comment"),
+                PreprocessedTokenValue::make_comment(" comment"),
                 0..9,
             )]);
             assert_tokens("/* block comment */", vec![new_pretoken(
                 PreprocessedTokenValue::BlockComment(BlockCommentToken {
-                    open: ("/*", 0..2),
-                    body: (" block comment ", 2..17),
-                    close: ("*/", 17..19),
+                    open: TextToken::new("/*", 0..2),
+                    body: TextToken::new(" block comment ", 2..17),
+                    close: TextToken::new("*/", 17..19),
                 }),
                 0..19,
             )]);
             assert_tokens("/*symbol*/", vec![new_pretoken(
-                PreprocessedTokenValue::Symbol("/*symbol*/"),
+                PreprocessedTokenValue::make_symbol("/*symbol*/"),
                 0..10,
             )]);
-            assert_tokens("*/", vec![new_pretoken(PreprocessedTokenValue::Symbol("*/"), 0..2)]);
+            assert_tokens("*/", vec![new_pretoken(PreprocessedTokenValue::make_symbol("*/"), 0..2)]);
 
             assert_errors("/*", vec![
                 (DiagnosticKind::UnclosedBlockComment, 0..2),
@@ -1213,8 +1261,8 @@ mod tests {
             assert_tokens("#autorun {print \"Auto-run action\"}", vec![
                 new_pretoken(PreprocessedTokenValue::Autorun, 0..8),
                 new_pretoken(PreprocessedTokenValue::CommandOpen, 9..10),
-                new_pretoken(PreprocessedTokenValue::Symbol("print"), 10..15),
-                new_pretoken(PreprocessedTokenValue::String("Auto-run action"), 16..33),
+                new_pretoken(PreprocessedTokenValue::make_symbol("print"), 10..15),
+                new_pretoken(PreprocessedTokenValue::make_string("Auto-run action"), 16..33),
                 new_pretoken(PreprocessedTokenValue::CommandClose, 33..34),
             ]);
 
@@ -1247,7 +1295,7 @@ mod tests {
                     true_branch: (
                         vec![
                             new_pretoken(PreprocessedTokenValue::ArrayOpen, 15..16),
-                            new_pretoken(PreprocessedTokenValue::Symbol("array1"), 16..22),
+                            new_pretoken(PreprocessedTokenValue::make_symbol("array1"), 16..22),
                             new_pretoken(PreprocessedTokenValue::Integer(10), 23..25),
                             new_pretoken(PreprocessedTokenValue::ArrayClose, 25..26),
                         ],
@@ -1256,7 +1304,7 @@ mod tests {
                     false_branch: Some((
                         vec![
                             new_pretoken(PreprocessedTokenValue::ArrayOpen, 33..34),
-                            new_pretoken(PreprocessedTokenValue::Symbol("array2"), 34..40),
+                            new_pretoken(PreprocessedTokenValue::make_symbol("array2"), 34..40),
                             new_pretoken(PreprocessedTokenValue::Integer(5), 41..42),
                             new_pretoken(PreprocessedTokenValue::ArrayClose, 42..43),
                         ],
@@ -1272,7 +1320,7 @@ mod tests {
                     true_branch: (
                         vec![
                             new_pretoken(PreprocessedTokenValue::ArrayOpen, 16..17),
-                            new_pretoken(PreprocessedTokenValue::Symbol("array"), 17..22),
+                            new_pretoken(PreprocessedTokenValue::make_symbol("array"), 17..22),
                             new_pretoken(PreprocessedTokenValue::Integer(10), 23..25),
                             new_pretoken(PreprocessedTokenValue::ArrayClose, 25..26),
                         ],
@@ -1378,26 +1426,26 @@ mod tests {
         #[test]
         fn string() {
             assert_parsed("\"a\" \"b\" \"c\"", vec![
-                new_expression(ExpressionValue::String("a"), 0..3),
-                new_expression(ExpressionValue::String("b"), 4..7),
-                new_expression(ExpressionValue::String("c"), 8..11),
+                new_expression(ExpressionValue::make_string("a"), 0..3),
+                new_expression(ExpressionValue::make_string("b"), 4..7),
+                new_expression(ExpressionValue::make_string("c"), 8..11),
             ]);
         }
 
         #[test]
         fn symbol() {
             assert_parsed("asdf + '10'", vec![
-                new_expression(ExpressionValue::Symbol("asdf"), 0..4),
-                new_expression(ExpressionValue::Symbol("+"), 5..6),
-                new_expression(ExpressionValue::Symbol("10"), 7..11),
+                new_expression(ExpressionValue::make_symbol("asdf"), 0..4),
+                new_expression(ExpressionValue::make_symbol("+"), 5..6),
+                new_expression(ExpressionValue::make_symbol("10"), 7..11),
             ]);
         }
 
         #[test]
         fn variable() {
             assert_parsed("$asdf $this", vec![
-                new_expression(ExpressionValue::Variable("asdf"), 0..5),
-                new_expression(ExpressionValue::Variable("this"), 6..11),
+                new_expression(ExpressionValue::make_variable("asdf"), 0..5),
+                new_expression(ExpressionValue::make_variable("this"), 6..11),
             ]);
         }
 
@@ -1410,22 +1458,25 @@ mod tests {
         fn arrays() {
             assert_parsed("(asdf \"text\" 1)", vec![new_expression(
                 ExpressionValue::Array(vec![
-                    new_expression(ExpressionValue::Symbol("asdf"), 1..5),
-                    new_expression(ExpressionValue::String("text"), 6..12),
+                    new_expression(ExpressionValue::make_symbol("asdf"), 1..5),
+                    new_expression(ExpressionValue::make_string("text"), 6..12),
                     new_expression(ExpressionValue::Integer(1), 13..14),
                 ]),
                 0..15,
             )]);
             assert_parsed("{set $var \"asdf\"}", vec![new_expression(
                 ExpressionValue::Command(vec![
-                    new_expression(ExpressionValue::Symbol("set"), 1..4),
-                    new_expression(ExpressionValue::Variable("var"), 5..9),
-                    new_expression(ExpressionValue::String("asdf"), 10..16),
+                    new_expression(ExpressionValue::make_symbol("set"), 1..4),
+                    new_expression(ExpressionValue::make_variable("var"), 5..9),
+                    new_expression(ExpressionValue::make_string("asdf"), 10..16),
                 ]),
                 0..17,
             )]);
             assert_parsed("[property]", vec![new_expression(
-                ExpressionValue::Property(vec![new_expression(ExpressionValue::Symbol("property"), 1..9)]),
+                ExpressionValue::Property(vec![new_expression(
+                    ExpressionValue::make_symbol("property"),
+                    1..9,
+                )]),
                 0..10,
             )]);
 
@@ -1504,22 +1555,22 @@ mod tests {
         #[test]
         fn comments() {
             assert_parsed("; comment", vec![new_expression(
-                ExpressionValue::Comment(" comment"),
+                ExpressionValue::make_comment(" comment"),
                 0..9,
             )]);
             assert_parsed("/* block comment */", vec![new_expression(
                 ExpressionValue::BlockComment(BlockCommentToken {
-                    open: ("/*", 0..2),
-                    body: (" block comment ", 2..17),
-                    close: ("*/", 17..19),
+                    open: TextToken::new("/*", 0..2),
+                    body: TextToken::new(" block comment ", 2..17),
+                    close: TextToken::new("*/", 17..19),
                 }),
                 0..19,
             )]);
             assert_parsed("/*symbol*/", vec![new_expression(
-                ExpressionValue::Symbol("/*symbol*/"),
+                ExpressionValue::make_symbol("/*symbol*/"),
                 0..10,
             )]);
-            assert_parsed("*/", vec![new_expression(ExpressionValue::Symbol("*/"), 0..2)]);
+            assert_parsed("*/", vec![new_expression(ExpressionValue::make_symbol("*/"), 0..2)]);
 
             assert_errors("/*", vec![
                 (DiagnosticKind::UnclosedBlockComment, 0..2),
@@ -1559,8 +1610,8 @@ mod tests {
             assert_parsed("#autorun {print \"Auto-run action\"}", vec![new_expression(
                 ExpressionValue::Autorun(ArrayExpression::new(
                     vec![
-                        new_expression(ExpressionValue::Symbol("print"), 10..15),
-                        new_expression(ExpressionValue::String("Auto-run action"), 16..33),
+                        new_expression(ExpressionValue::make_symbol("print"), 10..15),
+                        new_expression(ExpressionValue::make_string("Auto-run action"), 16..33),
                     ],
                     9..34,
                 )),
@@ -1666,7 +1717,7 @@ mod tests {
                     true_branch: ArrayExpression::new(
                         vec![new_expression(
                             ExpressionValue::Array(vec![
-                                new_expression(ExpressionValue::Symbol("array1"), 16..22),
+                                new_expression(ExpressionValue::make_symbol("array1"), 16..22),
                                 new_expression(ExpressionValue::Integer(10), 23..25),
                             ]),
                             15..26,
@@ -1676,7 +1727,7 @@ mod tests {
                     false_branch: Some(ArrayExpression::new(
                         vec![new_expression(
                             ExpressionValue::Array(vec![
-                                new_expression(ExpressionValue::Symbol("array2"), 34..40),
+                                new_expression(ExpressionValue::make_symbol("array2"), 34..40),
                                 new_expression(ExpressionValue::Integer(5), 41..42),
                             ]),
                             33..43,
@@ -1693,7 +1744,7 @@ mod tests {
                     true_branch: ArrayExpression::new(
                         vec![new_expression(
                             ExpressionValue::Array(vec![
-                                new_expression(ExpressionValue::Symbol("array"), 17..22),
+                                new_expression(ExpressionValue::make_symbol("array"), 17..22),
                                 new_expression(ExpressionValue::Integer(10), 23..25),
                             ]),
                             16..26,

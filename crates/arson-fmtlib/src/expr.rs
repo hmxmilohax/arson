@@ -4,6 +4,7 @@
 
 use std::fmt::{self, Write};
 use std::iter::Peekable;
+use std::ops::Range;
 
 use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
 
@@ -213,16 +214,18 @@ impl<'src> InnerFormatter<'src> {
                     false => write!(f, "#ifndef {}", symbol.text)?,
                 };
 
-                let last = Expression::new(ExpressionValue::Symbol(symbol.text), symbol.location.clone());
-                self.format_conditional_block(&true_branch.exprs, &last, f)?;
+                let last =
+                    Expression::new(ExpressionValue::make_symbol(&symbol.text), symbol.location.clone());
+                self.format_conditional_block(&true_branch.exprs, &last.location, f)?;
 
                 if let Some(false_branch) = false_branch {
                     self.write_indent(f)?;
                     f.write_str("#else")?;
 
-                    let last_location = false_branch.location.start..false_branch.location.start + 5;
-                    let last = Expression::new(ExpressionValue::Symbol("#else"), last_location);
-                    self.format_conditional_block(&false_branch.exprs, &last, f)?;
+                    let last_location =
+                        false_branch.location.start..false_branch.location.start + "#else".len();
+                    let last = Expression::new(ExpressionValue::make_symbol("#else"), last_location);
+                    self.format_conditional_block(&false_branch.exprs, &last.location, f)?;
                 }
 
                 self.write_indent(f)?;
@@ -231,7 +234,9 @@ impl<'src> InnerFormatter<'src> {
 
             ExpressionValue::BlankLine => (),
             ExpressionValue::Comment(text) => self.format_comment(expr, text, iter, f)?,
-            ExpressionValue::BlockComment(comment) => self.format_comment(expr, comment.body.0, iter, f)?,
+            ExpressionValue::BlockComment(comment) => {
+                self.format_comment(expr, &comment.body.text, iter, f)?
+            },
         }
 
         Ok(())
@@ -323,7 +328,11 @@ impl<'src> InnerFormatter<'src> {
             // - they contain no large arrays
             ArrayKind::Command => {
                 let large = match &array[0].value {
-                    ExpressionValue::Symbol(name) if (*consts::BLOCK_COMMANDS).contains_key(name) => true,
+                    ExpressionValue::Symbol(name)
+                        if (*consts::BLOCK_COMMANDS).contains_key(name.as_ref()) =>
+                    {
+                        true
+                    },
 
                     ExpressionValue::Symbol(_)
                     | ExpressionValue::String(_)
@@ -417,7 +426,7 @@ impl<'src> InnerFormatter<'src> {
         };
 
         let mut last = first;
-        match first.value {
+        match &first.value {
             ExpressionValue::Symbol(name) => {
                 // Display leading symbol on the same line as the array opening
                 self.write_expr_unindented(first, f)?;
@@ -460,7 +469,7 @@ impl<'src> InnerFormatter<'src> {
             },
         };
 
-        self.format_array_long(remaining, Some(last), f)
+        self.format_array_long(remaining, Some(&last.location), f)
     }
 
     fn format_object_args<'a>(
@@ -521,7 +530,7 @@ impl<'src> InnerFormatter<'src> {
     fn format_array_long(
         &mut self,
         array: &[Expression<'src>],
-        last: Option<&Expression<'src>>,
+        last: Option<&Range<usize>>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
         // Bump up indentation for inner elements
@@ -539,7 +548,7 @@ impl<'src> InnerFormatter<'src> {
     fn format_block(
         &mut self,
         array: &[Expression<'src>],
-        last: Option<&Expression<'src>>,
+        last: Option<&Range<usize>>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
         let mut iter = array.iter().peekable();
@@ -583,7 +592,7 @@ impl<'src> InnerFormatter<'src> {
 
                 self.write_indent(f)?;
                 self.format_expr(expr, iter, f)?;
-                self.try_trailing_comment(expr, iter, f)?;
+                self.try_trailing_comment(&expr.location, iter, f)?;
             }
 
             first = false;
@@ -611,7 +620,7 @@ impl<'src> InnerFormatter<'src> {
     fn format_conditional_block(
         &mut self,
         array: &[Expression<'src>],
-        last: &Expression<'src>,
+        last: &Range<usize>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
         // Only indent if block contains inner conditionals
@@ -714,7 +723,7 @@ impl<'src> InnerFormatter<'src> {
 
     fn try_trailing_comment(
         &mut self,
-        last: &Expression<'src>,
+        last: &Range<usize>,
         iter: &mut ExpressionIter<'_, 'src>,
         f: &mut impl fmt::Write,
     ) -> fmt::Result {
@@ -724,7 +733,7 @@ impl<'src> InnerFormatter<'src> {
                 ExpressionValue::Comment(_) | ExpressionValue::BlockComment(_)
             ) && CommentDirective::try_from(*comment).is_err()
             {
-                let between = &self.input[last.location.end..comment.location.start];
+                let between = &self.input[last.end..comment.location.start];
                 if !between.contains('\n') {
                     let token = iter.next().unwrap();
                     self.write_expr_spaced(token, f)?;

@@ -75,11 +75,9 @@ impl TryFrom<&Token<'_>> for CommentDirective {
     type Error = ();
 
     fn try_from(value: &Token<'_>) -> Result<Self, Self::Error> {
-        match value.value {
-            TokenValue::Comment(text)
-            | TokenValue::BlockComment(BlockCommentToken { body: (text, _), .. }) => {
-                text.parse::<CommentDirective>()
-            },
+        match &value.value {
+            TokenValue::Comment(text) => text.parse::<CommentDirective>(),
+            TokenValue::BlockComment(BlockCommentToken { body, .. }) => body.text.parse::<CommentDirective>(),
             _ => Err(()),
         }
     }
@@ -89,10 +87,10 @@ impl TryFrom<&Expression<'_>> for CommentDirective {
     type Error = ();
 
     fn try_from(value: &Expression<'_>) -> Result<Self, Self::Error> {
-        match value.value {
-            ExpressionValue::Comment(text)
-            | ExpressionValue::BlockComment(BlockCommentToken { body: (text, _), .. }) => {
-                text.parse::<CommentDirective>()
+        match &value.value {
+            ExpressionValue::Comment(text) => text.parse::<CommentDirective>(),
+            ExpressionValue::BlockComment(BlockCommentToken { body, .. }) => {
+                body.text.parse::<CommentDirective>()
             },
             _ => Err(()),
         }

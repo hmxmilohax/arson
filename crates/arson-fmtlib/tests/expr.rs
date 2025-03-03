@@ -67,9 +67,9 @@ fn assert_format(input: &str, expected: &str) {
                     },
 
                     (ExpressionValue::BlockComment(left), ExpressionValue::BlockComment(right)) => {
-                        left.open.0 == right.open.0
-                            && left.body.0 == right.body.0
-                            && left.close.0 == right.close.0
+                        left.open.text == right.open.text
+                            && left.body.text == right.body.text
+                            && left.close.text == right.close.text
                     },
 
                     (left, right) => left == right,

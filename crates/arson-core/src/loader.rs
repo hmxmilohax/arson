@@ -132,13 +132,13 @@ impl<'ctx> Loader<'ctx> {
             ExpressionValue::String(value) => value.replace("\\q", "\"").replace("\\n", "\n").into(),
 
             ExpressionValue::Symbol(value) => {
-                let symbol = self.context.add_symbol(value);
+                let symbol = self.context.add_symbol(&value);
                 match self.context.get_macro(&symbol) {
                     Some(replacement) => return Ok(NodeResult::IncludeMacro(replacement)),
                     None => symbol.into(),
                 }
             },
-            ExpressionValue::Variable(value) => Variable::new(value, self.context).into(),
+            ExpressionValue::Variable(value) => Variable::new(&value, self.context).into(),
             ExpressionValue::Unhandled => Node::UNHANDLED,
 
             ExpressionValue::Array(exprs) => self.load_array(exprs)?.into(),
@@ -146,13 +146,13 @@ impl<'ctx> Loader<'ctx> {
             ExpressionValue::Property(exprs) => NodeProperty::from(self.load_array(exprs)?).into(),
 
             ExpressionValue::Define(name, exprs) => {
-                let name = self.context.add_symbol(name.text);
+                let name = self.context.add_symbol(&name.text);
                 let define = self.load_array(exprs.exprs)?;
                 self.context.add_macro(&name, define);
                 return Ok(NodeResult::Skip);
             },
             ExpressionValue::Undefine(name) => {
-                if let Some(name) = self.context.get_symbol(name.text) {
+                if let Some(name) = self.context.get_symbol(&name.text) {
                     self.context.remove_macro(&name);
                 }
                 return Ok(NodeResult::Skip);
@@ -164,7 +164,7 @@ impl<'ctx> Loader<'ctx> {
                         return Err(LoadError::IncludeNotAllowed);
                     }
 
-                    let file = self.load_path(path.text)?;
+                    let file = self.load_path(path.text.as_ref())?;
                     return Ok(NodeResult::IncludeFile(file));
                 }
 
@@ -181,7 +181,7 @@ impl<'ctx> Loader<'ctx> {
                         return Ok(NodeResult::Skip);
                     }
 
-                    match self.load_path_opt(path.text)? {
+                    match self.load_path_opt(&path.text)? {
                         Some(file) => return Ok(NodeResult::IncludeFile(file)),
                         None => return Ok(NodeResult::Skip),
                     }
@@ -194,7 +194,7 @@ impl<'ctx> Loader<'ctx> {
                 }
             },
             ExpressionValue::Merge(name) => {
-                if let Some(symbol) = self.context.get_symbol(name.text) {
+                if let Some(symbol) = self.context.get_symbol(&name.text) {
                     match self.context.get_macro(&symbol) {
                         Some(define) => return Ok(NodeResult::MergeMacro(define)),
                         None => return Err(LoadError::MacroNotFound),
@@ -206,7 +206,7 @@ impl<'ctx> Loader<'ctx> {
                             return Err(LoadError::IncludeNotAllowed);
                         }
 
-                        let file = self.load_path(name.text)?;
+                        let file = self.load_path(name.text.as_ref())?;
                         return Ok(NodeResult::MergeFile(file));
                     }
 
@@ -230,7 +230,7 @@ impl<'ctx> Loader<'ctx> {
             },
 
             ExpressionValue::Conditional { is_positive, symbol, true_branch, false_branch } => {
-                let defined = match self.context.get_symbol(symbol.text) {
+                let defined = match self.context.get_symbol(&symbol.text) {
                     Some(name) => self.context.get_macro(&name).is_some(),
                     None => false,
                 };

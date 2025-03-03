@@ -14,6 +14,7 @@ use arson_parse::{
     FloatValue,
     IntegerValue,
     StrExpression,
+    TextToken,
     TokenKind,
 };
 
@@ -352,14 +353,20 @@ fn thorough() {
             lines
         };
 
-        fn relocate(offset: usize, location: Range<isize>) -> Range<usize> {
+        fn relocate_i(offset: usize, location: Range<isize>) -> Range<usize> {
             let start = ((offset as isize) + location.start) as usize;
             let end = ((offset as isize) + location.end) as usize;
             start..end
         }
 
+        fn relocate_u(offset: usize, location: Range<usize>) -> Range<usize> {
+            let start = offset + location.start;
+            let end = offset + location.end;
+            start..end
+        }
+
         fn relocate_str(offset: usize, str: ThoroughStrExpr<'_>) -> StrExpression<'_> {
-            let location = relocate(offset, str.1);
+            let location = relocate_i(offset, str.1);
             StrExpression::new(str.0, location)
         }
 
@@ -372,7 +379,7 @@ fn thorough() {
             let (exprs, mut diags) = relocate_exprs(text, array.0);
             diagnostics.append(&mut diags);
 
-            let location = relocate(offset, array.1);
+            let location = relocate_i(offset, array.1);
             ArrayExpression::new(exprs, location)
         }
 
@@ -381,15 +388,15 @@ fn thorough() {
         for (line_number, expr_line) in exprs {
             let line_location = line_locations[line_number - 1];
             for expr in expr_line {
-                let new_location = relocate(line_location, expr.1);
+                let new_location = relocate_i(line_location, expr.1);
 
                 let value = match expr.0 {
                     Integer(value) => ExpressionValue::Integer(value),
                     Float(value) => ExpressionValue::Float(value),
-                    String(value) => ExpressionValue::String(value),
+                    String(value) => ExpressionValue::make_string(value),
 
-                    Symbol(value) => ExpressionValue::Symbol(value),
-                    Variable(value) => ExpressionValue::Variable(value),
+                    Symbol(value) => ExpressionValue::make_symbol(value),
+                    Variable(value) => ExpressionValue::make_variable(value),
                     Unhandled => ExpressionValue::Unhandled,
 
                     Array(exprs) => {
@@ -435,10 +442,14 @@ fn thorough() {
                     },
 
                     BlankLine => ExpressionValue::BlankLine,
-                    Comment(text) => ExpressionValue::Comment(text),
-                    BlockComment(BlockCommentToken { open, body, close }) => ExpressionValue::BlockComment(
-                        BlockCommentToken::new(new_location.start, open.0, body.0, close.0),
-                    ),
+                    Comment(text) => ExpressionValue::make_comment(text),
+                    BlockComment(BlockCommentToken { open, body, close }) => {
+                        ExpressionValue::BlockComment(BlockCommentToken {
+                            open: TextToken::from_cow(open.text, relocate_u(line_location, open.location)),
+                            body: TextToken::from_cow(body.text, relocate_u(line_location, body.location)),
+                            close: TextToken::from_cow(close.text, relocate_u(line_location, close.location)),
+                        })
+                    },
 
                     Error(err) => {
                         diagnostics.push(Diagnostic::new(err, new_location));

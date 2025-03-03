@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::fmt::Write;
 
 use lazy_regex::{regex, regex_is_match};
@@ -53,7 +54,21 @@ impl std::fmt::Display for ArrayKind {
     }
 }
 
-pub type TextToken<'src> = (&'src str, Span);
+#[derive(Debug, PartialEq, Clone)]
+pub struct TextToken<'src> {
+    pub text: Cow<'src, str>,
+    pub location: Span,
+}
+
+impl<'src> TextToken<'src> {
+    pub const fn new(text: &'src str, location: Span) -> Self {
+        Self { text: Cow::Borrowed(text), location }
+    }
+
+    pub const fn from_cow(text: Cow<'src, str>, location: Span) -> Self {
+        Self { text, location }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct BlockCommentToken<'src> {
@@ -63,23 +78,23 @@ pub struct BlockCommentToken<'src> {
 }
 
 impl<'src> BlockCommentToken<'src> {
-    pub fn new(start_pos: usize, open: &'src str, body: &'src str, close: &'src str) -> Self {
-        let open = (open, start_pos..start_pos + open.len());
-        let body = (body, open.1.end..open.1.end + body.len());
-        let close = (close, body.1.end..body.1.end + close.len());
+    pub const fn new(start_pos: usize, open: &'src str, body: &'src str, close: &'src str) -> Self {
+        let open = TextToken::new(open, start_pos..start_pos + open.len());
+        let body = TextToken::new(body, open.location.end..open.location.end + body.len());
+        let close = TextToken::new(close, body.location.end..body.location.end + close.len());
         Self { open, body, close }
     }
 
     pub fn contains(&self, pat: &str) -> bool {
-        self.open.0.contains(pat) || self.body.0.contains(pat) || self.close.0.contains(pat)
+        self.open.text.contains(pat) || self.body.text.contains(pat) || self.close.text.contains(pat)
     }
 }
 
 impl std::fmt::Display for BlockCommentToken<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.open.0)?;
-        f.write_str(self.body.0)?;
-        f.write_str(self.close.0)
+        f.write_str(&self.open.text)?;
+        f.write_str(&self.body.text)?;
+        f.write_str(&self.close.text)
     }
 }
 
@@ -106,7 +121,7 @@ macro_rules! make_tokens {
     (
         $(
             $(#[$attr:meta])*
-            $variant:ident$(($(&$life:lifetime)? $value_type:ident$(<$value_generics:tt>)?))? {
+            $variant:ident$(($(&$life:lifetime)? $value_type:ident$(<$($value_generics:tt),*>)?))? {
                 kind_display: $kind_display:literal,
                 value_display: |$display_f:ident $(, $display_value:ident)?| $display_expr:expr,
             }
@@ -117,7 +132,7 @@ macro_rules! make_tokens {
         #[logos(error = DiagnosticKind)]
         #[logos(skip r#"[ \v\t\r\n\f]+"#)]
         pub enum TokenValue<'src> {
-            $($(#[$attr])* $variant$(($(&$life)? $value_type$(<$value_generics>)?))?,)+
+            $($(#[$attr])* $variant$(($(&$life)? $value_type$(<$($value_generics),*>)?))?,)+
         }
 
         impl<'src> TokenValue<'src> {
@@ -176,16 +191,16 @@ make_tokens! {
         },
     },
     #[regex(r#""[^"]*""#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    String(&'src str) {
+    String(Cow<'src, str>) {
         kind_display: "string",
         value_display: |f, value| write!(f, "\"{}\"", value),
     },
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
-    #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, priority = 0)]
+    #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| Cow::Borrowed(lex.slice()), priority = 0)]
     #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
-    Symbol(&'src str) {
+    Symbol(Cow<'src, str>) {
         kind_display: "symbol",
         value_display: |f, value| {
             // Write without quotes where possible
@@ -197,7 +212,7 @@ make_tokens! {
         },
     },
     #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
-    Variable(&'src str) {
+    Variable(Cow<'src, str>) {
         kind_display: "variable",
         value_display: |f, value| write!(f, "${}", value),
     },
@@ -298,7 +313,7 @@ make_tokens! {
         value_display: |f| f.write_char('\n'),
     },
     #[regex(r#";[^\n]*"#, |lex| trim_delimiters(lex.slice(), 1, 0), priority = 1)]
-    Comment(&'src str) {
+    Comment(Cow<'src, str>) {
         kind_display: "comment",
         value_display: |f, value| write!(f, ";{}", value),
     },
@@ -310,7 +325,7 @@ make_tokens! {
     },
     // Handled in parse_block_comment
     // #[regex(r#"\*+\/"#)]
-    // BlockCommentEnd(&'src str) => ("block comment end"),
+    // BlockCommentEnd(Cow<'src, str>) => ("block comment end"),
 
     #[regex(r#"#[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |_lex| DiagnosticKind::BadDirective)]
     Error(DiagnosticKind) {
@@ -319,17 +334,36 @@ make_tokens! {
     },
 }
 
+impl<'src> TokenValue<'src> {
+    pub const fn make_string(text: &'src str) -> Self {
+        TokenValue::String(Cow::Borrowed(text))
+    }
+
+    pub const fn make_symbol(text: &'src str) -> Self {
+        TokenValue::Symbol(Cow::Borrowed(text))
+    }
+
+    pub const fn make_variable(text: &'src str) -> Self {
+        TokenValue::Variable(Cow::Borrowed(text))
+    }
+
+    pub const fn make_comment(text: &'src str) -> Self {
+        TokenValue::Comment(Cow::Borrowed(text))
+    }
+}
+
 type Lexer<'src> = logos::Lexer<'src, TokenValue<'src>>;
 
-fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<&str, DiagnosticKind> {
+fn trim_delimiters(text: &str, before: usize, after: usize) -> Result<Cow<'_, str>, DiagnosticKind> {
     let trim_range = before..text.len() - after;
     text.get(trim_range.clone())
+        .map(Cow::Borrowed)
         .ok_or(DiagnosticKind::TrimDelimiterError { trim_range, actual_length: text.len() })
 }
 
 fn parse_hex(lex: &mut Lexer<'_>) -> Result<IntegerValue, DiagnosticKind> {
     let trimmed = trim_delimiters(lex.slice(), 2, 0)?;
-    u64::from_str_radix(trimmed, 16)
+    u64::from_str_radix(&trimmed, 16)
         .map(|v| v as IntegerValue)
         .map_err(DiagnosticKind::IntegerParseError)
 }
@@ -369,20 +403,12 @@ fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<BlockCommentToken<
     let close_range = (close_range.start + close_offset)..(close_range.end + close_offset);
     let body_range = open_range.end..close_range.start;
 
-    Ok(BlockCommentToken {
-        open: (
-            &full_text[open_range.clone()],
-            open_range.start + range_start..open_range.end + range_start,
-        ),
-        body: (
-            &full_text[body_range.clone()],
-            body_range.start + range_start..body_range.end + range_start,
-        ),
-        close: (
-            &full_text[close_range.clone()],
-            close_range.start + range_start..close_range.end + range_start,
-        ),
-    })
+    Ok(BlockCommentToken::new(
+        range_start,
+        &full_text[open_range.clone()],
+        &full_text[body_range.clone()],
+        &full_text[close_range.clone()],
+    ))
 }
 
 pub struct Tokenizer<'src> {
@@ -467,79 +493,79 @@ mod tests {
 
     #[test]
     fn string() {
-        assert_token("\"text\"", TokenValue::String("text"), 0..6);
+        assert_token("\"text\"", TokenValue::make_string("text"), 0..6);
 
-        assert_token("\"64\"", TokenValue::String("64"), 0..4);
-        assert_token("\"12.0\"", TokenValue::String("12.0"), 0..6);
+        assert_token("\"64\"", TokenValue::make_string("64"), 0..4);
+        assert_token("\"12.0\"", TokenValue::make_string("12.0"), 0..6);
 
-        assert_token("\"'text'\"", TokenValue::String("'text'"), 0..8);
-        assert_token("\"$text\"", TokenValue::String("$text"), 0..7);
-        assert_token("\"kDataUnhandled\"", TokenValue::String("kDataUnhandled"), 0..16);
+        assert_token("\"'text'\"", TokenValue::make_string("'text'"), 0..8);
+        assert_token("\"$text\"", TokenValue::make_string("$text"), 0..7);
+        assert_token("\"kDataUnhandled\"", TokenValue::make_string("kDataUnhandled"), 0..16);
 
-        assert_token("\"(\"", TokenValue::String("("), 0..3);
-        assert_token("\")\"", TokenValue::String(")"), 0..3);
-        assert_token("\"{\"", TokenValue::String("{"), 0..3);
-        assert_token("\"}\"", TokenValue::String("}"), 0..3);
-        assert_token("\"[\"", TokenValue::String("["), 0..3);
-        assert_token("\"]\"", TokenValue::String("]"), 0..3);
+        assert_token("\"(\"", TokenValue::make_string("("), 0..3);
+        assert_token("\")\"", TokenValue::make_string(")"), 0..3);
+        assert_token("\"{\"", TokenValue::make_string("{"), 0..3);
+        assert_token("\"}\"", TokenValue::make_string("}"), 0..3);
+        assert_token("\"[\"", TokenValue::make_string("["), 0..3);
+        assert_token("\"]\"", TokenValue::make_string("]"), 0..3);
 
-        assert_token("\"#define\"", TokenValue::String("#define"), 0..9);
-        assert_token("\"#undef\"", TokenValue::String("#undef"), 0..8);
-        assert_token("\"#include\"", TokenValue::String("#include"), 0..10);
-        assert_token("\"#include_opt\"", TokenValue::String("#include_opt"), 0..14);
-        assert_token("\"#merge\"", TokenValue::String("#merge"), 0..8);
-        assert_token("\"#autorun\"", TokenValue::String("#autorun"), 0..10);
-        assert_token("\"#ifdef\"", TokenValue::String("#ifdef"), 0..8);
-        assert_token("\"#ifndef\"", TokenValue::String("#ifndef"), 0..9);
-        assert_token("\"#else\"", TokenValue::String("#else"), 0..7);
-        assert_token("\"#endif\"", TokenValue::String("#endif"), 0..8);
-        assert_token("\"#bad\"", TokenValue::String("#bad"), 0..6);
+        assert_token("\"#define\"", TokenValue::make_string("#define"), 0..9);
+        assert_token("\"#undef\"", TokenValue::make_string("#undef"), 0..8);
+        assert_token("\"#include\"", TokenValue::make_string("#include"), 0..10);
+        assert_token("\"#include_opt\"", TokenValue::make_string("#include_opt"), 0..14);
+        assert_token("\"#merge\"", TokenValue::make_string("#merge"), 0..8);
+        assert_token("\"#autorun\"", TokenValue::make_string("#autorun"), 0..10);
+        assert_token("\"#ifdef\"", TokenValue::make_string("#ifdef"), 0..8);
+        assert_token("\"#ifndef\"", TokenValue::make_string("#ifndef"), 0..9);
+        assert_token("\"#else\"", TokenValue::make_string("#else"), 0..7);
+        assert_token("\"#endif\"", TokenValue::make_string("#endif"), 0..8);
+        assert_token("\"#bad\"", TokenValue::make_string("#bad"), 0..6);
 
-        assert_token("\"\n\"", TokenValue::String("\n"), 0..3);
-        assert_token("\"; a comment\"", TokenValue::String("; a comment"), 0..13);
-        assert_token("\"/* a comment */\"", TokenValue::String("/* a comment */"), 0..17);
+        assert_token("\"\n\"", TokenValue::make_string("\n"), 0..3);
+        assert_token("\"; a comment\"", TokenValue::make_string("; a comment"), 0..13);
+        assert_token("\"/* a comment */\"", TokenValue::make_string("/* a comment */"), 0..17);
     }
 
     #[test]
     fn symbol() {
-        assert_token("text", TokenValue::Symbol("text"), 0..4);
+        assert_token("text", TokenValue::make_symbol("text"), 0..4);
 
-        assert_token("+", TokenValue::Symbol("+"), 0..1);
-        assert_token("-", TokenValue::Symbol("-"), 0..1);
-        assert_token("*", TokenValue::Symbol("*"), 0..1);
-        assert_token("/", TokenValue::Symbol("/"), 0..1);
-        assert_token("%", TokenValue::Symbol("%"), 0..1);
-        assert_token("_", TokenValue::Symbol("_"), 0..1);
+        assert_token("+", TokenValue::make_symbol("+"), 0..1);
+        assert_token("-", TokenValue::make_symbol("-"), 0..1);
+        assert_token("*", TokenValue::make_symbol("*"), 0..1);
+        assert_token("/", TokenValue::make_symbol("/"), 0..1);
+        assert_token("%", TokenValue::make_symbol("%"), 0..1);
+        assert_token("_", TokenValue::make_symbol("_"), 0..1);
 
         for char in 'a'..'z' {
             let str = char.to_string();
-            assert_token(&str, TokenValue::Symbol(&str), 0..1);
+            assert_token(&str, TokenValue::make_symbol(&str), 0..1);
 
             for char2 in 'a'..'z' {
                 let str = char.to_string() + &char2.to_string();
-                assert_token(&str, TokenValue::Symbol(&str), 0..2);
+                assert_token(&str, TokenValue::make_symbol(&str), 0..2);
             }
         }
     }
 
     #[test]
     fn variable() {
-        assert_token("$text", TokenValue::Variable("text"), 0..5);
+        assert_token("$text", TokenValue::make_variable("text"), 0..5);
 
-        assert_token("$+", TokenValue::Variable("+"), 0..2);
-        assert_token("$-", TokenValue::Variable("-"), 0..2);
-        assert_token("$*", TokenValue::Variable("*"), 0..2);
-        assert_token("$/", TokenValue::Variable("/"), 0..2);
-        assert_token("$%", TokenValue::Variable("%"), 0..2);
-        assert_token("$_", TokenValue::Variable("_"), 0..2);
+        assert_token("$+", TokenValue::make_variable("+"), 0..2);
+        assert_token("$-", TokenValue::make_variable("-"), 0..2);
+        assert_token("$*", TokenValue::make_variable("*"), 0..2);
+        assert_token("$/", TokenValue::make_variable("/"), 0..2);
+        assert_token("$%", TokenValue::make_variable("%"), 0..2);
+        assert_token("$_", TokenValue::make_variable("_"), 0..2);
 
         for char in 'a'..'z' {
             let str = char.to_string();
-            assert_token(&("$".to_owned() + &str), TokenValue::Variable(&str), 0..2);
+            assert_token(&("$".to_owned() + &str), TokenValue::make_variable(&str), 0..2);
 
             for char2 in 'a'..'z' {
                 let str = char.to_string() + &char2.to_string();
-                assert_token(&("$".to_owned() + &str), TokenValue::Variable(&str), 0..3);
+                assert_token(&("$".to_owned() + &str), TokenValue::make_variable(&str), 0..3);
             }
         }
     }
@@ -585,8 +611,8 @@ mod tests {
             TokenValue::BlockComment(BlockCommentToken::new(start, open, body, close))
         }
 
-        assert_token("; comment", TokenValue::Comment(" comment"), 0..9);
-        assert_token(";comment", TokenValue::Comment("comment"), 0..8);
+        assert_token("; comment", TokenValue::make_comment(" comment"), 0..9);
+        assert_token(";comment", TokenValue::make_comment("comment"), 0..8);
         assert_token("/* comment */", new_block_comment(0, "/*", " comment ", "*/"), 0..13);
         assert_token("/*comment */", new_block_comment(0, "/*", "comment ", "*/"), 0..12);
         assert_token("/* comment*/", new_block_comment(0, "/*", " comment", "*/"), 0..12);
@@ -610,12 +636,12 @@ mod tests {
         );
 
         // These get parsed as symbols in the original lexer
-        assert_token("a;symbol", TokenValue::Symbol("a;symbol"), 0..8);
-        assert_token("/**", TokenValue::Symbol("/**"), 0..3);
-        assert_token("/**/", TokenValue::Symbol("/**/"), 0..4);
-        assert_token("/*****", TokenValue::Symbol("/*****"), 0..6);
-        assert_token("/*****/", TokenValue::Symbol("/*****/"), 0..7);
-        assert_token("/*comment*/", TokenValue::Symbol("/*comment*/"), 0..11);
+        assert_token("a;symbol", TokenValue::make_symbol("a;symbol"), 0..8);
+        assert_token("/**", TokenValue::make_symbol("/**"), 0..3);
+        assert_token("/**/", TokenValue::make_symbol("/**/"), 0..4);
+        assert_token("/*****", TokenValue::make_symbol("/*****"), 0..6);
+        assert_token("/*****/", TokenValue::make_symbol("/*****/"), 0..7);
+        assert_token("/*comment*/", TokenValue::make_symbol("/*comment*/"), 0..11);
 
         // Block comment requirements are weird
         assert_token(
@@ -624,14 +650,14 @@ mod tests {
             0..17,
         );
         assert_tokens("/**/** comment */", vec![
-            (TokenValue::Symbol("/**/**"), 0..6),
-            (TokenValue::Symbol("comment"), 7..14),
-            (TokenValue::Symbol("*/"), 15..17),
+            (TokenValue::make_symbol("/**/**"), 0..6),
+            (TokenValue::make_symbol("comment"), 7..14),
+            (TokenValue::make_symbol("*/"), 15..17),
         ]);
         assert_tokens("/***** comment */", vec![
-            (TokenValue::Symbol("/*****"), 0..6),
-            (TokenValue::Symbol("comment"), 7..14),
-            (TokenValue::Symbol("*/"), 15..17),
+            (TokenValue::make_symbol("/*****"), 0..6),
+            (TokenValue::make_symbol("comment"), 7..14),
+            (TokenValue::make_symbol("*/"), 15..17),
         ]);
         assert_token(
             "/* comment *****/",
@@ -640,11 +666,11 @@ mod tests {
         );
         assert_tokens("/* comment **/**/", vec![
             (new_block_comment(0, "/*", " comment ", "**/"), 0..14),
-            (TokenValue::Symbol("**/"), 14..17),
+            (TokenValue::make_symbol("**/"), 14..17),
         ]);
         assert_tokens("/* comment */*/*/", vec![
             (new_block_comment(0, "/*", " comment ", "*/"), 0..13),
-            (TokenValue::Symbol("*/*/"), 13..17),
+            (TokenValue::make_symbol("*/*/"), 13..17),
         ]);
 
         // Ensure block comment ends aren't swallowed up by delimiters for other tokens
@@ -687,7 +713,7 @@ mod tests {
 
         assert_tokens("(symbol\n\n)", vec![
             (TokenValue::ArrayOpen, 0..1),
-            (TokenValue::Symbol("symbol"), 1..7),
+            (TokenValue::make_symbol("symbol"), 1..7),
             (TokenValue::BlankLine, 7..9),
             (TokenValue::ArrayClose, 9..10),
         ]);
@@ -701,15 +727,15 @@ mod tests {
            \n)",
             vec![
                 (TokenValue::ArrayOpen, 0..1),
-                (TokenValue::Symbol("foo"), 1..4),
+                (TokenValue::make_symbol("foo"), 1..4),
                 (TokenValue::BlankLine, 4..9),
                 (TokenValue::ArrayOpen, 9..10),
-                (TokenValue::Symbol("bar"), 10..13),
+                (TokenValue::make_symbol("bar"), 10..13),
                 (TokenValue::Integer(50), 14..16),
                 (TokenValue::ArrayClose, 16..17),
                 (TokenValue::BlankLine, 17..22),
                 (TokenValue::ArrayOpen, 22..23),
-                (TokenValue::Symbol("quz"), 23..26),
+                (TokenValue::make_symbol("quz"), 23..26),
                 (TokenValue::Integer(100), 27..30),
                 (TokenValue::ArrayClose, 30..31),
                 (TokenValue::BlankLine, 31..34),
@@ -726,15 +752,15 @@ mod tests {
            \n#endif",
             vec![
                 (TokenValue::Ifdef, 0..6),
-                (TokenValue::Symbol("kDefine"), 7..14),
+                (TokenValue::make_symbol("kDefine"), 7..14),
                 (TokenValue::BlankLine, 14..16),
                 (TokenValue::ArrayOpen, 16..17),
-                (TokenValue::Symbol("foo"), 17..20),
+                (TokenValue::make_symbol("foo"), 17..20),
                 (TokenValue::Integer(50), 21..23),
                 (TokenValue::ArrayClose, 23..24),
                 (TokenValue::BlankLine, 24..26),
                 (TokenValue::ArrayOpen, 26..27),
-                (TokenValue::Symbol("bar"), 27..30),
+                (TokenValue::make_symbol("bar"), 27..30),
                 (TokenValue::Integer(100), 31..34),
                 (TokenValue::ArrayClose, 34..35),
                 (TokenValue::BlankLine, 35..37),

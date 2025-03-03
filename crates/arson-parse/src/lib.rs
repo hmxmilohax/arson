@@ -7,6 +7,16 @@ macro_rules! meta_morph {
     };
 }
 
+/// Returns the result of a pattern match, panicking if the pattern wasn't matched.
+macro_rules! match_unwrap {
+    ($expression:expr, $pattern:pat => $result:expr) => {
+        match $expression {
+            $pattern => $result,
+            _ => panic!("pattern \"{}\" was not matched", stringify!($pattern)),
+        }
+    };
+}
+
 mod diagnostics;
 mod lexer;
 mod parser;

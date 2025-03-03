@@ -197,7 +197,7 @@ impl<'src> InnerFormatter<'src> {
                 }
             },
             TokenValue::Comment(text) => self.format_comment(token, text, f)?,
-            TokenValue::BlockComment(comment) => self.format_comment(token, comment.body.0, f)?,
+            TokenValue::BlockComment(comment) => self.format_comment(token, &comment.body.text, f)?,
 
             TokenValue::Error(_) => self.write_token_line(token, f)?,
         }
@@ -349,7 +349,7 @@ impl<'src> InnerFormatter<'src> {
         self.indent_level += 1;
 
         if let Some(ref first) = array_tokens.pop_front() {
-            match first.value {
+            match &first.value {
                 TokenValue::Symbol(name) => {
                     // Display leading symbol on the same line as the array opening
                     self.write_token_unindented(first, f)?;
@@ -425,14 +425,17 @@ impl<'src> InnerFormatter<'src> {
             return Ok(());
         };
 
-        if let TokenValue::Symbol(name) = next.value {
+        if let TokenValue::Symbol(name) = &next.value {
             self.write_token_spaced(next, f)?;
             self.try_trailing_comment(next, f)?;
-            remaining.pop_front().unwrap();
 
             // Display the argument after that on the same line
             // if this is a `foreach` or `with` func
-            if name.starts_with("foreach_") || name.starts_with("with_") {
+            let pack = name.starts_with("foreach_") || name.starts_with("with_");
+
+            remaining.pop_front().unwrap();
+
+            if pack {
                 self.format_command_args(1, remaining, f)?;
             }
         }
