@@ -133,7 +133,16 @@ fn read_glob(reader: &mut CryptReader<'_, '_>) -> Result<Vec<u8>, ReadError> {
 
     let mut bytes = vec![0u8; length as usize];
     let bytes_read = reader.read(&mut bytes)?;
-    bytes.truncate(bytes_read);
+    if bytes_read < bytes.len() {
+        let mut bytes = &mut bytes[bytes_read..];
+        let bytes_read = reader.read(&mut bytes)?;
+        if bytes_read < bytes.len() {
+            return Err(ReadError::IO(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "couldn't read enough bytes to complete glob/string data",
+            )));
+        }
+    }
 
     Ok(bytes)
 }
