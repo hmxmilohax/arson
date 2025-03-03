@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::borrow::Cow;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -27,73 +26,90 @@ struct Arguments {
 #[derive(clap::Subcommand, Debug)]
 enum CompilerMode {
     /// Compile a script file (.dta) into binary form (.dtb).
-    Compile {
-        /// The encryption method to use for the output file.
-        #[arg(short, long)]
-        encryption: EncryptionMode,
-        /// The key to use for encryption.
-        ///
-        /// Leave unspecified to use a default key.
-        #[arg(short, long, value_parser = parse_key)]
-        key: Option<u32>,
-        /// The encoding to use for text in the output file.
-        #[arg(short = 'c', long)]
-        encoding: Encoding,
-        /// The file to compile.
-        input_path: PathBuf,
-        /// The path to output the compiled file to.
-        ///
-        /// Defaults to the input path with the extension changed to .dtb.
-        output_path: Option<PathBuf>,
-        /// Allow output path to overwrite an existing file.
-        #[arg(short = 'o', long)]
-        allow_overwrite: bool,
-    },
+    Compile(CompileArgs),
     /// Decompile a compiled script file (.dtb) into textual form (.dta).
-    Decompile {
-        /// The decryption method to use for the input file.
-        ///
-        /// Leave unspecified to automatically detect the encryption method.
-        #[arg(short, long)]
-        decryption: Option<EncryptionMode>,
-        /// The file to decompile.
-        input_path: PathBuf,
-        /// The path to output the decompiled file to.
-        ///
-        /// Defaults to the input path with the extension changed to .dta.
-        output_path: Option<PathBuf>,
-        /// Allow output path to overwrite an existing file.
-        #[arg(short = 'o', long)]
-        allow_overwrite: bool,
-        /// Suppress parsing errors that occur as part of formatting the output file.
-        #[arg(short, long)]
-        suppress_parse_errors: bool,
-    },
+    Decompile(DecompileArgs),
     /// Changes the encryption of a compiled script file (.dtb).
-    CrossCrypt {
-        /// The decryption method to use for the input file.
-        ///
-        /// Leave unspecified to automatically detect the encryption method.
-        #[arg(short, long)]
-        decryption: Option<EncryptionMode>,
-        /// The encryption method to use for the output file.
-        #[arg(short, long)]
-        encryption: EncryptionMode,
-        /// The key to use for encryption.
-        ///
-        /// Leave unspecified to use a default key.
-        #[arg(short, long, value_parser = parse_key)]
-        key: Option<u32>,
-        /// The file to encrypt.
-        input_path: PathBuf,
-        /// The path to output the encrypted file to.
-        ///
-        /// Defaults to appending `_encrypted` to the file name.
-        output_path: Option<PathBuf>,
-        /// Allow output path to overwrite an existing file.
-        #[arg(short = 'o', long)]
-        allow_overwrite: bool,
-    },
+    CrossCrypt(CrossCryptArgs),
+}
+
+/// Compile a script file (.dta) into binary form (.dtb).
+#[derive(clap::Args, Debug)]
+struct CompileArgs {
+    /// The encryption method to use for the output file.
+    #[arg(short, long)]
+    encryption: EncryptionMode,
+    /// The key to use for encryption.
+    ///
+    /// Leave unspecified to use a default key.
+    #[arg(short, long, value_parser = parse_key)]
+    key: Option<u32>,
+
+    /// The encoding to use for text in the output file.
+    #[arg(short = 'c', long)]
+    output_encoding: Encoding,
+    /// Allow output path to overwrite an existing file.
+    #[arg(short = 'o', long)]
+    allow_overwrite: bool,
+
+    /// The file to compile.
+    input_path: PathBuf,
+    /// The path to output the compiled file to.
+    ///
+    /// Defaults to the input path with the extension changed to .dtb.
+    output_path: Option<PathBuf>,
+}
+
+/// Decompile a compiled script file (.dtb) into textual form (.dta).
+#[derive(clap::Args, Debug)]
+struct DecompileArgs {
+    /// The decryption method to use for the input file.
+    ///
+    /// Leave unspecified to automatically detect the encryption method.
+    #[arg(short, long)]
+    decryption: Option<EncryptionMode>,
+
+    /// Suppress parsing errors that occur as part of formatting the output file.
+    #[arg(short, long)]
+    print_format_errors: bool,
+
+    /// Allow output path to overwrite an existing file.
+    #[arg(short = 'o', long)]
+    allow_overwrite: bool,
+
+    /// The file to decompile.
+    input_path: PathBuf,
+    /// The path to output the decompiled file to.
+    ///
+    /// Defaults to the input path with the extension changed to .dta.
+    output_path: Option<PathBuf>,
+}
+
+/// Changes the encryption of a compiled script file (.dtb).
+#[derive(clap::Args, Debug)]
+struct CrossCryptArgs {
+    /// The decryption method to use for the input file.
+    ///
+    /// Leave unspecified to automatically detect the encryption method.
+    #[arg(short, long)]
+    decryption: Option<EncryptionMode>,
+    /// The encryption method to use for the output file.
+    #[arg(short, long)]
+    encryption: EncryptionMode,
+    /// The key to use for encryption.
+    ///
+    /// Leave unspecified to use a default key.
+    #[arg(short, long, value_parser = parse_key)]
+    key: Option<u32>,
+    /// The file to encrypt.
+    input_path: PathBuf,
+    /// The path to output the encrypted file to.
+    ///
+    /// Defaults to appending `_encrypted` to the file name.
+    output_path: Option<PathBuf>,
+    /// Allow output path to overwrite an existing file.
+    #[arg(short = 'o', long)]
+    allow_overwrite: bool,
 }
 
 /// The encryption/decryption mode to use.
@@ -127,36 +143,9 @@ fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
 
     match args.mode {
-        CompilerMode::Compile {
-            encryption,
-            key,
-            encoding,
-            input_path,
-            output_path,
-            allow_overwrite,
-        } => compile(
-            encryption,
-            key,
-            encoding,
-            &input_path,
-            output_path.as_deref(),
-            allow_overwrite,
-        ),
-        CompilerMode::Decompile {
-            decryption,
-            input_path,
-            output_path,
-            allow_overwrite,
-            suppress_parse_errors,
-        } => decompile(decryption, input_path, output_path, allow_overwrite, suppress_parse_errors),
-        CompilerMode::CrossCrypt {
-            decryption,
-            encryption,
-            key,
-            input_path,
-            output_path,
-            allow_overwrite,
-        } => cross_crypt(decryption, encryption, key, input_path, output_path, allow_overwrite),
+        CompilerMode::Compile(args) => compile(args),
+        CompilerMode::Decompile(args) => decompile(args),
+        CompilerMode::CrossCrypt(args) => cross_crypt(args),
     }
 }
 
@@ -179,20 +168,11 @@ fn validate_paths(input: &Path, output: &Path, input_ext: &str, output_ext: &str
     Ok(())
 }
 
-fn compile(
-    encryption: EncryptionMode,
-    key: Option<u32>,
-    encoding: Encoding,
-    input_path: &Path,
-    output_path: Option<&Path>,
-    allow_overwrite: bool,
-) -> anyhow::Result<()> {
-    let output_path = output_path
-        .map(Cow::Borrowed)
-        .unwrap_or_else(|| Cow::Owned(input_path.with_extension("dtb")));
-    validate_paths(input_path, &output_path, "DTA", "DTB")?;
+fn compile(args: CompileArgs) -> anyhow::Result<()> {
+    let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dtb"));
+    validate_paths(&args.input_path, &output_path, "DTA", "DTB")?;
 
-    let input_file = File::open(input_path)
+    let input_file = File::open(&args.input_path)
         .and_then(std::io::read_to_string)
         .context("couldn't read input file")?;
 
@@ -200,27 +180,27 @@ fn compile(
         Ok(ast) => ast,
         Err(error) => match error {
             arson_dtb::DataParseError::Parse(error) => {
-                write_parse_errors(error, input_path, &input_file);
+                write_parse_errors(error, &args.input_path, &input_file);
                 bail!("failed to parse input file");
             },
             _ => bail!("couldn't load input file: {error}"),
         },
     };
 
-    let mut output_file = create_file(&output_path, allow_overwrite)?;
+    let mut output_file = create_file(&output_path, args.allow_overwrite)?;
     let settings = WriteSettings {
-        encoding: match encoding {
+        encoding: match args.output_encoding {
             Encoding::UTF8 => WriteEncoding::UTF8,
             Encoding::Latin1 => WriteEncoding::Latin1,
         },
     };
-    let result = match encryption {
+    let result = match args.encryption {
         EncryptionMode::None => arson_dtb::write_unencrypted(&array, &mut output_file, settings),
-        EncryptionMode::Old => match key {
+        EncryptionMode::Old => match args.key {
             Some(key) => arson_dtb::write_oldstyle_seeded(&array, &mut output_file, settings, key),
             None => arson_dtb::write_oldstyle(&array, &mut output_file, settings),
         },
-        EncryptionMode::New => match key {
+        EncryptionMode::New => match args.key {
             Some(key) => arson_dtb::write_newstyle_seeded(&array, &mut output_file, settings, key as i32),
             None => arson_dtb::write_newstyle(&array, &mut output_file, settings),
         },
@@ -232,19 +212,15 @@ fn compile(
     })
 }
 
-fn decompile(
-    decryption: Option<EncryptionMode>,
-    input_path: PathBuf,
-    output_path: Option<PathBuf>,
-    allow_overwrite: bool,
-    suppress_parse_errors: bool,
-) -> anyhow::Result<()> {
-    let output_path = output_path.unwrap_or_else(|| input_path.with_extension("dta"));
-    validate_paths(&input_path, &output_path, "DTB", "DTA")?;
+fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
+    let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dta"));
+    validate_paths(&args.input_path, &output_path, "DTB", "DTA")?;
 
-    let mut file = File::open(&input_path).map(BufReader::new).context("couldn't open file")?;
+    let mut file = File::open(&args.input_path)
+        .map(BufReader::new)
+        .context("couldn't open file")?;
 
-    let result = match decryption {
+    let result = match args.decryption {
         Some(EncryptionMode::None) => arson_dtb::read_unencrypted(&mut file),
         Some(EncryptionMode::Old) => arson_dtb::read_oldstyle(&mut file).map(|(arr, _)| arr),
         Some(EncryptionMode::New) => arson_dtb::read_newstyle(&mut file).map(|(arr, _)| arr),
@@ -269,35 +245,29 @@ fn decompile(
     let formatter = match arson_fmtlib::Formatter::new(&unformatted, options) {
         (formatter, None) => formatter,
         (formatter, Some(error)) => {
-            if !suppress_parse_errors {
-                write_parse_errors(error, &input_path, &unformatted);
+            if args.print_format_errors {
+                write_parse_errors(error, &args.input_path, &unformatted);
             }
             formatter
         },
     };
 
-    let mut output_file = create_file(&output_path, allow_overwrite)?;
+    let mut output_file = create_file(&output_path, args.allow_overwrite)?;
     write!(output_file, "{formatter}").with_context(|| {
         _ = std::fs::remove_file(output_path);
         "couldn't write output file"
     })
 }
 
-fn cross_crypt(
-    decryption: Option<EncryptionMode>,
-    encryption: EncryptionMode,
-    key: Option<u32>,
-    input_path: PathBuf,
-    output_path: Option<PathBuf>,
-    allow_overwrite: bool,
-) -> anyhow::Result<()> {
-    let output_path = output_path.unwrap_or_else(|| {
-        let suffix = match encryption {
+fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
+    let output_path = args.output_path.unwrap_or_else(|| {
+        let suffix = match args.encryption {
             EncryptionMode::None => "decrypted",
             _ => "encrypted",
         };
 
-        let name = input_path
+        let name = args
+            .input_path
             .file_stem()
             .map(|name| {
                 let mut name = name.to_os_string();
@@ -307,13 +277,15 @@ fn cross_crypt(
             })
             .unwrap_or_else(|| OsString::from(suffix));
 
-        input_path.with_file_name(name).with_extension("dtb")
+        args.input_path.with_file_name(name).with_extension("dtb")
     });
-    validate_paths(&input_path, &output_path, "DTB", "DTB")?;
+    validate_paths(&args.input_path, &output_path, "DTB", "DTB")?;
 
-    let mut file = File::open(input_path).map(BufReader::new).context("couldn't open file")?;
+    let mut file = File::open(args.input_path)
+        .map(BufReader::new)
+        .context("couldn't open file")?;
 
-    let result = match decryption {
+    let result = match args.decryption {
         Some(EncryptionMode::None) => {
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes).map(|_| bytes).map_err(ReadError::IO)
@@ -328,14 +300,14 @@ fn cross_crypt(
     };
     let bytes = result.context("couldn't read input file")?;
 
-    let mut output_file = create_file(&output_path, allow_overwrite)?;
-    let result = match encryption {
+    let mut output_file = create_file(&output_path, args.allow_overwrite)?;
+    let result = match args.encryption {
         EncryptionMode::None => output_file.write_all(&bytes),
-        EncryptionMode::Old => match key {
+        EncryptionMode::Old => match args.key {
             Some(key) => arson_dtb::encrypt_oldstyle_seeded(&bytes, &mut output_file, key),
             None => arson_dtb::encrypt_oldstyle(&bytes, &mut output_file),
         },
-        EncryptionMode::New => match key {
+        EncryptionMode::New => match args.key {
             Some(key) => arson_dtb::encrypt_newstyle_seeded(&bytes, &mut output_file, key as i32),
             None => arson_dtb::encrypt_newstyle(&bytes, &mut output_file),
         },
