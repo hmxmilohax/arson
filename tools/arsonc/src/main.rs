@@ -196,13 +196,9 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
     };
     let result = match args.encryption {
         EncryptionMode::None => arson_dtb::write_unencrypted(&array, &mut output_file, settings),
-        EncryptionMode::Old => match args.key {
-            Some(key) => arson_dtb::write_oldstyle_seeded(&array, &mut output_file, settings, key),
-            None => arson_dtb::write_oldstyle(&array, &mut output_file, settings),
-        },
-        EncryptionMode::New => match args.key {
-            Some(key) => arson_dtb::write_newstyle_seeded(&array, &mut output_file, settings, key as i32),
-            None => arson_dtb::write_newstyle(&array, &mut output_file, settings),
+        EncryptionMode::Old => arson_dtb::write_oldstyle(&array, &mut output_file, settings, args.key),
+        EncryptionMode::New => {
+            arson_dtb::write_newstyle(&array, &mut output_file, settings, args.key.map(|k| k as i32))
         },
     };
 

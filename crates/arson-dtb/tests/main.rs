@@ -79,7 +79,7 @@ fn oldstyle() {
 
     // write
     let mut bytes = Vec::new();
-    arson_dtb::write_oldstyle_seeded(&array, &mut Cursor::new(&mut bytes), SETTINGS, seed).unwrap();
+    arson_dtb::write_oldstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
     assert_eq!(bytes, TEST_DATA_OLDSTYLE);
 
     // cycle
@@ -95,7 +95,7 @@ fn oldstyle() {
         };
 
         bytes.clear();
-        arson_dtb::write_oldstyle_seeded(&array, &mut Cursor::new(&mut bytes), SETTINGS, seed).unwrap();
+        arson_dtb::write_oldstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
     }
 }
 
@@ -107,7 +107,7 @@ fn newstyle() {
 
     // write
     let mut bytes = Vec::new();
-    arson_dtb::write_newstyle_seeded(&array, &mut Cursor::new(&mut bytes), SETTINGS, seed).unwrap();
+    arson_dtb::write_newstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
     assert_eq!(bytes, TEST_DATA_NEWSTYLE);
 
     // cycle
@@ -123,6 +123,6 @@ fn newstyle() {
         };
 
         bytes.clear();
-        arson_dtb::write_newstyle_seeded(&array, &mut Cursor::new(&mut bytes), SETTINGS, seed).unwrap();
+        arson_dtb::write_newstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
     }
 }

@@ -141,40 +141,28 @@ fn write_encrypted(
 static NEWSTYLE_SEEDER: Mutex<NewRandom> = Mutex::new(NewRandom::new(NewRandom::DEFAULT_SEED));
 static OLDSTYLE_SEEDER: Mutex<OldRandom> = Mutex::new(OldRandom::new(OldRandom::DEFAULT_SEED));
 
+fn make_seed<T>(seed: Option<T>, default: T, seeder: &Mutex<impl Iterator<Item = T>>) -> T {
+    seed.unwrap_or_else(|| seeder.lock().ok().and_then(|mut g| g.next()).unwrap_or(default))
+}
+
 pub fn write_newstyle(
     array: &DataArray,
     writer: &mut impl io::Write,
     settings: WriteSettings,
+    seed: Option<i32>,
 ) -> Result<(), WriteError> {
-    let seed = NEWSTYLE_SEEDER.lock().map_or(NewRandom::DEFAULT_SEED, |mut g| g.next());
-    write_newstyle_seeded(array, writer, settings, seed)
+    let seed = make_seed(seed, NewRandom::DEFAULT_SEED, &NEWSTYLE_SEEDER);
+    writer.write_i32::<LittleEndian>(seed)?;
+    write_encrypted(array, writer, &mut NewRandom::new(seed), settings)
 }
 
 pub fn write_oldstyle(
     array: &DataArray,
     writer: &mut impl io::Write,
     settings: WriteSettings,
+    seed: Option<u32>,
 ) -> Result<(), WriteError> {
-    let seed = OLDSTYLE_SEEDER.lock().map_or(OldRandom::DEFAULT_SEED, |mut g| g.next());
-    write_oldstyle_seeded(array, writer, settings, seed)
-}
-
-pub fn write_newstyle_seeded(
-    array: &DataArray,
-    writer: &mut impl io::Write,
-    settings: WriteSettings,
-    seed: i32,
-) -> Result<(), WriteError> {
-    writer.write_i32::<LittleEndian>(seed)?;
-    write_encrypted(array, writer, &mut NewRandom::new(seed), settings)
-}
-
-pub fn write_oldstyle_seeded(
-    array: &DataArray,
-    writer: &mut impl io::Write,
-    settings: WriteSettings,
-    seed: u32,
-) -> Result<(), WriteError> {
+    let seed = make_seed(seed, OldRandom::DEFAULT_SEED, &OLDSTYLE_SEEDER);
     writer.write_u32::<LittleEndian>(seed)?;
     write_encrypted(array, writer, &mut OldRandom::new(seed), settings)
 }
