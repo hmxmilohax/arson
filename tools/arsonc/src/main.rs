@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, ensure, Context};
 use arson_dtb::prelude::*;
-use arson_dtb::{ReadError, ToTokensOptions};
+use arson_dtb::{ReadError, TokenizeOptions};
 use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
@@ -229,7 +229,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
         None => arson_dtb::read(&mut file),
     };
     let array = result.context("couldn't read input file")?;
-    let tokens = array.to_tokens(ToTokensOptions {
+    let tokens = array.to_tokens(TokenizeOptions {
         line_numbers: args.line_numbers,
         array_ids: args.array_ids,
     });
