@@ -3,7 +3,7 @@
 use std::panic::AssertUnwindSafe;
 
 use crate::prelude::*;
-use crate::{ExecutionError, EvaluationError};
+use crate::{EvaluationError, ExecutionError};
 
 pub fn register_funcs(context: &mut Context) {
     size::register_funcs(context);
@@ -18,11 +18,7 @@ fn with_array(array: &NodeValue, f: impl FnOnce(&NodeSlice) -> ExecuteResult) ->
         NodeValue::Array(array) => f(&array.borrow()?),
         NodeValue::Command(array) => f(array),
         NodeValue::Property(array) => f(array),
-        _ => Err(EvaluationError::NotConvertible {
-            src: array.get_kind(),
-            dest: NodeKind::Array,
-        }
-        .into())
+        _ => Err(EvaluationError::NotConvertible { src: array.get_kind(), dest: NodeKind::Array }.into()),
     }
 }
 
@@ -83,11 +79,9 @@ mod elem {
         arson_assert_len!(args, 1);
         let array = args.evaluate(context, 0)?;
 
-        with_array(&array, |array| {
-            match array.first() {
-                Some(last) => Ok(last.into()),
-                None => arson_fail!("cannot get the first element of an empty array"),
-            }
+        with_array(&array, |array| match array.first() {
+            Some(last) => Ok(last.into()),
+            None => arson_fail!("cannot get the first element of an empty array"),
         })
     }
 
@@ -95,11 +89,9 @@ mod elem {
         arson_assert_len!(args, 1);
         let array = args.evaluate(context, 0)?;
 
-        with_array(&array, |array| {
-            match array.last() {
-                Some(last) => Ok(last.into()),
-                None => arson_fail!("cannot get the last element of an empty array"),
-            }
+        with_array(&array, |array| match array.last() {
+            Some(last) => Ok(last.into()),
+            None => arson_fail!("cannot get the last element of an empty array"),
         })
     }
 
@@ -208,9 +200,7 @@ mod search {
         let array = args.evaluate(context, 0)?;
         let value: Node = args.evaluate(context, 1)?.into();
 
-        with_array(&array, |array| {
-            Ok(array.contains(&value).into())
-        })
+        with_array(&array, |array| Ok(array.contains(&value).into()))
     }
 
     fn find(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -259,15 +249,15 @@ mod search {
                 if *value != target {
                     continue;
                 }
-    
+
                 if let Some(var) = args.get_opt(2) {
                     let i: Node = i.try_into()?;
                     var.variable()?.set(context, i);
                 }
-    
+
                 return Ok(Node::TRUE);
             }
-    
+
             Ok(Node::FALSE)
         })
     }
