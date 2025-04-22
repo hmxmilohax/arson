@@ -28,7 +28,7 @@ pub enum ReadError {
     #[error("unexpected end of file")]
     UnexpectedEof,
 
-    #[error("{0}")]
+    #[error(transparent)]
     IO(#[from] io::Error),
 }
 

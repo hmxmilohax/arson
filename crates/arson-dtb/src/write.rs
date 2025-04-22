@@ -27,7 +27,7 @@ pub enum WriteError {
     #[error("could not encode text '{0}' into the desired encoding")]
     EncodeError(String),
 
-    #[error("{0}")]
+    #[error(transparent)]
     IO(#[from] io::Error),
 }
 

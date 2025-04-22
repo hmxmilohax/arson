@@ -53,6 +53,7 @@ impl From<FloatValue> for Number {
     }
 }
 
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum NumericError {
     Overflow,

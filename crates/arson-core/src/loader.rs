@@ -14,6 +14,7 @@ pub struct LoadOptions {
     pub allow_autorun: bool,
 }
 
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum LoadError {
     #[error("IO error: {0}")]

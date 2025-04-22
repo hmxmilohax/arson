@@ -73,24 +73,24 @@ impl<E: Into<ErrorKind>> From<E> for self::Error {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum ErrorKind {
-    #[error("{0}")]
+    #[error(transparent)]
     EvaluationError(#[from] EvaluationError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     ExecutionError(#[from] ExecutionError),
 
-    #[error("{0}")]
-    NumericError(#[source] NumericError),
+    #[error(transparent)]
+    NumericError(NumericError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     IoError(#[from] std::io::Error),
 
     #[cfg(feature = "text-loading")]
-    #[error("{0}")]
+    #[error(transparent)]
     LoadError(#[from] LoadError),
 
-    #[error("{0}")]
-    Custom(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    Custom(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl From<std::io::ErrorKind> for crate::ErrorKind {
@@ -105,6 +105,7 @@ impl<E: Into<NumericError>> From<E> for crate::ErrorKind {
     }
 }
 
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum EvaluationError {
     #[error("expected value of type {expected:?}, got {actual:?} instead")]
@@ -120,6 +121,7 @@ pub enum EvaluationError {
     NotArrayTag(NodeKind),
 }
 
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum ExecutionError {
     #[error("bad length {actual}, expected {expected}")]
