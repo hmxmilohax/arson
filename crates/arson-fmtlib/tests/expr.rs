@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_fmtlib::{Indentation, Options};
-use arson_parse::{Expression, ExpressionValue};
+use arson_parse::{Expression, ExpressionValue, ParseOptions};
 
 fn assert_format(input: &str, expected: &str) {
     let options = Options::default();
@@ -95,9 +95,10 @@ fn assert_format(input: &str, expected: &str) {
         }
     }
 
-    let input = arson_parse::parse_text(input).unwrap();
-    let expected = arson_parse::parse_text(expected).unwrap();
-    let actual = arson_parse::parse_text(&actual).unwrap();
+    let options = ParseOptions { include_comments: true };
+    let input = arson_parse::parse_text(input, options.clone()).unwrap();
+    let expected = arson_parse::parse_text(expected, options.clone()).unwrap();
+    let actual = arson_parse::parse_text(&actual, options.clone()).unwrap();
     assert_ast_eq(&input, &expected, "input ast differs from expected ast");
     assert_ast_eq(&actual, &expected, "actual ast differs from expected ast");
     // sanity check
