@@ -166,6 +166,11 @@ mod bitwise {
     use super::*;
 
     pub fn register_funcs(context: &mut Context) {
+        context.register_func("<<", self::shift_left);
+        context.register_func(">>", self::shift_right);
+        context.register_func("rotate_left", self::rotate_left);
+        context.register_func("rotate_right", self::rotate_right);
+
         context.register_func("&", self::and);
         context.register_func("&=", self::and_assign);
         context.register_func("|", self::or);
@@ -173,8 +178,35 @@ mod bitwise {
         context.register_func("^", self::xor);
         context.register_func("^=", self::xor_assign);
         context.register_func("~", self::not);
-
         context.register_func("mask_eq", self::mask_assign);
+    }
+
+    fn shift_left(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 2);
+        let value = args.integer(context, 0)?;
+        let amount = args.integer(context, 1)?;
+        Ok((value << amount.0 as usize).into())
+    }
+
+    fn shift_right(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 2);
+        let value = args.integer(context, 0)?;
+        let amount = args.integer(context, 1)?;
+        Ok(value.0.wrapping_shr(amount.0 as u32).into())
+    }
+
+    fn rotate_left(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 2);
+        let value = args.integer(context, 0)?;
+        let amount = args.integer(context, 1)?;
+        Ok(value.0.rotate_left(amount.0 as u32).into())
+    }
+
+    fn rotate_right(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 2);
+        let value = args.integer(context, 0)?;
+        let amount = args.integer(context, 1)?;
+        Ok(value.0.rotate_right(amount.0 as u32).into())
     }
 
     fn bitwise_op(
