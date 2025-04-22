@@ -13,6 +13,7 @@ use arson_parse::{
     ExpressionValue,
     FloatValue,
     IntegerValue,
+    ParseOptions,
     StrExpression,
     TextToken,
     TokenKind,
@@ -465,8 +466,9 @@ fn thorough() {
 
     let (exprs, expected_diagnostics) = relocate_exprs(&text, exprs);
 
+    let options = ParseOptions { include_comments: true };
     let expected = Vec::from_iter(exprs.into_iter().map(Expression::from));
-    let (actual, actual_diagnostics) = match arson_parse::parse_text(&text) {
+    let (actual, actual_diagnostics) = match arson_parse::parse_text(&text, options) {
         Ok(ast) => (ast, Vec::new()),
         Err(err) => (err.recovered, err.diagnostics),
     };
@@ -641,8 +643,9 @@ fn thorough_errors() {
         adjusted_errors
     };
 
+    let options = ParseOptions { include_comments: true };
     let expected = Vec::from_iter(errors.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-    let error = match arson_parse::parse_text(&text) {
+    let error = match arson_parse::parse_text(&text, options) {
         Ok(ast) => {
             panic!("Expected parsing errors, got success instead: {ast:?}")
         },

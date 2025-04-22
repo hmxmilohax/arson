@@ -10,6 +10,7 @@ use arson_parse::{
     ExpressionKind,
     ExpressionValue,
     ParseError,
+    ParseOptions,
     ParseRecoveryError,
     TextToken,
     TokenValue,
@@ -43,14 +44,16 @@ pub struct TokenizeOptions {
 
 impl DataArray {
     pub fn parse(text: &str) -> Result<Self, DataParseError> {
-        let ast = arson_parse::parse_text(text)?;
+        let parse_options = ParseOptions { include_comments: true };
+        let ast = arson_parse::parse_text(text, parse_options)?;
 
         let lines = arson_parse::reporting::files::line_starts(text).collect();
         convert_to_array(&ast, &(0..text.len()), &lines)
     }
 
     pub fn parse_with_recovery(text: &str) -> Result<Self, DataParseError> {
-        let ast = match arson_parse::parse_text(text) {
+        let parse_options = ParseOptions { include_comments: true };
+        let ast = match arson_parse::parse_text(text, parse_options) {
             Ok(ast) => ast,
             Err(err) => err.recovered,
         };

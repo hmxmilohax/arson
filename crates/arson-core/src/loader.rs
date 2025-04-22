@@ -4,7 +4,7 @@ use std::io;
 
 #[cfg(feature = "file-loading")]
 use arson_fs::{AbsolutePath, VirtualPath};
-use arson_parse::{Expression, ExpressionValue, ParseError};
+use arson_parse::{Expression, ExpressionValue, ParseError, ParseOptions};
 
 use crate::{Context, Node, NodeArray, NodeCommand, NodeProperty, Variable};
 
@@ -292,7 +292,7 @@ impl<'ctx> Loader<'ctx> {
     }
 
     fn load_text(&mut self, text: &str) -> Result<NodeArray, LoadError> {
-        let ast = match arson_parse::parse_text(text) {
+        let ast = match arson_parse::parse_text(text, ParseOptions::default()) {
             Ok(ast) => ast,
             Err(error) => return Err(LoadError::Parse(error.into())),
         };

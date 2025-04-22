@@ -8,6 +8,11 @@ use logos::Span;
 use super::{Diagnostic, DiagnosticKind, TokenKind, TokenValue, Tokenizer};
 use crate::{ArrayKind, BlockCommentToken, DirectiveArgumentDescription, FloatValue, IntegerValue};
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ParseOptions {
+    pub include_comments: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrExpression<'src> {
     pub text: Cow<'src, str>,
@@ -271,6 +276,7 @@ struct ConditionalMarker<'src> {
 enum ProcessResult<T> {
     Result(T),
     BlockEnd(Span),
+    Skip,
     Error(DiagnosticKind, Span),
     Eof,
 }
@@ -307,6 +313,7 @@ impl<'src> Preprocessor<'src> {
             match self.process_token(tokens) {
                 ProcessResult::Result(node) => self.expressions.push(node),
                 ProcessResult::BlockEnd(end_location) => break end_location,
+                ProcessResult::Skip => continue,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
@@ -663,6 +670,8 @@ impl From<ParseRecoveryError<'_>> for ParseError {
 }
 
 struct Parser<'src> {
+    options: ParseOptions,
+
     expressions: Vec<Expression<'src>>,
 
     array_stack: Vec<ArrayMarker>,
@@ -674,8 +683,10 @@ struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    pub fn new() -> Self {
+    pub fn new(options: ParseOptions) -> Self {
         Self {
+            options,
+
             expressions: Vec::new(),
 
             array_stack: Vec::new(),
@@ -731,6 +742,7 @@ impl<'src> Parser<'src> {
             match self.parse_node(tokens) {
                 ProcessResult::Result(node) => self.expressions.push(node),
                 ProcessResult::BlockEnd(end_location) => break end_location,
+                ProcessResult::Skip => continue,
                 ProcessResult::Error(kind, location) => {
                     self.push_error(kind, location);
                     continue;
@@ -883,8 +895,18 @@ impl<'src> Parser<'src> {
             },
 
             PreprocessedTokenValue::BlankLine => (ExpressionValue::BlankLine, token.location),
-            PreprocessedTokenValue::Comment(text) => (ExpressionValue::Comment(text), token.location),
+            PreprocessedTokenValue::Comment(text) => {
+                if !self.options.include_comments {
+                    return ProcessResult::Skip;
+                }
+
+                (ExpressionValue::Comment(text), token.location)
+            },
             PreprocessedTokenValue::BlockComment(text) => {
+                if !self.options.include_comments {
+                    return ProcessResult::Skip;
+                }
+
                 (ExpressionValue::BlockComment(text), token.location)
             },
         };
@@ -946,7 +968,7 @@ impl<'src> Parser<'src> {
         &mut self,
         (branch, location): (Vec<PreprocessedToken<'src>>, Span),
     ) -> ArrayExpression<'src> {
-        let mut block_parser = Parser::new();
+        let mut block_parser = Parser::new(self.options.clone());
         let (branch, _) = block_parser.parse_exprs(&mut branch.into_iter().peekable());
         if block_parser
             .errors
@@ -1016,12 +1038,15 @@ impl<'src> Parser<'src> {
     }
 }
 
-pub fn parse_text(text: &str) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
-    parse_tokens(Tokenizer::new(text))
+pub fn parse_text(text: &str, options: ParseOptions) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
+    parse_tokens(Tokenizer::new(text), options)
 }
 
-pub fn parse_tokens(tokens: Tokenizer<'_>) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
-    let mut parser = Parser::new();
+pub fn parse_tokens(
+    tokens: Tokenizer<'_>,
+    options: ParseOptions,
+) -> Result<Vec<Expression<'_>>, ParseRecoveryError<'_>> {
+    let mut parser = Parser::new(options);
     parser.parse(tokens)
 }
 
@@ -1362,7 +1387,11 @@ mod tests {
         }
 
         fn assert_parsed(text: &str, expected: Vec<Expression>) {
-            let ast = match parse_text(text) {
+            assert_parsed_with_options(text, ParseOptions { include_comments: true }, expected)
+        }
+
+        fn assert_parsed_with_options(text: &str, options: ParseOptions, expected: Vec<Expression>) {
+            let ast = match parse_text(text, options) {
                 Ok(ast) => ast,
                 Err(error) => {
                     panic!(
@@ -1376,7 +1405,7 @@ mod tests {
 
         fn assert_errors(text: &str, expected: Vec<(DiagnosticKind, Span)>) {
             let expected = Vec::from_iter(expected.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-            let error = match parse_text(text) {
+            let error = match parse_text(text, ParseOptions { include_comments: true }) {
                 Ok(ast) => {
                     panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}")
                 },
@@ -1392,7 +1421,7 @@ mod tests {
             unclosed_count: usize,
         ) {
             let expected = Vec::from_iter(diagnostics.into_iter().map(|(k, l)| Diagnostic::new(k, l)));
-            let err = match parse_text(text) {
+            let err = match parse_text(text, ParseOptions { include_comments: true }) {
                 Ok(ast) => {
                     panic!("Expected parsing errors, got success instead.\nText: {text}\nResult: {ast:?}")
                 },
@@ -1826,6 +1855,62 @@ mod tests {
                     ),
                 ],
             );
+        }
+
+        #[test]
+        fn options() {
+            let text = "\
+                ; Line comment\
+              \n(foo 10)\
+              \n/* Block comment */\
+              \n(bar \"text\")\
+              \n\
+            ";
+
+            let options = ParseOptions { include_comments: true };
+            assert_parsed_with_options(text, options, vec![
+                new_expression(ExpressionValue::make_comment(" Line comment"), 0..14),
+                new_expression(
+                    ExpressionValue::Array(vec![
+                        new_expression(ExpressionValue::make_symbol("foo"), 16..19),
+                        new_expression(ExpressionValue::Integer(10), 20..22),
+                    ]),
+                    15..23,
+                ),
+                new_expression(
+                    ExpressionValue::BlockComment(BlockCommentToken {
+                        open: TextToken::new("/*", 24..26),
+                        body: TextToken::new(" Block comment ", 26..41),
+                        close: TextToken::new("*/", 41..43),
+                    }),
+                    24..43,
+                ),
+                new_expression(
+                    ExpressionValue::Array(vec![
+                        new_expression(ExpressionValue::make_symbol("bar"), 45..48),
+                        new_expression(ExpressionValue::make_string("text"), 49..55),
+                    ]),
+                    44..56,
+                ),
+            ]);
+
+            let options = ParseOptions { include_comments: false };
+            assert_parsed_with_options(text, options, vec![
+                new_expression(
+                    ExpressionValue::Array(vec![
+                        new_expression(ExpressionValue::make_symbol("foo"), 16..19),
+                        new_expression(ExpressionValue::Integer(10), 20..22),
+                    ]),
+                    15..23,
+                ),
+                new_expression(
+                    ExpressionValue::Array(vec![
+                        new_expression(ExpressionValue::make_symbol("bar"), 45..48),
+                        new_expression(ExpressionValue::make_string("text"), 49..55),
+                    ]),
+                    44..56,
+                ),
+            ]);
         }
     }
 }

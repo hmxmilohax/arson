@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::path::Path;
 
-use arson_parse::reporting as codespan_reporting;
+use arson_parse::{reporting as codespan_reporting, ParseOptions};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
@@ -28,7 +28,8 @@ fn print_parsed(mount_dir: &Path, file: &str) {
         std::io::read_to_string(file).expect("failed to read file")
     };
 
-    match arson_parse::parse_text(&text) {
+    let options = ParseOptions { include_comments: true };
+    match arson_parse::parse_text(&text, options) {
         Ok(parsed) => {
             println!("File {file}:");
             for expr in parsed {

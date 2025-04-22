@@ -6,7 +6,7 @@ use std::fmt::{self, Write};
 use std::iter::Peekable;
 use std::ops::Range;
 
-use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError};
+use arson_parse::{ArrayKind, Expression, ExpressionValue, ParseError, ParseOptions};
 
 use crate::consts::{self, CommentDirective};
 use crate::{Indentation, Options};
@@ -64,7 +64,8 @@ pub struct Formatter<'src> {
 impl<'src> Formatter<'src> {
     /// Creates a new [`Formatter`] with the given input and options.
     pub fn new(input: &'src str, options: Options) -> Result<Formatter<'src>, ParseError> {
-        let ast = arson_parse::parse_text(input)?;
+        let parse_options = ParseOptions { include_comments: true };
+        let ast = arson_parse::parse_text(input, parse_options)?;
         Ok(Self { options, input, ast })
     }
 }
