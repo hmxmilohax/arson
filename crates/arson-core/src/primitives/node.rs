@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt;
 use std::num::Wrapping;
 use std::rc::Rc;
@@ -47,6 +49,7 @@ macro_rules! define_node_types {
             $variant:ident$(($variant_type:ident$(<$variant_gen:tt>)?) $({
                 $(
                     from: {
+                        $(:default: |$default_from_value:ident| $default_from_expr:expr,)?
                         $($from_type:ty => |$from_value:ident| $from_expr:expr,)+
                     },
                 )?
@@ -196,8 +199,8 @@ macro_rules! define_node_types {
             $(
                 // default variant conversions
                 impl From<$variant_type$(<$variant_gen>)?> for NodeValue {
-                    fn from(value: $variant_type$(<$variant_gen>)?) -> Self {
-                        Self::$variant(value)
+                    fn from(meta_select!($($($($default_from_value)?)?)?, value): $variant_type$(<$variant_gen>)?) -> Self {
+                        Self::$variant(meta_select!($($($($default_from_expr)?)?)?, value))
                     }
                 }
 
@@ -378,8 +381,18 @@ define_node_types! {
     /// An immutable string value.
     String(Rc<String>) {
         from: {
-            String => |value| Rc::new(value),
-            &str => |value| Rc::new(value.to_owned()),
+            :default: |value| match get_interned_string(&value) {
+                Some(interned) => interned,
+                None => value,
+            },
+            String => |value| match get_interned_string(&value) {
+                Some(interned) => interned,
+                None => value.into(),
+            },
+            &str => |value| match get_interned_string(value) {
+                Some(interned) => interned,
+                None => Rc::new(value.to_owned()),
+            },
         },
         variant_eq: {
             Symbol(other) => |value| value == other.name(),
@@ -471,6 +484,65 @@ impl<O: Object + Sized> From<O> for NodeValue {
     fn from(value: O) -> Self {
         Self::Object(Rc::new(value))
     }
+}
+
+// Interned strings
+thread_local! {
+    static STRING_POOL: RefCell<HashMap<String, Rc<String>>> = {
+        let mut pool = HashMap::new();
+
+        // By default, the empty string and all printable ASCII characters characters
+        // are interned, the latter being done for the sake of `str_elem`.
+
+        // The empty string
+        pool.insert(String::new(), Rc::new(String::new()));
+
+        #[inline]
+        fn insert_chars(pool: &mut HashMap<String, Rc<String>>, chars: impl IntoIterator<Item = char>) {
+            for c in chars {
+                pool.insert(c.to_string(), Rc::new(c.to_string()));
+            }
+        }
+
+        // Printable ASCII characters in numerical order
+        insert_chars(&mut pool, [' ', '!', '\"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/']);
+        insert_chars(&mut pool, '0'..='9');
+        insert_chars(&mut pool, [':', ';', '<', '=', '>', '?', '@']);
+        insert_chars(&mut pool, 'A'..='Z');
+        insert_chars(&mut pool, ['[', '\\', ']', '^', '_', '`']);
+        insert_chars(&mut pool, 'a'..='z');
+        insert_chars(&mut pool, ['{', '|', '}', '~']);
+
+        RefCell::new(pool)
+    };
+}
+
+/// Creates and returns an internalized copy of a string.
+///
+/// Interned strings with lengths of 10 characters or less are used to de-duplicate strings
+/// when creating [`Node`] instances that contain strings. By default only
+pub fn intern_string(value: &str) -> Rc<String> {
+    STRING_POOL.with_borrow_mut(|pool| match pool.get(value).cloned() {
+        Some(interned) => interned,
+        None => {
+            let interned = Rc::new(value.to_owned());
+            pool.insert(value.to_owned(), interned.clone());
+            interned
+        },
+    })
+}
+
+pub fn is_string_interned(value: &str) -> bool {
+    STRING_POOL.with_borrow(|pool| pool.contains_key(value))
+}
+
+fn get_interned_string(value: &str) -> Option<Rc<String>> {
+    // Skip for long strings
+    if value.len() > 10 {
+        return None;
+    }
+
+    STRING_POOL.with_borrow_mut(|pool| pool.get(value).cloned())
 }
 
 impl NodeValue {
