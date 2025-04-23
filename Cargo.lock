@@ -68,7 +68,7 @@ checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
 
 [[package]]
 name = "arson"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-core",
  "arson-fs",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "arson-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-fs",
  "arson-parse",
@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "arson-dtb"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-parse",
  "byteorder",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "arson-fmt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arson-fmtlib",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "arson-fmtlib"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-parse",
  "thiserror",
@@ -118,14 +118,14 @@ dependencies = [
 
 [[package]]
 name = "arson-fs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "arson-parse"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "codespan-reporting",
  "lazy-regex",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "arson-repl"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arson",
@@ -145,7 +145,7 @@ dependencies = [
 
 [[package]]
 name = "arson-run"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arson",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "arson-stdlib"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-core",
  "arson-fs",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "arsonc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arson-dtb",
@@ -329,7 +329,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-world"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson",
 ]
@@ -464,7 +464,7 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 
 [[package]]
 name = "parsing-example"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arson-parse",
 ]
