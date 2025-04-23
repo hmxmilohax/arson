@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::io::Write;
+
 use anyhow::{bail, Context};
 use arson::fs::drivers::BasicFileSystemDriver;
 use arson::parse::reporting::files::SimpleFile;
-use arson::parse::reporting::term::termcolor::{ColorChoice, StandardStream};
+use arson::parse::reporting::term::termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use arson::parse::reporting::term::{self, Chars};
 use arson::parse::DiagnosticKind;
 use arson::prelude::*;
@@ -130,6 +132,22 @@ fn run(context: &mut arson::Context, editor: &mut DefaultEditor) -> anyhow::Resu
                     eprintln!("Evaluation error: {error}\n{}", error.backtrace())
                 },
             };
+
+            // Hint for `exit` command
+            if let NodeValue::Symbol(symbol) = node.unevaluated() {
+                let name = symbol.name().as_ref();
+                if name == "exit" || name == "quit" || name == "close" {
+                    let stdout = StandardStream::stdout(ColorChoice::Auto);
+                    let mut lock = stdout.lock();
+
+                    _ = lock.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)));
+
+                    writeln!(lock, "hint: use {{exit}} to exit")?;
+
+                    _ = lock.reset();
+                    lock.flush()?;
+                }
+            }
         }
     }
 }
