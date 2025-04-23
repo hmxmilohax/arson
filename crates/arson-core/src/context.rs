@@ -19,7 +19,7 @@ pub trait ContextState: Any {}
 pub struct Context {
     symbol_table: SymbolTable,
 
-    macros: SymbolMap<NodeArray>,
+    macros: SymbolMap<Rc<NodeArray>>,
     variables: SymbolMap<Node>,
     functions: SymbolMap<HandleFn>,
     objects: SymbolMap<ObjectRef>,
@@ -90,9 +90,9 @@ impl Context {
         self.symbol_table.get(name)
     }
 
-    pub fn add_macro(&mut self, name: impl IntoSymbol, array: NodeArray) {
+    pub fn add_macro(&mut self, name: impl IntoSymbol, array: impl Into<Rc<NodeArray>>) {
         let name = name.into_symbol(self);
-        self.macros.insert(name, array);
+        self.macros.insert(name, array.into());
     }
 
     pub fn add_macro_define(&mut self, name: impl IntoSymbol) {
@@ -104,8 +104,8 @@ impl Context {
         self.macros.remove(&name);
     }
 
-    pub fn get_macro(&self, name: impl IntoSymbol) -> Option<&NodeArray> {
-        name.get_symbol(self).and_then(|name| self.macros.get(&name))
+    pub fn get_macro(&self, name: impl IntoSymbol) -> Option<Rc<NodeArray>> {
+        name.get_symbol(self).and_then(|name| self.macros.get(&name).cloned())
     }
 
     pub fn find_macro(&self, prefix: &str, predicate: impl FindDataPredicate) -> Option<&NodeArray> {
@@ -121,12 +121,12 @@ impl Context {
         None
     }
 
-    pub fn get_variable(&self, name: impl IntoSymbol) -> Option<Node> {
-        name.get_symbol(self).and_then(|name| self.variables.get(&name).cloned())
+    pub fn get_variable(&self, name: impl IntoSymbol) -> Node {
+        self.get_variable_opt(name).unwrap_or(Node::UNHANDLED)
     }
 
-    pub fn get_variable_or_unhandled(&self, name: impl IntoSymbol) -> Node {
-        self.get_variable(name).unwrap_or(Node::UNHANDLED)
+    pub fn get_variable_opt(&self, name: impl IntoSymbol) -> Option<Node> {
+        name.get_symbol(self).and_then(|name| self.variables.get(&name).cloned())
     }
 
     pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Option<Node> {
@@ -218,6 +218,8 @@ impl Default for Context {
 /// Trait to make APIs which require [`Symbol`]s more convenient to use.
 ///
 /// ```rust
+/// use std::rc::Rc;
+///
 /// use arson_core::{arson_array, Context, IntoSymbol};
 ///
 /// let mut context = Context::new();
@@ -226,11 +228,11 @@ impl Default for Context {
 /// // You can use either a Symbol, which gets used as-is...
 /// let symbol = context.add_symbol("kDefine");
 /// context.add_macro(&symbol, arson_array![1]);
-/// assert_eq!(context.get_macro(&symbol), Some(&arson_array![1]));
+/// assert_eq!(context.get_macro(&symbol), Some(Rc::new(arson_array![1])));
 ///
 /// // ...or a &str, which gets converted to a Symbol behind the scenes.
 /// context.add_macro("kDefine", arson_array![2]);
-/// assert_eq!(context.get_macro("kDefine"), Some(&arson_array![2]));
+/// assert_eq!(context.get_macro("kDefine"), Some(Rc::new(arson_array![2])));
 ///
 /// // An implementation example, which sets a variable
 /// // with the given name to the text "some text".
@@ -240,10 +242,10 @@ impl Default for Context {
 ///
 /// let symbol = context.add_symbol("text");
 /// do_something_with_symbol(&mut context, &symbol);
-/// assert_eq!(context.get_variable(&symbol), Some("some text".into()));
+/// assert_eq!(context.get_variable(&symbol), "some text".into());
 ///
 /// do_something_with_symbol(&mut context, "text2");
-/// assert_eq!(context.get_variable("text2"), Some("some text".into()));
+/// assert_eq!(context.get_variable("text2"), "some text".into());
 /// ```
 pub trait IntoSymbol {
     fn into_symbol(self, context: &mut Context) -> Symbol;

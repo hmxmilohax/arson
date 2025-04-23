@@ -4,7 +4,7 @@ use std::backtrace::Backtrace;
 
 #[cfg(feature = "text-loading")]
 use crate::LoadError;
-use crate::{NodeKind, NumericError};
+use crate::{NodeKind, NumericError, StringError};
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
 
@@ -81,6 +81,9 @@ pub enum ErrorKind {
 
     #[error(transparent)]
     NumericError(NumericError),
+
+    #[error(transparent)]
+    StringError(#[from] StringError),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),

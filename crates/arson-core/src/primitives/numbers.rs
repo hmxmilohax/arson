@@ -61,12 +61,25 @@ pub enum NumericError {
     SliceOutOfRange {
         slice_start: ops::Bound<usize>,
         slice_end: ops::Bound<usize>,
-        actual_range: ops::Range<usize>,
+        expected_range: ops::Range<usize>,
     },
 
     IntegerConversion(#[from] std::num::TryFromIntError),
     IntegerParse(#[from] std::num::ParseIntError),
     FloatParse(#[from] std::num::ParseFloatError),
+}
+
+impl NumericError {
+    pub fn slice_out_of_range(
+        slice_range: impl RangeBounds<usize>,
+        expected_range: ops::Range<usize>,
+    ) -> Self {
+        Self::SliceOutOfRange {
+            slice_start: slice_range.start_bound().cloned(),
+            slice_end: slice_range.end_bound().cloned(),
+            expected_range,
+        }
+    }
 }
 
 impl std::fmt::Display for NumericError {
@@ -79,7 +92,7 @@ impl std::fmt::Display for NumericError {
             NumericError::SliceOutOfRange {
                 slice_start: start,
                 slice_end: end,
-                actual_range: range,
+                expected_range: range,
             } => {
                 // "slice range {start:?}..{end:?} outside of range {range:?}"
 
@@ -148,24 +161,14 @@ macro_rules! range_error_impl {
 
             fn get(self, slice: &[Node]) -> crate::Result<&Self::Output> {
                 slice.get(self.clone()).ok_or_else(|| {
-                    NumericError::SliceOutOfRange {
-                        slice_start: self.start_bound().cloned(),
-                        slice_end: self.end_bound().cloned(),
-                        actual_range: 0..slice.len(),
-                    }
-                    .into()
+                    NumericError::slice_out_of_range(self, 0..slice.len()).into()
                 })
             }
 
             fn get_mut(self, slice: &mut [Node]) -> crate::Result<&mut Self::Output> {
                 let length = slice.len(); // done here due to borrow rules
                 slice.get_mut(self.clone()).ok_or_else(|| {
-                    NumericError::SliceOutOfRange {
-                        slice_start: self.start_bound().cloned(),
-                        slice_end: self.end_bound().cloned(),
-                        actual_range: 0..length,
-                    }
-                    .into()
+                    NumericError::slice_out_of_range(self, 0..length).into()
                 })
             }
 

@@ -8,6 +8,7 @@ mod flow;
 mod function;
 mod numeric;
 mod operator;
+mod string;
 mod variable;
 
 pub(crate) struct BuiltinState {
@@ -32,5 +33,6 @@ pub fn register_funcs(context: &mut Context) {
     function::register_funcs(context);
     numeric::register_funcs(context);
     operator::register_funcs(context);
+    string::register_funcs(context);
     variable::register_funcs(context);
 }

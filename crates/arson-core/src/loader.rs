@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::io;
+use std::rc::Rc;
 
 #[cfg(feature = "file-loading")]
 use arson_fs::{AbsolutePath, VirtualPath};
@@ -74,12 +75,12 @@ struct Loader<'ctx> {
 }
 
 #[allow(dead_code)]
-enum NodeResult<'define> {
+enum NodeResult {
     Value(Node),
     IncludeFile(NodeArray),
-    IncludeMacro(&'define NodeArray),
+    IncludeMacro(Rc<NodeArray>),
     MergeFile(NodeArray),
-    MergeMacro(&'define NodeArray),
+    MergeMacro(Rc<NodeArray>),
     Skip,
 }
 
@@ -105,9 +106,9 @@ impl<'ctx> Loader<'ctx> {
                 Ok(result) => match result {
                     NodeResult::Value(node) => array.push(node),
                     NodeResult::IncludeFile(mut file) => array.append(&mut file),
-                    NodeResult::IncludeMacro(define) => array.extend_from_slice(define),
+                    NodeResult::IncludeMacro(define) => array.extend_from_slice(&define),
                     NodeResult::MergeFile(file) => array.merge_tags(&file),
-                    NodeResult::MergeMacro(define) => array.merge_tags(define),
+                    NodeResult::MergeMacro(define) => array.merge_tags(&define),
                     NodeResult::Skip => continue,
                 },
                 Err(error) => {
@@ -439,7 +440,7 @@ mod tests {
         assert_eq!(context.get_macro(&sym_kDefine), None);
 
         assert_loaded(&mut context, "#define kDefine (1)", arson_array![]);
-        assert_eq!(context.get_macro(&sym_kDefine), Some(&arson_array![1]));
+        assert_eq!(context.get_macro(&sym_kDefine), Some(Rc::new(arson_array![1])));
 
         assert_loaded(&mut context, "#undef kDefine", arson_array![]);
         assert_eq!(context.get_macro(&sym_kDefine), None);

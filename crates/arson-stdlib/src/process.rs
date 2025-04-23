@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_core::prelude::*;
-
-use crate::stdio::VarargFormatter;
+use arson_core::ConcatSlice;
 
 #[derive(Debug)]
 pub struct ExitError(pub Option<String>);
@@ -46,6 +45,6 @@ pub fn abort(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 }
 
 pub fn panic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-    let message = VarargFormatter::new(context, args).to_string();
+    let message = ConcatSlice::new(context, args).to_string();
     Err(arson_core::Error::from_custom(ExitError(Some(message))))
 }

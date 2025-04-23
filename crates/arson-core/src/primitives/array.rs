@@ -1558,12 +1558,7 @@ where
     if start <= end && end <= length {
         Ok(start..end)
     } else {
-        Err(NumericError::SliceOutOfRange {
-            slice_start: range.start_bound().cloned(),
-            slice_end: range.end_bound().cloned(),
-            actual_range: 0..length,
-        }
-        .into())
+        Err(NumericError::slice_out_of_range(range, 0..length).into())
     }
 }
 

@@ -335,6 +335,12 @@ define_node_types! {
                 }
                 Wrapping(value as IntegerValue)
             },
+
+            std::cmp::Ordering => |value| match value {
+                std::cmp::Ordering::Less => Wrapping(-1),
+                std::cmp::Ordering::Equal => Wrapping(0),
+                std::cmp::Ordering::Greater => Wrapping(1),
+            },
         },
         try_from: {
             u64 => |value| match IntegerValue::try_from(value) {
@@ -1001,7 +1007,7 @@ impl Node {
             NodeValue::Float(value) => NodeValue::Float(*value),
             NodeValue::String(value) => NodeValue::String(value.clone()),
             NodeValue::Symbol(value) => NodeValue::Symbol(value.clone()),
-            NodeValue::Variable(variable) => variable.get_or_unhandled(context).value,
+            NodeValue::Variable(variable) => variable.get(context).value,
 
             NodeValue::Function(value) => NodeValue::Function(value.clone()),
             NodeValue::Object(value) => NodeValue::Object(value.clone()),
