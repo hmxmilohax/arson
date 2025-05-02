@@ -30,9 +30,9 @@ mod control {
     fn if_else(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 3);
         if args.boolean(context, 0)? {
-            args.command(1)?.execute(context)
+            Ok(args.evaluate(context, 1)?.into())
         } else {
-            args.command(2)?.execute(context)
+            Ok(args.evaluate(context, 2)?.into())
         }
     }
 
