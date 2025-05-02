@@ -10,9 +10,8 @@ publish = false
 
 [dependencies]
 arson-fmtlib = { path = "../../crates/arson-fmtlib" }
-arson-parse = { path = "../../crates/arson-parse", features = ["reporting"] }
+arson-parse = { path = "../../crates/arson-parse", features = ["encoding","reporting"] }
 
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
-encoding_rs = "0.8.35"
 thiserror = "1.0.65"

@@ -18,6 +18,8 @@ macro_rules! match_unwrap {
 }
 
 mod diagnostics;
+#[cfg(feature = "encoding")]
+pub mod encoding;
 mod lexer;
 mod parser;
 

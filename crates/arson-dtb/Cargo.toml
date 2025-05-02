@@ -8,12 +8,8 @@ rust-version.workspace = true
 
 publish = false
 
-[features]
-token-conversion = ["dep:arson-parse"]
-
 [dependencies]
-arson-parse = { path = "../../crates/arson-parse", optional = true }
+arson-parse = { path = "../../crates/arson-parse", features = ["encoding"] }
 
 byteorder = "1.5.0"
-encoding_rs = "0.8.35"
 thiserror = "1.0.65"

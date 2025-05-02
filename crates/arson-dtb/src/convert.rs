@@ -46,9 +46,7 @@ impl DataArray {
     pub fn parse(text: &str) -> Result<Self, DataParseError> {
         let parse_options = ParseOptions { include_comments: true };
         let ast = arson_parse::parse_text(text, parse_options)?;
-
-        let lines = arson_parse::reporting::files::line_starts(text).collect();
-        convert_to_array(&ast, &(0..text.len()), &lines)
+        convert_to_array(text, &ast, &(0..text.len()))
     }
 
     pub fn parse_with_recovery(text: &str) -> Result<Self, DataParseError> {
@@ -58,8 +56,7 @@ impl DataArray {
             Err(err) => err.recovered,
         };
 
-        let lines = arson_parse::reporting::files::line_starts(text).collect();
-        convert_to_array(&ast, &(0..text.len()), &lines)
+        convert_to_array(text, &ast, &(0..text.len()))
     }
 
     pub fn to_tokens(&self, options: TokenizeOptions) -> Vec<TokenValue<'_>> {
@@ -68,9 +65,9 @@ impl DataArray {
 }
 
 fn convert_to_array(
+    source_text: &str,
     ast: &Vec<Expression<'_>>,
     location: &std::ops::Range<usize>,
-    lines: &Vec<usize>,
 ) -> Result<DataArray, DataParseError> {
     struct ConvertState {
         array_id: usize,
@@ -158,8 +155,13 @@ fn convert_to_array(
         Ok(())
     }
 
+    let mut lines = vec![0];
+    for (index, _) in source_text.match_indices('\n') {
+        lines.push(index + 1);
+    }
+
     let mut state = ConvertState { array_id: 0 };
-    convert_array_inner(&mut state, ast, location, lines)
+    convert_array_inner(&mut state, ast, location, &lines)
 }
 
 fn convert_to_tokens<'src>(array: &'src DataArray, options: &TokenizeOptions) -> Vec<TokenValue<'src>> {

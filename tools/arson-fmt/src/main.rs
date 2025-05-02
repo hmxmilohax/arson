@@ -9,7 +9,6 @@ use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
 use arson_parse::ParseError;
 use clap::Parser;
-use encoding_rs::{UTF_8, WINDOWS_1252};
 
 /// A formatter for DTA files.
 #[derive(clap::Parser, Debug)]
@@ -50,14 +49,8 @@ fn main() -> anyhow::Result<()> {
     let args = Arguments::parse();
     let file_bytes = std::fs::read(&args.input_path).context("failed to open input file")?;
 
-    // Attempt to decode as UTF-8 first, it will more reliably result in a
-    // decoding error if it's not the right encoding due to the format details.
-    let (file_text, encoding) = match UTF_8.decode_without_bom_handling_and_without_replacement(&file_bytes) {
-        Some(text) => (text, UTF_8),
-        // Attempt Latin-1 next, specifically Windows-1252 because it has more
-        // printable characters which are more likely intended in this context
-        None => (WINDOWS_1252.decode(&file_bytes).0, WINDOWS_1252),
-    };
+    let (file_text, encoding) =
+        arson_parse::encoding::decode_default(&file_bytes).context("failed to decode input file")?;
     let file_text = file_text.into_owned();
     drop(file_bytes); // conserve memory
 
@@ -89,7 +82,7 @@ fn main() -> anyhow::Result<()> {
 
     let output_text = formatter.to_string();
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.clone());
-    let output_bytes = encoding.encode(&output_text).0;
+    let output_bytes = arson_parse::encoding::encode(&output_text, encoding)?;
     std::fs::write(&output_path, &output_bytes).context("failed to write output file")?;
 
     Ok(())

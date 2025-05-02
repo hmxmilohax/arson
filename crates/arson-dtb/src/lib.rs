@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+mod convert;
 mod crypt;
 mod read;
 mod write;
 
+pub use convert::*;
 pub use read::*;
 pub use write::*;
 
-#[cfg(feature = "token-conversion")]
-mod convert;
-#[cfg(feature = "token-conversion")]
-pub use convert::*;
-
 pub mod prelude {
-    pub use super::{DataArray, DataKind, DataNode, WriteEncoding, WriteSettings};
+    pub use super::{DataArray, DataKind, DataNode, ReadSettings, WriteSettings};
 }
 
 #[repr(u32)]

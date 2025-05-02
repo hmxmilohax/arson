@@ -10,9 +10,11 @@ publish = false
 
 [features]
 reporting = ["dep:codespan-reporting"]
+encoding = ["dep:encoding_rs"]
 
 [dependencies]
 codespan-reporting = { version = "0.11.1", optional = true }
+encoding_rs = { version = "0.8.35", optional = true }
 lazy-regex = "3.3.0"
 logos = { version = "0.14.2", features = ["forbid_unsafe"] }
 thiserror = "1.0.65"

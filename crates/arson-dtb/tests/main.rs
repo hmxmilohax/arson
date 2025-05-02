@@ -3,7 +3,8 @@
 use std::io::Cursor;
 use std::sync::LazyLock;
 
-use arson_dtb::{DataArray, DataNode, WriteEncoding, WriteSettings};
+use arson_dtb::{DataArray, DataNode, ReadSettings, WriteSettings};
+use arson_parse::encoding::DtaEncoding;
 
 static TEST_ARRAY: LazyLock<DataArray> = LazyLock::new(|| {
     DataArray::from_nodes(1, 0, vec![
@@ -47,26 +48,27 @@ static TEST_DATA_NEWSTYLE: &[u8] = &[
     240, 104, 191, 32, 96, 14, 253, 131, 9,
 ];
 
-const SETTINGS: WriteSettings = WriteSettings { encoding: WriteEncoding::UTF8 };
+const READ_SETTINGS: ReadSettings = ReadSettings { encoding: Some(DtaEncoding::Utf8) };
+const WRITE_SETTINGS: WriteSettings = WriteSettings { encoding: DtaEncoding::Utf8 };
 
 #[test]
 fn unencrypted() {
     // read
-    let array = arson_dtb::read_unencrypted(&mut Cursor::new(TEST_DATA_UNENCRYPTED)).unwrap();
+    let array = arson_dtb::read_unencrypted(Cursor::new(TEST_DATA_UNENCRYPTED), READ_SETTINGS).unwrap();
     assert_eq!(array, *TEST_ARRAY);
 
     // write
     let mut bytes = Vec::new();
-    arson_dtb::write_unencrypted(&array, &mut Cursor::new(&mut bytes), SETTINGS).unwrap();
+    arson_dtb::write_unencrypted(&array, Cursor::new(&mut bytes), WRITE_SETTINGS).unwrap();
     assert_eq!(bytes, TEST_DATA_UNENCRYPTED);
 
     // cycle
     for _i in 0..25 {
-        let array = arson_dtb::read_unencrypted(&mut Cursor::new(&bytes)).unwrap();
+        let array = arson_dtb::read_unencrypted(Cursor::new(&bytes), READ_SETTINGS).unwrap();
         assert_eq!(array, array);
 
         bytes.clear();
-        arson_dtb::write_unencrypted(&array, &mut Cursor::new(&mut bytes), SETTINGS).unwrap();
+        arson_dtb::write_unencrypted(&array, Cursor::new(&mut bytes), WRITE_SETTINGS).unwrap();
         assert_eq!(bytes, TEST_DATA_UNENCRYPTED);
     }
 }
@@ -74,17 +76,17 @@ fn unencrypted() {
 #[test]
 fn oldstyle() {
     // read
-    let (array, seed) = arson_dtb::read_oldstyle(&mut Cursor::new(TEST_DATA_OLDSTYLE)).unwrap();
+    let (array, seed) = arson_dtb::read_oldstyle(Cursor::new(TEST_DATA_OLDSTYLE), READ_SETTINGS).unwrap();
     assert_eq!(array, *TEST_ARRAY);
 
     // write
     let mut bytes = Vec::new();
-    arson_dtb::write_oldstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
+    arson_dtb::write_oldstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
     assert_eq!(bytes, TEST_DATA_OLDSTYLE);
 
     // cycle
     for _i in 0..25 {
-        let (array, seed) = arson_dtb::read_oldstyle(&mut Cursor::new(&bytes)).unwrap();
+        let (array, seed) = arson_dtb::read_oldstyle(Cursor::new(&bytes), READ_SETTINGS).unwrap();
         assert_eq!(array, array);
 
         let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
@@ -95,24 +97,24 @@ fn oldstyle() {
         };
 
         bytes.clear();
-        arson_dtb::write_oldstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
+        arson_dtb::write_oldstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
     }
 }
 
 #[test]
 fn newstyle() {
     // read
-    let (array, seed) = arson_dtb::read_newstyle(&mut Cursor::new(TEST_DATA_NEWSTYLE)).unwrap();
+    let (array, seed) = arson_dtb::read_newstyle(Cursor::new(TEST_DATA_NEWSTYLE), READ_SETTINGS).unwrap();
     assert_eq!(array, *TEST_ARRAY);
 
     // write
     let mut bytes = Vec::new();
-    arson_dtb::write_newstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
+    arson_dtb::write_newstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
     assert_eq!(bytes, TEST_DATA_NEWSTYLE);
 
     // cycle
     for _i in 0..25 {
-        let (array, seed) = arson_dtb::read_newstyle(&mut Cursor::new(&bytes)).unwrap();
+        let (array, seed) = arson_dtb::read_newstyle(Cursor::new(&bytes), READ_SETTINGS).unwrap();
         assert_eq!(array, array);
 
         let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
@@ -123,6 +125,6 @@ fn newstyle() {
         };
 
         bytes.clear();
-        arson_dtb::write_newstyle(&array, &mut Cursor::new(&mut bytes), SETTINGS, Some(seed)).unwrap();
+        arson_dtb::write_newstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
     }
 }

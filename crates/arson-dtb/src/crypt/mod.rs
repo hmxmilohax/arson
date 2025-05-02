@@ -14,18 +14,28 @@ pub trait CryptAlgorithm {
     fn next(&mut self) -> u8;
 }
 
-pub struct CryptReader<'read, 'crypt> {
-    reader: &'read mut dyn io::Read,
-    crypt: &'crypt mut dyn CryptAlgorithm,
-}
-
-impl<'read, 'crypt> CryptReader<'read, 'crypt> {
-    pub fn new(reader: &'read mut impl io::Read, crypt: &'crypt mut impl CryptAlgorithm) -> Self {
-        Self { reader, crypt }
+impl<Crypt: CryptAlgorithm> CryptAlgorithm for &mut Crypt {
+    fn next(&mut self) -> u8 {
+        (*self).next()
     }
 }
 
-impl io::Read for CryptReader<'_, '_> {
+pub struct CryptReader<Reader: io::Read, Crypt: CryptAlgorithm> {
+    reader: Reader,
+    crypt: Crypt,
+}
+
+impl<R: io::Read, C: CryptAlgorithm> CryptReader<R, C> {
+    pub fn new(reader: R, crypt: C) -> Self {
+        Self { reader, crypt }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
+}
+
+impl<R: io::Read, C: CryptAlgorithm> io::Read for CryptReader<R, C> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let count = self.reader.read(buf)?;
         for byte in &mut buf[..count] {
@@ -36,18 +46,18 @@ impl io::Read for CryptReader<'_, '_> {
     }
 }
 
-pub struct CryptWriter<'write, 'crypt> {
-    writer: &'write mut dyn io::Write,
-    crypt: &'crypt mut dyn CryptAlgorithm,
+pub struct CryptWriter<Writer: io::Write, Crypt: CryptAlgorithm> {
+    writer: Writer,
+    crypt: Crypt,
 }
 
-impl<'write, 'crypt> CryptWriter<'write, 'crypt> {
-    pub fn new(writer: &'write mut impl io::Write, crypt: &'crypt mut impl CryptAlgorithm) -> Self {
+impl<W: io::Write, C: CryptAlgorithm> CryptWriter<W, C> {
+    pub fn new(writer: W, crypt: C) -> Self {
         Self { writer, crypt }
     }
 }
 
-impl io::Write for CryptWriter<'_, '_> {
+impl<W: io::Write, C: CryptAlgorithm> io::Write for CryptWriter<W, C> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut crypt_buf = [0u8; 512];
 

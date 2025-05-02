@@ -92,7 +92,6 @@ version = "0.3.0"
 dependencies = [
  "arson-parse",
  "byteorder",
- "encoding_rs",
  "thiserror",
 ]
 
@@ -104,7 +103,6 @@ dependencies = [
  "arson-fmtlib",
  "arson-parse",
  "clap",
- "encoding_rs",
  "thiserror",
 ]
 
@@ -128,6 +126,7 @@ name = "arson-parse"
 version = "0.3.0"
 dependencies = [
  "codespan-reporting",
+ "encoding_rs",
  "lazy-regex",
  "logos",
  "thiserror",
