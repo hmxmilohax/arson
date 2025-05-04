@@ -139,6 +139,9 @@ pub enum ExecutionError {
     #[error("no handler registered for name '{0}'")]
     HandlerNotFound(String),
 
+    #[error("value {0} (of kind {1:?}) is not a valid handler")]
+    NotAHandler(String, NodeKind),
+
     #[error("value already mutably borrowed")]
     BadBorrow(#[from] std::cell::BorrowError),
 

@@ -181,7 +181,9 @@ impl Context {
                 }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
-            _ => Node::UNHANDLED,
+            result @ _ => {
+                return Err(ExecutionError::NotAHandler(result.to_string(), result.get_kind()).into())
+            },
         };
 
         if let NodeValue::Unhandled = result.unevaluated() {
