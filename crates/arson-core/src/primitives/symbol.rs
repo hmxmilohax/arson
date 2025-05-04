@@ -61,6 +61,8 @@ impl std::fmt::Display for Symbol {
         let pattern = [' ', '\x0b', '\t', '\r', '\n', '\x0c', '(', ')', '[', ']', '{', '}', '\''];
         if self.name.contains(pattern) {
             write!(f, "'{}'", self.name)
+        } else if self.name.is_empty() {
+            write!(f, "''")
         } else {
             self.name.fmt(f)
         }
@@ -139,13 +141,14 @@ mod tests {
 
         #[test]
         fn display() {
+            assert_eq!(new_symbol("").to_string(), "''");
+
             assert_eq!(new_symbol("asdf").to_string(), "asdf");
             assert_eq!(new_symbol("jkl;").to_string(), "jkl;");
 
             assert_eq!(new_symbol("with space").to_string(), "'with space'");
             assert_eq!(new_symbol(" ").to_string(), "' '");
 
-            assert_eq!(new_symbol(" ").to_string(), "' '");
             assert_eq!(new_symbol("\x0b").to_string(), "'\x0b'");
             assert_eq!(new_symbol("\t").to_string(), "'\t'");
             assert_eq!(new_symbol("\r").to_string(), "'\r'");

@@ -1449,11 +1449,13 @@ mod tests {
         #[test]
         fn symbol() {
             let mut context = Context::new();
-            let sym = context.add_symbol("sym");
+            let sym_foo = context.add_symbol("foo");
             let sym_space = context.add_symbol("sym with\nwhitespace");
+            let sym_empty = context.add_symbol("");
 
-            assert_eq!(NodeValue::Symbol(sym).to_string(), "sym");
+            assert_eq!(NodeValue::Symbol(sym_foo).to_string(), "foo");
             assert_eq!(NodeValue::Symbol(sym_space).to_string(), "'sym with\nwhitespace'");
+            assert_eq!(NodeValue::Symbol(sym_empty).to_string(), "''");
         }
 
         #[test]
