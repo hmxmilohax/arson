@@ -35,6 +35,29 @@ enum CompilerMode {
     Decompile(DecompileArgs),
     /// Changes the encryption of a compiled script file (.dtb).
     CrossCrypt(CrossCryptArgs),
+
+    /// (dtab compatibility) Compile a script file (.dta) into binary form (.dtb) (v1 format).
+    #[command(name = "-b")]
+    DtabCompileMilo(DtabArgumentsNoKey),
+    /// (dtab compatibility) Decompile a compiled script file (.dtb) into textual form (.dta) (v1 format).
+    #[command(name = "-a")]
+    DtabDecompileMilo(DtabArgumentsNoKey),
+    /// (dtab compatibility) Decompile a compiled script file (.dtb) into textual form (.dta) (v2 format).
+    #[command(name = "-A")]
+    DtabDecompileForge(DtabArgumentsNoKey),
+
+    /// (dtab compatibility) Decrypt a binary script file (.dtb) using new-style encryption.
+    #[command(name = "-d")]
+    DtabDecryptNewstyle(DtabArgumentsNoKey),
+    /// (dtab compatibility) Decrypt a binary script file (.dtb) using old-style encryption.
+    #[command(name = "-D")]
+    DtabDecryptOldstyle(DtabArgumentsNoKey),
+    /// (dtab compatibility) Encrypt a binary script file (.dtb) using new-style encryption.
+    #[command(name = "-e")]
+    DtabEncryptNewstyle(DtabArgumentsKey),
+    /// (dtab compatibility) Encrypt a binary script file (.dtb) using old-style encryption.
+    #[command(name = "-E")]
+    DtabEncryptOldstyle(DtabArgumentsKey),
 }
 
 /// Compile a script file (.dta) into binary form (.dtb).
@@ -172,6 +195,33 @@ struct CrossCryptArgs {
     output_path: Option<PathBuf>,
 }
 
+/// Arguments for dtab commands.
+#[derive(clap::Args, Debug)]
+struct DtabArgumentsNoKey {
+    /// The path to read from.
+    input_path: PathBuf,
+    /// The path to output to.
+    output_path: PathBuf,
+}
+
+/// Arguments for dtab commands.
+#[derive(clap::Args, Debug)]
+struct DtabArgumentsKey {
+    /// The path to read from.
+    ///
+    /// Use `-` to read from stdin.
+    input_path: PathBuf,
+    /// The path to output to.
+    ///
+    /// Use `-` to write to stdout.
+    output_path: PathBuf,
+    /// The key to use for encryption.
+    ///
+    /// Leave unspecified to determine from the file.
+    #[arg(long, value_parser = parse_key)]
+    output_key: Option<u32>,
+}
+
 /// The format version to use for .dtb files.
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum FormatVersionArg {
@@ -273,6 +323,78 @@ fn main() -> anyhow::Result<()> {
         CompilerMode::Compile(args) => compile(args),
         CompilerMode::Decompile(args) => decompile(args),
         CompilerMode::CrossCrypt(args) => cross_crypt(args),
+        CompilerMode::DtabCompileMilo(args) => compile(CompileArgs {
+            output_format: FormatVersionArg::Milo,
+            output_encryption: None,
+            output_key: None,
+            input_encoding: None,
+            output_encoding: None,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabDecompileMilo(args) => decompile(DecompileArgs {
+            input_format: Some(FormatVersionArg::Milo),
+            input_decryption: None,
+            input_key: None,
+            output_line_numbers: false,
+            output_array_ids: false,
+            suppress_format_errors: true,
+            input_encoding: None,
+            output_encoding: EncodingArg::UTF8,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabDecompileForge(args) => decompile(DecompileArgs {
+            input_format: Some(FormatVersionArg::Forge),
+            input_decryption: None,
+            input_key: None,
+            output_line_numbers: false,
+            output_array_ids: false,
+            suppress_format_errors: true,
+            input_encoding: None,
+            output_encoding: EncodingArg::UTF8,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabDecryptNewstyle(args) => cross_crypt(CrossCryptArgs {
+            input_decryption: Some(EncryptionModeArg::New),
+            input_key: None,
+            output_encryption: None,
+            output_key: None,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabDecryptOldstyle(args) => cross_crypt(CrossCryptArgs {
+            input_decryption: Some(EncryptionModeArg::Old),
+            input_key: None,
+            output_encryption: None,
+            output_key: None,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabEncryptNewstyle(args) => cross_crypt(CrossCryptArgs {
+            input_decryption: None,
+            input_key: None,
+            output_encryption: Some(EncryptionModeArg::New),
+            output_key: args.output_key,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
+        CompilerMode::DtabEncryptOldstyle(args) => cross_crypt(CrossCryptArgs {
+            input_decryption: None,
+            input_key: None,
+            output_encryption: Some(EncryptionModeArg::Old),
+            output_key: args.output_key,
+            allow_overwrite: false,
+            input_path: args.input_path,
+            output_path: Some(args.output_path),
+        }),
     }
 }
 
