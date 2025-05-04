@@ -365,7 +365,7 @@ pub fn decrypt(
         let Ok(_) = read(&mut reader, &mut read_settings) else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "could not probe file for format/encryption properties",
+                "couldn't probe file for format/encryption properties",
             ));
         };
         *settings = read_settings.decryption;

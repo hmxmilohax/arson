@@ -21,7 +21,7 @@ pub struct DecodeError(pub Option<DtaEncoding>);
 impl std::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            Some(encoding) => write!(f, "could not decode the bytes from {encoding:?}"),
+            Some(encoding) => write!(f, "could not decode the bytes using encoding {encoding:?}"),
             None => f.write_str("could not decode the bytes via default encoding detection"),
         }
     }

@@ -447,16 +447,16 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
     let input_bytes = read_file(&args.input_path)?;
     let (input_file, input_encoding) =
         arson_parse::encoding::decode(&input_bytes, args.input_encoding.map(EncodingArg::to_arson))
-            .context("couldn't decode input file")?;
+            .context("couldn't decode input .dta file text")?;
 
     let array = match DataArray::parse(&input_file) {
         Ok(ast) => ast,
         Err(error) => match error {
             arson_dtb::DataParseError::Parse(error) => {
                 write_parse_errors(error, &args.input_path, &input_file);
-                bail!("failed to parse input file");
+                bail!("couldn't parse input .dta file");
             },
-            _ => bail!("couldn't load input file: {error}"),
+            _ => bail!("couldn't load input .dta file: {error}"),
         },
     };
 
@@ -469,7 +469,7 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
             key: args.output_key,
         },
     };
-    arson_dtb::write(&array, &mut output_bytes, settings).context("couldn't encode output file")?;
+    arson_dtb::write(&array, &mut output_bytes, settings).context("couldn't write output .dtb file bytes")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }
@@ -490,7 +490,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
             key: args.input_key,
         },
     };
-    let array = arson_dtb::read(input_bytes, &mut settings).context("couldn't read input file")?;
+    let array = arson_dtb::read(input_bytes, &mut settings).context("couldn't parse input .dtb file")?;
     let tokens = array.to_tokens(TokenizeOptions {
         line_numbers: args.output_line_numbers,
         array_ids: args.output_array_ids,
@@ -519,7 +519,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
         },
     };
     let output_encoded = arson_parse::encoding::encode(&output_text, args.output_encoding.to_arson())
-        .context("failed to encode output file")?;
+        .context("couldn't encode output .dta file text")?;
 
     write_file(&output_path, &output_encoded, args.allow_overwrite)
 }
@@ -555,14 +555,14 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
         mode: args.input_decryption.map(EncryptionModeArg::to_arson),
         key: args.input_key,
     };
-    let bytes = arson_dtb::decrypt(input_bytes, &mut settings).context("couldn't read input file")?;
+    let bytes = arson_dtb::decrypt(input_bytes, &mut settings).context("couldn't decrypt input .dtb file")?;
 
     let mut output_bytes = Cursor::new(Vec::new());
     let settings = EncryptionSettings {
         mode: args.output_encryption.map(EncryptionModeArg::to_arson),
         key: args.output_key,
     };
-    arson_dtb::encrypt(&bytes, &mut output_bytes, settings).context("couldn't encode output file")?;
+    arson_dtb::encrypt(&bytes, &mut output_bytes, settings).context("couldn't encrypt output .dtb file")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }
