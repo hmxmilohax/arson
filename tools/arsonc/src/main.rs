@@ -88,6 +88,9 @@ struct CompileArgs {
     #[arg(short = 'k', long, value_parser = parse_key)]
     output_key: Option<u32>,
 
+    /// Skip file extension checks/errors.
+    #[arg(long)]
+    ignore_extension: bool,
     /// Allow output path to overwrite an existing file.
     #[arg(short = 'o', long)]
     allow_overwrite: bool,
@@ -137,6 +140,9 @@ struct DecompileArgs {
     #[arg(short = 'i', long)]
     output_array_ids: bool,
 
+    /// Skip file extension checks/errors.
+    #[arg(long)]
+    ignore_extension: bool,
     /// Output parsing errors that occur as part of formatting the output file.
     #[arg(long)]
     suppress_format_errors: bool,
@@ -180,6 +186,9 @@ struct CrossCryptArgs {
     #[arg(long, value_parser = parse_key)]
     output_key: Option<u32>,
 
+    /// Skip file extension checks/errors.
+    #[arg(long)]
+    ignore_extension: bool,
     /// Allow output path to overwrite an existing file.
     #[arg(short = 'o', long)]
     allow_overwrite: bool,
@@ -324,38 +333,41 @@ fn main() -> anyhow::Result<()> {
         CompilerMode::Decompile(args) => decompile(args),
         CompilerMode::CrossCrypt(args) => cross_crypt(args),
         CompilerMode::DtabCompileMilo(args) => compile(CompileArgs {
+            input_encoding: None,
             output_format: FormatVersionArg::Milo,
+            output_encoding: None,
             output_encryption: None,
             output_key: None,
-            input_encoding: None,
-            output_encoding: None,
-            allow_overwrite: false,
+            ignore_extension: true,
+            allow_overwrite: true,
             input_path: args.input_path,
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabDecompileMilo(args) => decompile(DecompileArgs {
             input_format: Some(FormatVersionArg::Milo),
+            input_encoding: None,
             input_decryption: None,
             input_key: None,
+            output_encoding: EncodingArg::UTF8,
             output_line_numbers: false,
             output_array_ids: false,
+            ignore_extension: true,
             suppress_format_errors: true,
-            input_encoding: None,
-            output_encoding: EncodingArg::UTF8,
-            allow_overwrite: false,
+            allow_overwrite: true,
             input_path: args.input_path,
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabDecompileForge(args) => decompile(DecompileArgs {
             input_format: Some(FormatVersionArg::Forge),
+            input_encoding: None,
             input_decryption: None,
             input_key: None,
+            output_encoding: EncodingArg::UTF8,
             output_line_numbers: false,
             output_array_ids: false,
+            ignore_extension: true,
             suppress_format_errors: true,
-            input_encoding: None,
-            output_encoding: EncodingArg::UTF8,
-            allow_overwrite: false,
+            allow_overwrite: true,
             input_path: args.input_path,
             output_path: Some(args.output_path),
         }),
@@ -364,6 +376,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: None,
             output_key: None,
+            ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
             output_path: Some(args.output_path),
@@ -373,6 +386,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: None,
             output_key: None,
+            ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
             output_path: Some(args.output_path),
@@ -382,6 +396,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: Some(EncryptionModeArg::New),
             output_key: args.output_key,
+            ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
             output_path: Some(args.output_path),
@@ -391,6 +406,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: Some(EncryptionModeArg::Old),
             output_key: args.output_key,
+            ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
             output_path: Some(args.output_path),
@@ -424,7 +440,9 @@ fn validate_paths(input: &Path, output: &Path, input_ext: &str, output_ext: &str
 
 fn compile(args: CompileArgs) -> anyhow::Result<()> {
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dtb"));
-    validate_paths(&args.input_path, &output_path, "DTA", "DTB")?;
+    if !args.ignore_extension {
+        validate_paths(&args.input_path, &output_path, "DTA", "DTB")?;
+    }
 
     let input_bytes = read_file(&args.input_path)?;
     let (input_file, input_encoding) =
@@ -458,7 +476,9 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
 
 fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dta"));
-    validate_paths(&args.input_path, &output_path, "DTB", "DTA")?;
+    if !args.ignore_extension {
+        validate_paths(&args.input_path, &output_path, "DTB", "DTA")?;
+    }
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
@@ -524,7 +544,10 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
 
         args.input_path.with_file_name(name).with_extension("dtb")
     });
-    validate_paths(&args.input_path, &output_path, "DTB", "DTB")?;
+
+    if !args.ignore_extension {
+        validate_paths(&args.input_path, &output_path, "DTB", "DTB")?;
+    }
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
