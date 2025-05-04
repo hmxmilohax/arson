@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::io::{self, Read};
+use std::io::{self, Read, Seek};
 
 use arson_parse::encoding::{DecodeError, DtaEncoding};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -137,8 +137,19 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
 
         let mut array = DataArray::with_capacity(line, id, length);
         for _i in 0..length {
-            let data = self.read_node()?;
-            array.push(data);
+            // Some files have arrays which list a longer length than is actually contained in the file,
+            // so an exception is made for an EOF condition encountered on a node boundary
+            let node_start = self.reader.stream_position()?;
+
+            let node = match self.read_node() {
+                Ok(node) => node,
+                Err(ReadError::IO(err)) => match err.kind() {
+                    io::ErrorKind::UnexpectedEof if self.reader.stream_position()? == node_start => break,
+                    _ => return Err(err.into()),
+                },
+                Err(err) => return Err(err),
+            };
+            array.push(node);
         }
 
         Ok(array)
@@ -361,7 +372,11 @@ pub fn decrypt(
     if matches!(settings.mode, None) {
         let position = reader.stream_position()?;
 
-        let mut read_settings = ReadSettings { decryption: settings.clone(), ..Default::default() };
+        let mut read_settings = ReadSettings {
+            format: None,
+            decryption: settings.clone(),
+            ..Default::default()
+        };
         let Ok(_) = read(&mut reader, &mut read_settings) else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

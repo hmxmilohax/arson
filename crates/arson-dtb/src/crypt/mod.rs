@@ -27,12 +27,6 @@ impl<R: io::Read, C: CryptAlgorithm> CryptReader<R, C> {
     }
 }
 
-impl<R: io::Read + io::Seek, C: CryptAlgorithm> CryptReader<R, C> {
-    pub fn stream_position(&mut self) -> io::Result<u64> {
-        self.reader.stream_position()
-    }
-}
-
 impl<R: io::Read, C: CryptAlgorithm> io::Read for CryptReader<R, C> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let count = self.reader.read(buf)?;
@@ -41,6 +35,12 @@ impl<R: io::Read, C: CryptAlgorithm> io::Read for CryptReader<R, C> {
         }
 
         Ok(count)
+    }
+}
+
+impl<R: io::Read + io::Seek, C: CryptAlgorithm> io::Seek for CryptReader<R, C> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.reader.seek(pos)
     }
 }
 
