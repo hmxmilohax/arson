@@ -302,7 +302,7 @@ pub fn read(
     match settings.format {
         Some(_) => probe_encryption(&mut reader, settings),
         None => {
-            for format in [/*FormatVersion::Rnd,*/ FormatVersion::Milo , FormatVersion::Forge] {
+            for format in [/*FormatVersion::Rnd,*/ FormatVersion::Milo, FormatVersion::Forge] {
                 reader.seek(io::SeekFrom::Start(position))?;
 
                 settings.format = Some(format);

@@ -18,6 +18,10 @@ impl Symbol {
     pub const fn name(&self) -> &Rc<String> {
         &self.name
     }
+
+    pub fn to_name(&self) -> String {
+        self.name.as_ref().clone()
+    }
 }
 
 // Comparisons are done by pointer only for efficiency, as symbols are guaranteed to

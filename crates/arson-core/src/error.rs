@@ -4,7 +4,7 @@ use std::backtrace::Backtrace;
 
 #[cfg(feature = "text-loading")]
 use crate::LoadError;
-use crate::{NodeKind, NumericError, StringError};
+use crate::{ArrayError, EvaluationError, ExecutionError, NumericError, ObjectError, StringError};
 
 pub type Result<T = ()> = std::result::Result<T, self::Error>;
 
@@ -86,6 +86,12 @@ pub enum ErrorKind {
     StringError(#[from] StringError),
 
     #[error(transparent)]
+    ArrayError(#[from] ArrayError),
+
+    #[error(transparent)]
+    ObjectError(#[from] ObjectError),
+
+    #[error(transparent)]
     IoError(#[from] std::io::Error),
 
     #[cfg(feature = "text-loading")]
@@ -106,58 +112,6 @@ impl<E: Into<NumericError>> From<E> for crate::ErrorKind {
     fn from(value: E) -> Self {
         Self::NumericError(value.into())
     }
-}
-
-#[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
-pub enum EvaluationError {
-    #[error("expected value of type {expected:?}, got {actual:?} instead")]
-    TypeMismatch { expected: NodeKind, actual: NodeKind },
-
-    #[error("value of type {src:?} is not convertible to {dest:?}")]
-    NotConvertible { src: NodeKind, dest: NodeKind },
-
-    #[error("value of type {0:?} is not a number")]
-    NotNumber(NodeKind),
-
-    #[error("value of type {0:?} is not a valid array tag")]
-    NotArrayTag(NodeKind),
-}
-
-#[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
-pub enum ExecutionError {
-    #[error("bad length {actual}, expected {expected}")]
-    LengthMismatch { expected: usize, actual: usize },
-
-    #[error("requested data for {0} was not found")]
-    NotFound(String),
-
-    #[error("no state registered for name '{0}'")]
-    StateNotFound(&'static str),
-
-    #[error("no handler registered for name '{0}'")]
-    HandlerNotFound(String),
-
-    #[error("value {0} (of kind {1:?}) is not a valid handler")]
-    NotAHandler(String, NodeKind),
-
-    #[error("value already mutably borrowed")]
-    BadBorrow(#[from] std::cell::BorrowError),
-
-    #[error("value already immutably borrowed")]
-    BadMutBorrow(#[from] std::cell::BorrowMutError),
-
-    #[cfg(feature = "dynamic-typenames")]
-    #[error("cannot cast from {actual} to {expected}")]
-    BadObjectCast { expected: &'static str, actual: &'static str },
-
-    #[cfg(not(feature = "dynamic-typenames"))]
-    #[error("cannot perform the requested typecast")]
-    BadObjectCast,
-
-    #[error("{0}")]
-    Failure(String),
 }
 
 #[macro_export]

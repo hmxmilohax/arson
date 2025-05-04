@@ -2,7 +2,19 @@
 
 use std::any::Any;
 
-use crate::{Context, ExecuteResult, ExecutionError, NodeSlice};
+use crate::{Context, ExecuteResult, NodeSlice};
+
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+pub enum ObjectError {
+    #[cfg(feature = "dynamic-typenames")]
+    #[error("cannot cast from {actual} to {expected}")]
+    BadObjectCast { expected: &'static str, actual: &'static str },
+
+    #[cfg(not(feature = "dynamic-typenames"))]
+    #[error("cannot perform the requested typecast")]
+    BadObjectCast,
+}
 
 pub type ObjectRef = std::rc::Rc<dyn Object>;
 
@@ -59,14 +71,14 @@ impl dyn Object {
     pub fn downcast<T: Any>(&self) -> crate::Result<&T> {
         self.downcast_opt().ok_or_else(|| {
             #[cfg(feature = "dynamic-typenames")]
-            return ExecutionError::BadObjectCast {
+            return ObjectError::BadObjectCast {
                 expected: std::any::type_name::<T>(),
                 actual: self.type_name(),
             }
             .into();
 
             #[cfg(not(feature = "dynamic-typenames"))]
-            return ExecutionError::BadObjectCast.into();
+            return ObjectError::BadObjectCast.into();
         })
     }
 

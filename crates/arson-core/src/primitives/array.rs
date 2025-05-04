@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use super::NodeSliceIndex;
 use crate::prelude::*;
-use crate::{ExecutionError, FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
+use crate::{FloatValue, Integer, IntegerValue, IntoSymbol, Number, NumericError};
 
 #[macro_export]
 macro_rules! arson_array {
@@ -36,6 +36,19 @@ macro_rules! arson_slice {
     );
 }
 
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+pub enum ArrayError {
+    #[error("array already mutably borrowed")]
+    BadBorrow(#[from] std::cell::BorrowError),
+
+    #[error("array already immutably borrowed")]
+    BadMutBorrow(#[from] std::cell::BorrowMutError),
+
+    #[error("tag {0} was not found in the array")]
+    TagNotFound(String),
+}
+
 #[derive(PartialEq, PartialOrd, Clone)]
 pub struct ArrayRef {
     inner: Rc<RefCell<NodeArray>>,
@@ -50,13 +63,11 @@ impl ArrayRef {
     }
 
     pub fn borrow(&self) -> crate::Result<ArrayBorrow<'_>> {
-        self.inner.try_borrow().map_err(|e| ExecutionError::BadBorrow(e).into())
+        self.inner.try_borrow().map_err(|e| ArrayError::BadBorrow(e).into())
     }
 
     pub fn borrow_mut(&self) -> crate::Result<ArrayBorrowMut<'_>> {
-        self.inner
-            .try_borrow_mut()
-            .map_err(|e| ExecutionError::BadMutBorrow(e).into())
+        self.inner.try_borrow_mut().map_err(|e| ArrayError::BadMutBorrow(e).into())
     }
 
     pub fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -877,7 +888,7 @@ impl NodeSlice {
             };
         }
 
-        Err(ExecutionError::NotFound(predicate.err_string()).into())
+        Err(ArrayError::TagNotFound(predicate.err_string()).into())
     }
 
     pub fn find_data(&self, predicate: impl IntoDataPredicate) -> crate::Result<Node> {

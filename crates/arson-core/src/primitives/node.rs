@@ -10,7 +10,23 @@ use std::rc::Rc;
 
 use crate::prelude::*;
 use crate::primitives::*;
-use crate::{EvaluationError, IntoSymbol};
+use crate::IntoSymbol;
+
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+pub enum EvaluationError {
+    #[error("expected value of type {expected:?}, got {actual:?} instead")]
+    TypeMismatch { expected: NodeKind, actual: NodeKind },
+
+    #[error("value of type {src:?} is not convertible to {dest:?}")]
+    NotConvertible { src: NodeKind, dest: NodeKind },
+
+    #[error("value of type {0:?} is not a number")]
+    NotNumber(NodeKind),
+
+    #[error("value of type {0:?} is not a valid array tag")]
+    NotArrayTag(NodeKind),
+}
 
 /// The kind of value contained within a node.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]

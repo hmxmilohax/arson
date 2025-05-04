@@ -9,10 +9,29 @@ use arson_fs::FileSystem;
 
 use crate::builtin::BuiltinState;
 use crate::prelude::*;
-use crate::{ExecutionError, FindDataPredicate, SymbolTable};
+use crate::{FindDataPredicate, SymbolTable};
 
 /// The result of a script execution.
 pub type ExecuteResult = crate::Result<Node>;
+
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+pub enum ExecutionError {
+    #[error("bad length {actual}, expected {expected}")]
+    LengthMismatch { expected: usize, actual: usize },
+
+    #[error("no state registered for name {0}")]
+    StateNotFound(&'static str),
+
+    #[error("no handler registered for name {0}")]
+    HandlerNotFound(String),
+
+    #[error("value {0} (of kind {1:?}) is not a valid handler")]
+    NotAHandler(String, NodeKind),
+
+    #[error("{0}")]
+    Failure(String),
+}
 
 pub trait ContextState: Any {}
 
@@ -171,13 +190,13 @@ impl Context {
                 } else if let Some(obj) = self.objects.get(&symbol) {
                     obj.clone().handle(self, args)?
                 } else {
-                    return Err(ExecutionError::HandlerNotFound(symbol.name().to_string()).into());
+                    return Err(ExecutionError::HandlerNotFound(symbol.to_name()).into());
                 }
             },
             NodeValue::String(name) => {
                 match self.get_symbol(name.as_ref()).and_then(|name| self.objects.get(&name)) {
                     Some(obj) => obj.clone().handle(self, command.slice(1..)?)?,
-                    None => return Err(ExecutionError::HandlerNotFound(name.as_ref().clone()).into()),
+                    None => return Err(ExecutionError::HandlerNotFound((*name).clone()).into()),
                 }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
