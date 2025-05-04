@@ -101,6 +101,11 @@ impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
                 write_size!(self, write_i16, array.line());
                 write_size!(self, write_i16, array.id());
             },
+            FormatVersion::Forge => {
+                write_size!(self, write_i32, array.line());
+                write_size!(self, write_i32, array.len());
+                write_size!(self, write_i16, array.line());
+            },
         }
 
         for node in array {

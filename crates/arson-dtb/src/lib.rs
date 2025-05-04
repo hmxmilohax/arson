@@ -30,9 +30,8 @@ pub enum FormatVersion {
     // Rnd,
     /// The format used for Milo games (Rock Band 3 and earlier).
     Milo,
-    // TODO
-    // /// The format used for Forge games (Fantasia and later).
-    // Forge,
+    /// The format used for Forge games (Fantasia and later).
+    Forge,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

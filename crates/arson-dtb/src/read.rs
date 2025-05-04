@@ -127,6 +127,11 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
                 line = read_size!(self, read_i16);
                 id = read_size!(self, read_i16);
             },
+            Some(FormatVersion::Forge) => {
+                id = read_size!(self, read_i32);
+                length = read_size!(self, read_i32);
+                line = read_size!(self, read_i16);
+            },
             None => unreachable!("format is guaranteed to be set by prior code"),
         }
 
@@ -297,7 +302,7 @@ pub fn read(
     match settings.format {
         Some(_) => probe_encryption(&mut reader, settings),
         None => {
-            for format in [/*DtbFormat::Rnd,*/ FormatVersion::Milo /*, DtbFormat::Forge*/] {
+            for format in [/*FormatVersion::Rnd,*/ FormatVersion::Milo , FormatVersion::Forge] {
                 reader.seek(io::SeekFrom::Start(position))?;
 
                 settings.format = Some(format);

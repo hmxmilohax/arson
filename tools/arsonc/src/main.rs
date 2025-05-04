@@ -180,16 +180,15 @@ enum FormatVersionArg {
     // Rnd,
     /// The format used for Milo (Rock Band 3 and earlier).
     Milo,
-    // TODO
-    // /// The format used for Forge (Fantasia and later).
-    // Forge,
+    /// The format used for Forge (Fantasia and later).
+    Forge,
 }
 
 impl FormatVersionArg {
     fn to_arson(self) -> FormatVersion {
         match self {
             Self::Milo => FormatVersion::Milo,
-            // Self::Forge => DtbFormat::Forge,
+            Self::Forge => FormatVersion::Forge,
         }
     }
 }
