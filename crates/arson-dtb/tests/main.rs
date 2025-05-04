@@ -3,7 +3,16 @@
 use std::io::Cursor;
 use std::sync::LazyLock;
 
-use arson_dtb::{DataArray, DataNode, ReadSettings, WriteSettings};
+use arson_dtb::{
+    DataArray,
+    DataNode,
+    DecryptionSettings,
+    EncryptionMode,
+    EncryptionSettings,
+    FormatVersion,
+    ReadSettings,
+    WriteSettings,
+};
 use arson_parse::encoding::DtaEncoding;
 
 static TEST_ARRAY: LazyLock<DataArray> = LazyLock::new(|| {
@@ -48,83 +57,68 @@ static TEST_DATA_NEWSTYLE: &[u8] = &[
     240, 104, 191, 32, 96, 14, 253, 131, 9,
 ];
 
-const READ_SETTINGS: ReadSettings = ReadSettings { encoding: Some(DtaEncoding::Utf8) };
-const WRITE_SETTINGS: WriteSettings = WriteSettings { encoding: DtaEncoding::Utf8 };
+const READ_SETTINGS: ReadSettings = ReadSettings {
+    format: Some(FormatVersion::Milo),
+    encoding: Some(DtaEncoding::Utf8),
+    decryption: DecryptionSettings { mode: None, key: None },
+};
 
-#[test]
-fn unencrypted() {
+const WRITE_SETTINGS: WriteSettings = WriteSettings {
+    format: FormatVersion::Milo,
+    encoding: DtaEncoding::Utf8,
+    encryption: EncryptionSettings { mode: None, key: None },
+};
+
+fn test_encryption(source_array: &DataArray, source_bytes: &[u8], mode: Option<EncryptionMode>) {
     // read
-    let array = arson_dtb::read_unencrypted(Cursor::new(TEST_DATA_UNENCRYPTED), READ_SETTINGS).unwrap();
-    assert_eq!(array, *TEST_ARRAY);
+    let mut read_settings = READ_SETTINGS.with_decryption_mode(mode);
+    let read_array = arson_dtb::read(Cursor::new(source_bytes), &mut read_settings).unwrap();
+    assert_eq!(read_array, *source_array);
 
     // write
-    let mut bytes = Vec::new();
-    arson_dtb::write_unencrypted(&array, Cursor::new(&mut bytes), WRITE_SETTINGS).unwrap();
-    assert_eq!(bytes, TEST_DATA_UNENCRYPTED);
+    let mut written_bytes = Vec::new();
+    let write_settings = WRITE_SETTINGS
+        .with_encryption_mode(read_settings.decryption.mode)
+        .with_encryption_key(read_settings.decryption.key);
+    arson_dtb::write(&read_array, Cursor::new(&mut written_bytes), write_settings).unwrap();
+    assert_eq!(written_bytes, source_bytes);
 
     // cycle
     for _i in 0..25 {
-        let array = arson_dtb::read_unencrypted(Cursor::new(&bytes), READ_SETTINGS).unwrap();
-        assert_eq!(array, array);
+        let mut read_settings = READ_SETTINGS.with_decryption_mode(mode);
+        let array = arson_dtb::read(Cursor::new(&written_bytes), &mut read_settings).unwrap();
+        assert_eq!(array, *source_array);
 
-        bytes.clear();
-        arson_dtb::write_unencrypted(&array, Cursor::new(&mut bytes), WRITE_SETTINGS).unwrap();
-        assert_eq!(bytes, TEST_DATA_UNENCRYPTED);
+        if let Some(key) = read_settings.decryption.key {
+            let a = key.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
+            let b = key.wrapping_div(0x1F31D).wrapping_mul(0xB14);
+            let key = match a - b {
+                c if c <= 0 => c + 0x7FFFFFFF,
+                c => c,
+            };
+            read_settings.decryption.key = Some(key);
+        }
+
+        let write_settings = WRITE_SETTINGS
+            .with_encryption_mode(read_settings.decryption.mode)
+            .with_encryption_key(read_settings.decryption.key);
+
+        written_bytes.clear();
+        arson_dtb::write(&array, Cursor::new(&mut written_bytes), write_settings).unwrap();
     }
+}
+
+#[test]
+fn unencrypted() {
+    test_encryption(&*TEST_ARRAY, TEST_DATA_UNENCRYPTED, None);
 }
 
 #[test]
 fn oldstyle() {
-    // read
-    let (array, seed) = arson_dtb::read_oldstyle(Cursor::new(TEST_DATA_OLDSTYLE), READ_SETTINGS).unwrap();
-    assert_eq!(array, *TEST_ARRAY);
-
-    // write
-    let mut bytes = Vec::new();
-    arson_dtb::write_oldstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
-    assert_eq!(bytes, TEST_DATA_OLDSTYLE);
-
-    // cycle
-    for _i in 0..25 {
-        let (array, seed) = arson_dtb::read_oldstyle(Cursor::new(&bytes), READ_SETTINGS).unwrap();
-        assert_eq!(array, array);
-
-        let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
-        let b = seed.wrapping_div(0x1F31D).wrapping_mul(0xB14);
-        let seed = match a - b {
-            c if c <= 0 => c + 0x7FFFFFFF,
-            c => c,
-        };
-
-        bytes.clear();
-        arson_dtb::write_oldstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
-    }
+    test_encryption(&*TEST_ARRAY, TEST_DATA_OLDSTYLE, Some(EncryptionMode::Old));
 }
 
 #[test]
 fn newstyle() {
-    // read
-    let (array, seed) = arson_dtb::read_newstyle(Cursor::new(TEST_DATA_NEWSTYLE), READ_SETTINGS).unwrap();
-    assert_eq!(array, *TEST_ARRAY);
-
-    // write
-    let mut bytes = Vec::new();
-    arson_dtb::write_newstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
-    assert_eq!(bytes, TEST_DATA_NEWSTYLE);
-
-    // cycle
-    for _i in 0..25 {
-        let (array, seed) = arson_dtb::read_newstyle(Cursor::new(&bytes), READ_SETTINGS).unwrap();
-        assert_eq!(array, array);
-
-        let a = seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
-        let b = seed.wrapping_div(0x1F31D).wrapping_mul(0xB14);
-        let seed = match a - b {
-            c if c <= 0 => c + 0x7FFFFFFF,
-            c => c,
-        };
-
-        bytes.clear();
-        arson_dtb::write_newstyle(&array, Cursor::new(&mut bytes), WRITE_SETTINGS, Some(seed)).unwrap();
-    }
+    test_encryption(&*TEST_ARRAY, TEST_DATA_NEWSTYLE, Some(EncryptionMode::New));
 }

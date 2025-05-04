@@ -1,23 +1,65 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::io::{self, Write};
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 
 use arson_parse::encoding::{DtaEncoding, EncodeError};
 use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::crypt::{CryptAlgorithm, CryptWriter, NewRandom, NoopCrypt, OldRandom};
-use crate::{DataArray, DataKind, DataNode};
+use crate::{DataArray, DataKind, DataNode, EncryptionMode, FormatVersion};
 
 #[derive(Debug, Clone)]
 pub struct WriteSettings {
+    pub format: FormatVersion,
     pub encoding: DtaEncoding,
+    pub encryption: EncryptionSettings,
+}
+
+impl WriteSettings {
+    pub fn with_format(mut self, format: FormatVersion) -> Self {
+        self.format = format;
+        self
+    }
+
+    pub fn with_encoding(mut self, encoding: DtaEncoding) -> Self {
+        self.encoding = encoding;
+        self
+    }
+
+    pub fn with_encryption_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+        self.encryption = self.encryption.with_mode(mode);
+        self
+    }
+
+    pub fn with_encryption_key(mut self, key: Option<u32>) -> Self {
+        self.encryption = self.encryption.with_key(key);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EncryptionSettings {
+    pub mode: Option<EncryptionMode>,
+    pub key: Option<u32>,
+}
+
+impl EncryptionSettings {
+    pub fn with_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn with_key(mut self, key: Option<u32>) -> Self {
+        self.key = key;
+        self
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum WriteError {
     #[error("length/line {0} is too large to be written")]
-    LengthTooLarge(usize),
+    InvalidArrayInteger(usize),
 
     #[error("{0}: {1}")]
     EncodingFailed(EncodeError, String),
@@ -33,20 +75,33 @@ struct Writer<Writer: io::Write, Crypt: CryptAlgorithm> {
 }
 
 impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
-    fn write_file(mut self, array: &DataArray) -> Result<(), WriteError> {
-        self.writer.write_u8(1)?; // Array always exists under our model
-        self.write_array(array)?;
-        Ok(())
+    fn write_file(
+        array: &DataArray,
+        mut writer: CryptWriter<W, C>,
+        settings: WriteSettings,
+    ) -> Result<(), WriteError> {
+        writer.write_u8(1)?; // Array always exists under our model
+
+        let mut writer = Writer { settings, writer };
+        writer.write_array(array)
     }
 
     fn write_array(&mut self, array: &DataArray) -> Result<(), WriteError> {
-        fn shorten(value: usize) -> Result<i16, WriteError> {
-            value.try_into().map_err(|_| WriteError::LengthTooLarge(value))
+        macro_rules! write_size {
+            ($self:ident, $write:ident, $size:expr) => {{
+                let size = $size;
+                let value = size.try_into().map_err(|_| WriteError::InvalidArrayInteger(size))?;
+                $self.writer.$write::<LittleEndian>(value)?;
+            }};
         }
 
-        self.writer.write_i16::<LittleEndian>(shorten(array.len())?)?;
-        self.writer.write_i16::<LittleEndian>(shorten(array.line())?)?;
-        self.writer.write_i16::<LittleEndian>(shorten(array.id())?)?;
+        match self.settings.format {
+            FormatVersion::Milo => {
+                write_size!(self, write_i16, array.len());
+                write_size!(self, write_i16, array.line());
+                write_size!(self, write_i16, array.id());
+            },
+        }
 
         for node in array {
             self.write_node(node)?;
@@ -97,7 +152,7 @@ impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
     }
 
     fn write_glob(&mut self, bytes: &[u8]) -> Result<(), WriteError> {
-        let length = u32::try_from(bytes.len()).map_err(|_| WriteError::LengthTooLarge(bytes.len()))?;
+        let length = u32::try_from(bytes.len()).map_err(|_| WriteError::InvalidArrayInteger(bytes.len()))?;
         self.writer.write_u32::<LittleEndian>(length)?;
         Ok(self.writer.write_all(bytes)?)
     }
@@ -110,85 +165,74 @@ impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
     }
 }
 
-fn write_encrypted(
-    array: &DataArray,
-    writer: impl io::Write,
-    crypt: impl CryptAlgorithm,
-    settings: WriteSettings,
-) -> Result<(), WriteError> {
-    let writer = Writer { settings, writer: CryptWriter::new(writer, crypt) };
-    writer.write_file(array)
+static NEWSTYLE_SEEDER: Seeder<NewRandom> = Seeder::new(NewRandom::default());
+static OLDSTYLE_SEEDER: Seeder<OldRandom> = Seeder::new(OldRandom::default());
+
+struct Seeder<Crypt: CryptAlgorithm>(Mutex<Crypt>);
+
+impl<C: CryptAlgorithm> Seeder<C> {
+    const fn new(crypt: C) -> Self {
+        Self(Mutex::new(crypt))
+    }
+
+    fn next(&self) -> u32 {
+        let seed = self.0.lock().map_or(C::DEFAULT_SEED, |mut g| g.next());
+        let salt = Self::make_salt();
+        seed.wrapping_mul(salt)
+    }
+
+    fn make_salt() -> u32 {
+        use std::time::SystemTime;
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|duration| duration.as_micros() as u32)
+            .unwrap_or(0)
+    }
 }
 
-static SEED_SALT: LazyLock<u32> = LazyLock::new(|| {
-    use std::time::SystemTime;
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u32)
-        .unwrap_or(0)
-});
+macro_rules! match_encryption {
+    ($data:ident, $writer:ident, $settings:ident, $encryption:expr, $func:path) => {
+        match $encryption.mode {
+            Some(EncryptionMode::New) => {
+                let key = $encryption.key.unwrap_or_else(|| NEWSTYLE_SEEDER.next());
+                $writer.write_u32::<LittleEndian>(key)?;
 
-static NEWSTYLE_SEEDER: LazyLock<Mutex<NewRandom>> =
-    LazyLock::new(|| Mutex::new(NewRandom::new(NewRandom::DEFAULT_SEED.wrapping_mul(*SEED_SALT as i32))));
-static OLDSTYLE_SEEDER: LazyLock<Mutex<OldRandom>> =
-    LazyLock::new(|| Mutex::new(OldRandom::new(OldRandom::DEFAULT_SEED.wrapping_mul(*SEED_SALT))));
+                let writer = CryptWriter::new($writer, NewRandom::new(key));
+                $func($data, writer, $settings)
+            },
+            Some(EncryptionMode::Old) => {
+                let key = $encryption.key.unwrap_or_else(|| OLDSTYLE_SEEDER.next());
+                $writer.write_u32::<LittleEndian>(key)?;
 
-fn make_seed<T>(seed: Option<T>, default: T, seeder: &Mutex<impl Iterator<Item = T>>) -> T {
-    seed.unwrap_or_else(|| seeder.lock().ok().and_then(|mut g| g.next()).unwrap_or(default))
+                let writer = CryptWriter::new($writer, OldRandom::new(key));
+                $func($data, writer, $settings)
+            },
+            None => {
+                let writer = CryptWriter::new($writer, NoopCrypt);
+                $func($data, writer, $settings)
+            },
+        }
+    };
 }
 
-pub fn write_newstyle(
+pub fn write(
     array: &DataArray,
     mut writer: impl io::Write,
     settings: WriteSettings,
-    seed: Option<i32>,
 ) -> Result<(), WriteError> {
-    let seed = make_seed(seed, NewRandom::DEFAULT_SEED, &NEWSTYLE_SEEDER);
-    writer.write_i32::<LittleEndian>(seed)?;
-    write_encrypted(array, writer, &mut NewRandom::new(seed), settings)
+    match_encryption!(array, writer, settings, settings.encryption, Writer::write_file)
 }
 
-pub fn write_oldstyle(
-    array: &DataArray,
-    mut writer: impl io::Write,
-    settings: WriteSettings,
-    seed: Option<u32>,
-) -> Result<(), WriteError> {
-    let seed = make_seed(seed, OldRandom::DEFAULT_SEED, &OLDSTYLE_SEEDER);
-    writer.write_u32::<LittleEndian>(seed)?;
-    write_encrypted(array, writer, &mut OldRandom::new(seed), settings)
+pub fn encrypt(bytes: &[u8], mut writer: impl io::Write, settings: EncryptionSettings) -> io::Result<()> {
+    match_encryption!(bytes, writer, settings, settings, encrypt_impl)
 }
 
-pub fn write_unencrypted(
-    array: &DataArray,
-    writer: impl io::Write,
-    settings: WriteSettings,
-) -> Result<(), WriteError> {
-    write_encrypted(array, writer, &mut NoopCrypt, settings)
-}
-
-pub fn encrypt_newstyle(bytes: &[u8], writer: impl io::Write) -> io::Result<()> {
-    let seed = NEWSTYLE_SEEDER.lock().map_or(NewRandom::DEFAULT_SEED, |mut g| g.next());
-    encrypt_newstyle_seeded(bytes, writer, seed)
-}
-
-pub fn encrypt_oldstyle(bytes: &[u8], writer: impl io::Write) -> io::Result<()> {
-    let seed = OLDSTYLE_SEEDER.lock().map_or(OldRandom::DEFAULT_SEED, |mut g| g.next());
-    encrypt_oldstyle_seeded(bytes, writer, seed)
-}
-
-pub fn encrypt_newstyle_seeded(bytes: &[u8], mut writer: impl io::Write, seed: i32) -> io::Result<()> {
-    writer.write_i32::<LittleEndian>(seed)?;
-    encrypt_impl(bytes, writer, &mut NewRandom::new(seed))
-}
-
-pub fn encrypt_oldstyle_seeded(bytes: &[u8], mut writer: impl io::Write, seed: u32) -> io::Result<()> {
-    writer.write_u32::<LittleEndian>(seed)?;
-    encrypt_impl(bytes, writer, &mut OldRandom::new(seed))
-}
-
-fn encrypt_impl(bytes: &[u8], writer: impl io::Write, crypt: impl CryptAlgorithm) -> io::Result<()> {
-    CryptWriter::new(writer, crypt).write_all(bytes)
+fn encrypt_impl<W: io::Write, C: CryptAlgorithm>(
+    bytes: &[u8],
+    mut writer: CryptWriter<W, C>,
+    _settings: EncryptionSettings,
+) -> io::Result<()> {
+    writer.write_all(bytes)
 }
 
 #[cfg(test)]
@@ -198,11 +242,14 @@ mod tests {
     fn write_node_bytes(node: DataNode) -> Vec<u8> {
         let mut bytes = Vec::new();
         let mut writer = io::Cursor::new(&mut bytes);
-        let mut crypt = NoopCrypt;
 
         let mut crypt_writer = Writer {
-            settings: WriteSettings { encoding: DtaEncoding::Utf8 },
-            writer: CryptWriter::new(&mut writer, &mut crypt),
+            settings: WriteSettings {
+                format: FormatVersion::Milo,
+                encoding: DtaEncoding::Utf8,
+                encryption: EncryptionSettings::default(),
+            },
+            writer: CryptWriter::new(&mut writer, NoopCrypt),
         };
 
         crypt_writer.write_node(&node).expect("failed to write node bytes");

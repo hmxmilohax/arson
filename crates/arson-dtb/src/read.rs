@@ -6,89 +6,132 @@ use arson_parse::encoding::{DecodeError, DtaEncoding};
 use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::crypt::{CryptAlgorithm, CryptReader, NewRandom, NoopCrypt, OldRandom};
-use crate::{DataArray, DataKind, DataNode};
+use crate::{DataArray, DataKind, DataNode, EncryptionMode, FormatVersion};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ReadSettings {
+    pub format: Option<FormatVersion>,
     pub encoding: Option<DtaEncoding>,
+    pub decryption: DecryptionSettings,
+}
+
+impl ReadSettings {
+    pub fn with_format(mut self, format: Option<FormatVersion>) -> Self {
+        self.format = format;
+        self
+    }
+
+    pub fn with_encoding(mut self, encoding: Option<DtaEncoding>) -> Self {
+        self.encoding = encoding;
+        self
+    }
+
+    pub fn with_decryption_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+        self.decryption = self.decryption.with_mode(mode);
+        self
+    }
+
+    pub fn with_decryption_key(mut self, key: Option<u32>) -> Self {
+        self.decryption = self.decryption.with_key(key);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DecryptionSettings {
+    pub mode: Option<EncryptionMode>,
+    pub key: Option<u32>,
+}
+
+impl DecryptionSettings {
+    pub fn with_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn with_key(mut self, key: Option<u32>) -> Self {
+        self.key = key;
+        self
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum ReadError {
-    #[error("malformed data at offset {0}")]
-    Malformed(u64),
+    #[error("position {0}: malformed data")]
+    MalformedData(u64),
 
-    #[error("{0} at offset {1}")]
-    DecodingFailed(DecodeError, u64),
+    #[error("position {0}: value {1} cannot be negative")]
+    InvalidArrayInteger(u64, i32),
 
-    #[error("invalid node kind {0}")]
-    InvalidKind(u32),
+    #[error("position {0}: invalid node kind {1}")]
+    InvalidKind(u64, u32),
 
-    #[error("length/line {0} cannot be negative")]
-    InvalidLength(i16),
+    #[error("position {0}: {1}")]
+    DecodingFailed(u64, DecodeError),
 
-    #[error("{expecting:?} was expecting {expected:?} argument, but got {actual:?} instead")]
+    #[error(
+        "position {position}: {expecting:?} was expecting {expected:?} argument, but got {actual:?} instead"
+    )]
     IncorrectNodeArgument {
+        position: u64,
         expecting: DataKind,
         expected: DataKind,
         actual: DataKind,
     },
 
-    #[error("unexpected end of file")]
-    UnexpectedEof,
-
     #[error(transparent)]
     IO(#[from] io::Error),
 }
 
-struct Reader<Reader: io::Read + io::Seek, Crypt: CryptAlgorithm> {
-    settings: ReadSettings,
-
+struct Reader<'settings, Reader: io::Read + io::Seek, Crypt: CryptAlgorithm> {
     reader: CryptReader<Reader, Crypt>,
+    settings: &'settings mut ReadSettings,
+
+    probing_encoding: bool,
 }
 
-impl<R: io::Read + io::Seek, C: CryptAlgorithm> Reader<R, C> {
-    fn read_file(mut self) -> Result<DataArray, ReadError> {
-        let exists = self.reader.read_u8()?;
+impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
+    fn new(reader: CryptReader<R, C>, settings: &'s mut ReadSettings) -> Self {
+        let probing_encoding = matches!(settings.encoding, None);
+        Self { reader, settings, probing_encoding }
+    }
+
+    fn read_file(mut reader: CryptReader<R, C>, settings: &mut ReadSettings) -> Result<DataArray, ReadError> {
+        let exists = reader.read_u8()?;
         match exists {
             0 => Ok(DataArray::new(1, 0)),
-            1 => match self.read_array() {
-                Ok(value) => Ok(value),
-                Err(err) => match err {
-                    ReadError::Malformed(offset) => {
-                        // Insert proper position into error
-                        let mut reader = self.reader.into_inner();
-                        let position = reader.stream_position()?.saturating_sub(offset);
-                        Err(ReadError::Malformed(position))
-                    },
-                    ReadError::DecodingFailed(error, offset) => {
-                        // Insert proper position into error
-                        let mut reader = self.reader.into_inner();
-                        let position = reader.stream_position()?.saturating_sub(offset);
-                        Err(ReadError::DecodingFailed(error, position))
-                    },
-                    ReadError::IO(error) => match error.kind() {
-                        io::ErrorKind::UnexpectedEof => Err(ReadError::UnexpectedEof),
-                        _ => Err(ReadError::IO(error)),
-                    },
-                    _ => Err(err),
-                },
+            1 => {
+                let mut reader = Reader::new(reader, settings);
+                reader.read_array()
             },
-            _ => Err(ReadError::Malformed(0)),
+            _ => Err(ReadError::MalformedData(0)),
         }
     }
 
     fn read_array(&mut self) -> Result<DataArray, ReadError> {
-        fn lengthen(value: i16) -> Result<usize, ReadError> {
-            value.try_into().map_err(|_| ReadError::InvalidLength(value))
+        macro_rules! read_size {
+            ($self:ident, $read:ident) => {{
+                let position = $self.reader.stream_position()?;
+                let value = $self.reader.$read::<LittleEndian>()?;
+                usize::try_from(value).map_err(|_| ReadError::InvalidArrayInteger(position, value as i32))?
+            }};
         }
 
-        let size = lengthen(self.reader.read_i16::<LittleEndian>()?)?;
-        let line = lengthen(self.reader.read_i16::<LittleEndian>()?)?;
-        let id = lengthen(self.reader.read_i16::<LittleEndian>()?)?;
+        let length;
+        let line;
+        let id;
 
-        let mut array = DataArray::with_capacity(line, id, size);
-        for _i in 0..size {
+        match self.settings.format {
+            Some(FormatVersion::Milo) => {
+                length = read_size!(self, read_i16);
+                line = read_size!(self, read_i16);
+                id = read_size!(self, read_i16);
+            },
+            None => unreachable!("format is guaranteed to be set by prior code"),
+        }
+
+        let mut array = DataArray::with_capacity(line, id, length);
+        for _i in 0..length {
             let data = self.read_node()?;
             array.push(data);
         }
@@ -128,10 +171,13 @@ impl<R: io::Read + io::Seek, C: CryptAlgorithm> Reader<R, C> {
 
             32 => {
                 let name = self.read_string()?;
+
+                let position = self.reader.stream_position()?;
                 let body = match self.read_node()? {
                     DataNode::Array(array) => array,
                     node => {
                         return Err(ReadError::IncorrectNodeArgument {
+                            position,
                             expecting: DataKind::Define,
                             expected: DataKind::Array,
                             actual: node.get_kind(),
@@ -145,10 +191,13 @@ impl<R: io::Read + io::Seek, C: CryptAlgorithm> Reader<R, C> {
             35 => DataNode::Ifndef(self.read_string()?),
             36 => {
                 _ = self.reader.read_i32::<LittleEndian>()?;
+
+                let position = self.reader.stream_position()?;
                 let body = match self.read_node()? {
                     DataNode::Command(array) => array,
                     node => {
                         return Err(ReadError::IncorrectNodeArgument {
+                            position,
                             expecting: DataKind::Autorun,
                             expected: DataKind::Command,
                             actual: node.get_kind(),
@@ -160,12 +209,13 @@ impl<R: io::Read + io::Seek, C: CryptAlgorithm> Reader<R, C> {
             37 => DataNode::Undefine(self.read_string()?),
 
             _ => {
+                let position = self.reader.stream_position()? - 4;
+
                 // A kind value greater than 255 is most likely improperly-decrypted data
                 if kind > 0xFF {
-                    // backwards position offset, will be corrected later
-                    return Err(ReadError::Malformed(4));
+                    return Err(ReadError::MalformedData(position));
                 } else {
-                    return Err(ReadError::InvalidKind(kind));
+                    return Err(ReadError::InvalidKind(position, kind));
                 }
             },
         };
@@ -183,122 +233,150 @@ impl<R: io::Read + io::Seek, C: CryptAlgorithm> Reader<R, C> {
     }
 
     fn read_string(&mut self) -> Result<String, ReadError> {
+        let position = self.reader.stream_position()?;
+
         let bytes = self.read_glob()?;
         let decoded = match arson_parse::encoding::decode(&bytes, self.settings.encoding) {
-            Ok((decoded, _)) => decoded,
+            Ok((decoded, encoding)) => {
+                if self.probing_encoding {
+                    match self.settings.encoding {
+                        Some(probed_encoding) => {
+                            if probed_encoding != encoding {
+                                self.settings.encoding = None;
+                                self.probing_encoding = false;
+                            }
+                        },
+                        None => self.settings.encoding = Some(encoding),
+                    }
+                }
+
+                decoded
+            },
             Err(error) => {
-                // backwards position offset, will be corrected later
-                return Err(ReadError::DecodingFailed(error, bytes.len() as u64));
+                return Err(ReadError::DecodingFailed(position, error));
             },
         };
         Ok(decoded.into_owned())
     }
 }
 
-fn read_encrypted(
-    reader: impl io::Seek + io::Read,
-    settings: ReadSettings,
-    crypt: impl CryptAlgorithm,
-) -> Result<DataArray, ReadError> {
-    let reader = Reader { settings, reader: CryptReader::new(reader, crypt) };
-    reader.read_file()
+macro_rules! match_encryption {
+    ($reader:ident, $settings:ident, $decryption:expr, $func:path) => {
+        match $decryption.mode {
+            Some(EncryptionMode::New) => {
+                // Note: the key is always present in the file when encrypted and must always be read,
+                // unwrap_or instead of unwrap_or_else is deliberate here
+                let key = $decryption.key.unwrap_or($reader.read_u32::<LittleEndian>()?);
+                $decryption.key = Some(key);
+
+                let reader = CryptReader::new($reader, NewRandom::new(key));
+                $func(reader, $settings)
+            },
+            Some(EncryptionMode::Old) => {
+                // Same note as above
+                let key = $decryption.key.unwrap_or($reader.read_u32::<LittleEndian>()?);
+                $decryption.key = Some(key);
+
+                let reader = CryptReader::new($reader, OldRandom::new(key));
+                $func(reader, $settings)
+            },
+            None => {
+                let reader = CryptReader::new($reader, NoopCrypt);
+                $func(reader, $settings)
+            },
+        }
+    };
 }
 
-pub fn read(mut reader: impl io::Seek + io::Read, settings: ReadSettings) -> Result<DataArray, ReadError> {
+pub fn read(
+    mut reader: impl io::Seek + io::Read,
+    settings: &mut ReadSettings,
+) -> Result<DataArray, ReadError> {
     let position = reader.stream_position()?;
 
-    // Attempt new-style decryption first
-    if let Ok((array, _seed)) = read_newstyle(&mut reader, settings.clone()) {
-        return Ok(array);
-    };
+    match settings.format {
+        Some(_) => probe_encryption(&mut reader, settings),
+        None => {
+            for format in [/*DtbFormat::Rnd,*/ FormatVersion::Milo /*, DtbFormat::Forge*/] {
+                reader.seek(io::SeekFrom::Start(position))?;
 
-    // If that fails, try old-style
-    reader.seek(io::SeekFrom::Start(position))?;
-    if let Ok((array, _seed)) = read_oldstyle(&mut reader, settings.clone()) {
-        return Ok(array);
-    };
+                settings.format = Some(format);
+                if let Ok(array) = probe_encryption(&mut reader, settings) {
+                    return Ok(array);
+                }
+            }
 
-    // Finally, try unencrypted
-    reader.seek(io::SeekFrom::Start(position))?;
-    if let Ok(array) = read_unencrypted(reader, settings.clone()) {
-        return Ok(array);
-    };
-
-    Err(ReadError::IO(io::Error::new(
-        io::ErrorKind::InvalidData,
-        "input data could not be decoded; tried newstyle, oldstyle, and unencrypted",
-    )))
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input data could not be decoded through any known format",
+            )
+            .into())
+        },
+    }
 }
 
-pub fn read_newstyle(
-    mut reader: impl io::Read + io::Seek,
-    settings: ReadSettings,
-) -> Result<(DataArray, i32), ReadError> {
-    let seed = reader.read_i32::<LittleEndian>()?;
-    read_encrypted(reader, settings, NewRandom::new(seed)).map(|array| (array, seed))
-}
-
-pub fn read_oldstyle(
-    mut reader: impl io::Read + io::Seek,
-    settings: ReadSettings,
-) -> Result<(DataArray, u32), ReadError> {
-    let seed = reader.read_u32::<LittleEndian>()?;
-    read_encrypted(reader, settings, OldRandom::new(seed)).map(|array| (array, seed))
-}
-
-pub fn read_unencrypted(
-    reader: impl io::Read + io::Seek,
-    settings: ReadSettings,
+fn probe_encryption(
+    mut reader: impl io::Seek + io::Read,
+    settings: &mut ReadSettings,
 ) -> Result<DataArray, ReadError> {
-    read_encrypted(reader, settings, NoopCrypt)
+    match settings.decryption.mode {
+        Some(_) => read_impl(&mut reader, settings),
+        None => {
+            let position = reader.stream_position()?;
+
+            for mode in [Some(EncryptionMode::New), Some(EncryptionMode::Old), None] {
+                reader.seek(io::SeekFrom::Start(position))?;
+
+                settings.decryption.mode = mode;
+                if let Ok(array) = read_impl(&mut reader, settings) {
+                    return Ok(array);
+                };
+            }
+
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input data could not be decoded through any known encryption",
+            )
+            .into())
+        },
+    }
 }
 
-pub fn decrypt(mut reader: impl io::Read + io::Seek, settings: ReadSettings) -> Result<Vec<u8>, ReadError> {
-    let position = reader.stream_position()?;
+fn read_impl(
+    mut reader: impl io::Seek + io::Read,
+    settings: &mut ReadSettings,
+) -> Result<DataArray, ReadError> {
+    match_encryption!(reader, settings, settings.decryption, Reader::read_file)
+}
 
-    // Attempt new-style decryption first
-    if read_newstyle(&mut reader, settings.clone()).is_ok() {
+pub fn decrypt(
+    mut reader: impl io::Read + io::Seek,
+    settings: &mut DecryptionSettings,
+) -> io::Result<Vec<u8>> {
+    if matches!(settings.mode, None) {
+        let position = reader.stream_position()?;
+
+        let mut read_settings = ReadSettings { decryption: settings.clone(), ..Default::default() };
+        let Ok(_) = read(&mut reader, &mut read_settings) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "could not probe file for format/encryption properties",
+            ));
+        };
+        *settings = read_settings.decryption;
+
         reader.seek(io::SeekFrom::Start(position))?;
-        return Ok(decrypt_newstyle(reader).map(|(bytes, _)| bytes)?);
-    };
+    }
 
-    // If that fails, try old-style
-    reader.seek(io::SeekFrom::Start(position))?;
-    if read_oldstyle(&mut reader, settings.clone()).is_ok() {
-        reader.seek(io::SeekFrom::Start(position))?;
-        return Ok(decrypt_oldstyle(reader).map(|(bytes, _)| bytes)?);
-    };
-
-    // Finally, try unencrypted
-    reader.seek(io::SeekFrom::Start(position))?;
-    if read_unencrypted(&mut reader, settings.clone()).is_ok() {
-        reader.seek(io::SeekFrom::Start(position))?;
-        return Ok(decrypt_unencrypted(reader)?);
-    };
-
-    Err(ReadError::IO(io::Error::new(
-        io::ErrorKind::InvalidData,
-        "input data could not be decoded; tried newstyle, oldstyle, and unencrypted",
-    )))
+    match_encryption!(reader, settings, settings, decrypt_impl)
 }
 
-pub fn decrypt_newstyle(mut reader: impl io::Read) -> io::Result<(Vec<u8>, i32)> {
-    let seed = reader.read_i32::<LittleEndian>()?;
-    decrypt_impl(reader, NewRandom::new(seed)).map(|bytes| (bytes, seed))
-}
-
-pub fn decrypt_oldstyle(mut reader: impl io::Read) -> io::Result<(Vec<u8>, u32)> {
-    let seed = reader.read_u32::<LittleEndian>()?;
-    decrypt_impl(reader, OldRandom::new(seed)).map(|bytes| (bytes, seed))
-}
-
-fn decrypt_unencrypted(reader: impl io::Read) -> io::Result<Vec<u8>> {
-    decrypt_impl(reader, NoopCrypt)
-}
-
-fn decrypt_impl(reader: impl io::Read, crypt: impl CryptAlgorithm) -> io::Result<Vec<u8>> {
+fn decrypt_impl<R: io::Read, C: CryptAlgorithm>(
+    mut reader: CryptReader<R, C>,
+    _settings: &DecryptionSettings,
+) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    CryptReader::new(reader, crypt).read_to_end(&mut bytes)?;
+    reader.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
 
@@ -307,15 +385,20 @@ mod tests {
     use super::*;
 
     fn read_node_bytes(bytes: &[u8]) -> DataNode {
-        let mut reader = io::Cursor::new(bytes);
-
-        let mut crypt_reader = Reader {
-            settings: ReadSettings { encoding: None },
-            reader: CryptReader::new(&mut reader, NoopCrypt),
+        let reader = CryptReader::new(io::Cursor::new(bytes), NoopCrypt);
+        let mut settings = ReadSettings {
+            format: Some(FormatVersion::Milo),
+            ..Default::default()
         };
-        let node = crypt_reader.read_node().expect("failed to read node bytes");
 
-        assert_eq!(reader.position() as usize, bytes.len(), "not all node bytes were read");
+        let mut reader = Reader::new(reader, &mut settings);
+        let node = reader.read_node().expect("failed to read node bytes");
+
+        assert_eq!(
+            reader.reader.stream_position().unwrap() as usize,
+            bytes.len(),
+            "not all node bytes were read"
+        );
 
         node
     }

@@ -9,8 +9,6 @@ pub struct OldRandom {
 }
 
 impl OldRandom {
-    pub const DEFAULT_SEED: u32 = 0x52534F4C; // seed used by DtbCrypt
-
     pub const fn new(mut seed: u32) -> Self {
         const fn permute(value: u32) -> u32 {
             value.wrapping_mul(0x41C64E6D).wrapping_add(12345)
@@ -28,7 +26,15 @@ impl OldRandom {
         Self { index1: 0, index2: 103, table }
     }
 
-    pub fn next(&mut self) -> u32 {
+    pub const fn default() -> Self {
+        Self::new(Self::DEFAULT_SEED)
+    }
+}
+
+impl CryptAlgorithm for OldRandom {
+    const DEFAULT_SEED: u32 = 0x52534F4C; // seed used by DtbCrypt
+
+    fn next(&mut self) -> u32 {
         fn increment(mut index: usize) -> usize {
             index = index.wrapping_add(1);
             if index > 248 {
@@ -46,19 +52,5 @@ impl OldRandom {
         self.index2 = increment(self.index2);
 
         value
-    }
-}
-
-impl CryptAlgorithm for OldRandom {
-    fn next(&mut self) -> u8 {
-        OldRandom::next(self) as u8
-    }
-}
-
-impl Iterator for OldRandom {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(OldRandom::next(self))
     }
 }

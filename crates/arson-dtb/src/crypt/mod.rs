@@ -11,13 +11,9 @@ pub use noop::*;
 pub use old::*;
 
 pub trait CryptAlgorithm {
-    fn next(&mut self) -> u8;
-}
+    const DEFAULT_SEED: u32;
 
-impl<Crypt: CryptAlgorithm> CryptAlgorithm for &mut Crypt {
-    fn next(&mut self) -> u8 {
-        (*self).next()
-    }
+    fn next(&mut self) -> u32;
 }
 
 pub struct CryptReader<Reader: io::Read, Crypt: CryptAlgorithm> {
@@ -29,9 +25,11 @@ impl<R: io::Read, C: CryptAlgorithm> CryptReader<R, C> {
     pub fn new(reader: R, crypt: C) -> Self {
         Self { reader, crypt }
     }
+}
 
-    pub fn into_inner(self) -> R {
-        self.reader
+impl<R: io::Read + io::Seek, C: CryptAlgorithm> CryptReader<R, C> {
+    pub fn stream_position(&mut self) -> io::Result<u64> {
+        self.reader.stream_position()
     }
 }
 
@@ -39,7 +37,7 @@ impl<R: io::Read, C: CryptAlgorithm> io::Read for CryptReader<R, C> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let count = self.reader.read(buf)?;
         for byte in &mut buf[..count] {
-            *byte ^= self.crypt.next();
+            *byte ^= self.crypt.next() as u8;
         }
 
         Ok(count)
@@ -67,7 +65,7 @@ impl<W: io::Write, C: CryptAlgorithm> io::Write for CryptWriter<W, C> {
             let chunk = &buf[total_written..end];
 
             for i in 0..chunk.len() {
-                crypt_buf[i] = chunk[i] ^ self.crypt.next();
+                crypt_buf[i] = chunk[i] ^ self.crypt.next() as u8;
             }
 
             let buf = &crypt_buf[..chunk.len()];

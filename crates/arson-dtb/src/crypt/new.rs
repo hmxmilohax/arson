@@ -7,9 +7,8 @@ pub struct NewRandom {
 }
 
 impl NewRandom {
-    pub const DEFAULT_SEED: i32 = 0x30171609; // seed used by dtab
-
-    pub const fn new(seed: i32) -> Self {
+    pub const fn new(seed: u32) -> Self {
+        let seed = seed as i32;
         let seed = match seed {
             0 => 1,
             seed if seed < 0 => -seed,
@@ -19,7 +18,15 @@ impl NewRandom {
         Self { seed }
     }
 
-    pub fn next(&mut self) -> i32 {
+    pub const fn default() -> Self {
+        Self::new(Self::DEFAULT_SEED)
+    }
+}
+
+impl CryptAlgorithm for NewRandom {
+    const DEFAULT_SEED: u32 = 0x30171609; // seed used by dtab
+
+    fn next(&mut self) -> u32 {
         let a = self.seed.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
         let b = self.seed.wrapping_div(0x1F31D).wrapping_mul(0xB14);
 
@@ -29,20 +36,6 @@ impl NewRandom {
         };
 
         self.seed = c;
-        c
-    }
-}
-
-impl CryptAlgorithm for NewRandom {
-    fn next(&mut self) -> u8 {
-        NewRandom::next(self) as u8
-    }
-}
-
-impl Iterator for NewRandom {
-    type Item = i32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(NewRandom::next(self))
+        c as u32
     }
 }

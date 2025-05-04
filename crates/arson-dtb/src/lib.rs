@@ -10,7 +10,37 @@ pub use read::*;
 pub use write::*;
 
 pub mod prelude {
-    pub use super::{DataArray, DataKind, DataNode, ReadSettings, WriteSettings};
+    pub use super::{
+        DataArray,
+        DataKind,
+        DataNode,
+        DecryptionSettings,
+        EncryptionMode,
+        EncryptionSettings,
+        FormatVersion,
+        ReadSettings,
+        WriteSettings,
+    };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FormatVersion {
+    // TODO
+    // /// The format used for Rnd-era games (Amplitude and earlier).
+    // Rnd,
+    /// The format used for Milo games (Rock Band 3 and earlier).
+    Milo,
+    // TODO
+    // /// The format used for Forge games (Fantasia and later).
+    // Forge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EncryptionMode {
+    /// Old-style encryption (pre-GH2).
+    Old,
+    /// New-style encryption (GH2 onwards).
+    New,
 }
 
 #[repr(u32)]
