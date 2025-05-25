@@ -92,7 +92,7 @@ struct Reader<'settings, Reader: io::Read + io::Seek, Crypt: CryptAlgorithm> {
 
 impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
     fn new(reader: CryptReader<R, C>, settings: &'s mut ReadSettings) -> Self {
-        let probing_encoding = matches!(settings.encoding, None);
+        let probing_encoding = settings.encoding.is_none();
         Self { reader, settings, probing_encoding }
     }
 
@@ -369,7 +369,7 @@ pub fn decrypt(
     mut reader: impl io::Read + io::Seek,
     settings: &mut DecryptionSettings,
 ) -> io::Result<Vec<u8>> {
-    if matches!(settings.mode, None) {
+    if settings.mode.is_none() {
         let position = reader.stream_position()?;
 
         let mut read_settings = ReadSettings {

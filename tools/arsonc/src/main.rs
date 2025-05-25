@@ -577,7 +577,7 @@ fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
     if path == Path::new("-") {
         read_to_end(std::io::stdin())
     } else {
-        let file = File::open(&path).map(BufReader::new).context("couldn't open input file")?;
+        let file = File::open(path).map(BufReader::new).context("couldn't open input file")?;
         read_to_end(file)
     }
 }

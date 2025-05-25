@@ -2103,7 +2103,7 @@ impl<'a> ArrayDisplay<'a> {
                 write!(f, "\"{value}\"")
             },
             NodeValue::Object(value) => write!(f, "<object {value}>"),
-            value @ _ => value.fmt(f),
+            value => value.fmt(f),
         }
     }
 

@@ -200,7 +200,7 @@ impl Context {
                 }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
-            result @ _ => {
+            result => {
                 return Err(ExecutionError::NotAHandler(result.to_string(), result.get_kind()).into())
             },
         };
