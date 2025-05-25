@@ -138,7 +138,7 @@ macro_rules! make_tokens {
         impl<'src> TokenValue<'src> {
             pub fn get_kind(&self) -> TokenKind {
                 match self {
-                    $(TokenValue::$variant$((meta_morph!($value_type => _)))? => TokenKind::$variant,)+
+                    $(TokenValue::$variant$((meta_morph!(|$value_type| _)))? => TokenKind::$variant,)+
                 }
             }
         }

@@ -4,7 +4,7 @@
 
 /// Transform one fragment into another.
 macro_rules! meta_morph {
-    ($_:tt => $($i:tt)*) => {
+    (|$_:tt| $($i:tt)*) => {
         $($i)*
     };
 }
@@ -15,7 +15,7 @@ macro_rules! meta_select {
         $first
     };
     // to avoid local ambiguity issues
-    (meta_morph!($_:tt => $($first:tt)*), $($second:tt)*) => {
+    (meta_morph!(|$_:tt| $($first:tt)*), $($second:tt)*) => {
         $($first)*
     };
     (, $($second:tt)*) => {

@@ -124,11 +124,11 @@ macro_rules! define_node_types {
                     // variant types
                     $(
                         (
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($eq_left)?)?, left))))?,
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($eq_right)?)?, right))))?
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($eq_left)?)?, left))))?,
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($eq_right)?)?, right))))?
                         )
                         => meta_select!(
-                            $(meta_morph!($variant_type => meta_select!($($($eq_expr)?)?, left == right)))?,
+                            $(meta_morph!(|$variant_type| meta_select!($($($eq_expr)?)?, left == right)))?,
                             true
                         ),
                         $( // variant value
@@ -154,10 +154,10 @@ macro_rules! define_node_types {
                 match (self, other) {
                     $(
                         (
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($cmp_left)?)?, left))))?,
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($cmp_right)?)?, right))))?
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($cmp_left)?)?, left))))?,
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($cmp_right)?)?, right))))?
                         ) => meta_select!(
-                            $(meta_morph!($variant_type => meta_select!($($($cmp_expr)?)?, left.partial_cmp(right))))?,
+                            $(meta_morph!(|$variant_type| meta_select!($($($cmp_expr)?)?, left.partial_cmp(right))))?,
                             Some(Ordering::Equal)
                         ),
                         $(
@@ -184,10 +184,10 @@ macro_rules! define_node_types {
                 match (self, other) {
                     $(
                         (
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($total_cmp_left)?)?, left))))?,
-                            Self::$variant$((meta_morph!($variant_type => meta_select!($($($total_cmp_right)?)?, right))))?
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($total_cmp_left)?)?, left))))?,
+                            Self::$variant$((meta_morph!(|$variant_type| meta_select!($($($total_cmp_right)?)?, right))))?
                         ) => meta_select!(
-                            $(meta_morph!($variant_type => meta_select!($($($total_cmp_expr)?)?, left.cmp(right))))?,
+                            $(meta_morph!(|$variant_type| meta_select!($($($total_cmp_expr)?)?, left.cmp(right))))?,
                             Ordering::Equal
                         ),
                         $(

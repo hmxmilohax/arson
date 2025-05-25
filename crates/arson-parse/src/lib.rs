@@ -2,7 +2,7 @@
 
 /// Transform one fragment into another.
 macro_rules! meta_morph {
-    ($_:tt => $($i:tt)*) => {
+    (|$_:tt| $($i:tt)*) => {
         $($i)*
     };
 }
