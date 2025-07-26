@@ -377,13 +377,10 @@ pub mod escape {
 
     pub fn quote(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        args.get(1).cloned()
+        args.get(0).cloned()
     }
 
     pub fn quasiquote(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        arson_assert_len!(args, 1);
-        return do_quasiquote(context, args.get(1)?);
-
         fn do_quasiquote(context: &mut Context, value: &Node) -> ExecuteResult {
             match value.unevaluated() {
                 NodeValue::Array(array) => {
@@ -415,16 +412,19 @@ pub mod escape {
             }
             Ok(quoted)
         }
+
+        arson_assert_len!(args, 1);
+        return do_quasiquote(context, args.get(0)?);
     }
 
     pub fn unquote(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        Ok(args.evaluate(context, 1)?.into())
+        Ok(args.evaluate(context, 0)?.into())
     }
 
     pub fn eval(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        let value: Node = args.evaluate(context, 1)?.into();
+        let value: Node = args.evaluate(context, 0)?.into();
         Ok(value.evaluate(context)?.into())
     }
 }
