@@ -28,7 +28,7 @@ impl Object for Function {
 
 impl std::fmt::Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ScriptFunction").field(&self.name).finish()
+        f.debug_tuple("Function").field(&self.name).finish()
     }
 }
 
@@ -58,7 +58,7 @@ impl Object for Closure {
 
 impl std::fmt::Debug for Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ScriptClosure").finish_non_exhaustive()
+        f.debug_tuple("Closure").finish_non_exhaustive()
     }
 }
 
