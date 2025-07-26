@@ -288,12 +288,12 @@ impl Default for Context {
 ///
 /// // Context::add_macro makes use of this trait.
 /// // You can use either a Symbol, which gets used as-is...
-/// let symbol = context.add_symbol("kDefine");
-/// context.add_macro(&symbol, arson_array![1]);
+/// let symbol = context.add_required_symbol("kDefine");
+/// context.add_required_macro(&symbol, arson_array![1]);
 /// assert_eq!(context.get_macro(&symbol), Some(Rc::new(arson_array![1])));
 ///
 /// // ...or a &str, which gets converted to a Symbol behind the scenes.
-/// context.add_macro("kDefine", arson_array![2]);
+/// context.add_required_macro("kDefine", arson_array![2]);
 /// assert_eq!(context.get_macro("kDefine"), Some(Rc::new(arson_array![2])));
 ///
 /// // An implementation example, which sets a variable
@@ -302,7 +302,7 @@ impl Default for Context {
 ///     context.set_variable(name, "some text");
 /// }
 ///
-/// let symbol = context.add_symbol("text");
+/// let symbol = context.add_required_symbol("text");
 /// do_something_with_symbol(&mut context, &symbol);
 /// assert_eq!(context.get_variable(&symbol), "some text".into());
 ///
