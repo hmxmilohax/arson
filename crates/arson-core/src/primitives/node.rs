@@ -241,6 +241,14 @@ macro_rules! define_node_types {
                     }
                 }
 
+                impl TryFrom<Node> for $variant_type$(<$variant_gen>)? {
+                    type Error = crate::Error;
+
+                    fn try_from(value: Node) -> Result<Self, Self::Error> {
+                        TryFrom::try_from(value.value)
+                    }
+                }
+
                 // additional conversions from `from:`
                 $( // options block
                     $( // `from`
