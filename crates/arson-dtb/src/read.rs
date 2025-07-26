@@ -66,6 +66,9 @@ pub enum ReadError {
     #[error("position {0}: invalid node kind {1}")]
     InvalidKind(u64, u32),
 
+    #[error("position {0}: symbol '{1}...' exceeds length safety limit")]
+    SymbolTooLong(u64, String),
+
     #[error("position {0}: {1}")]
     DecodingFailed(u64, DecodeError),
 
@@ -163,7 +166,16 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
             2 => DataNode::Variable(self.read_string()?),
             3 => DataNode::Function(self.read_string()?),
             4 => DataNode::Object(self.read_string()?),
-            5 => DataNode::Symbol(self.read_string()?),
+            5 => {
+                let symbol = self.read_string()?;
+                if symbol.len() > arson_parse::MAX_SYMBOL_LENGTH {
+                    return Err(ReadError::SymbolTooLong(
+                        self.reader.stream_position()?,
+                        symbol.chars().take(arson_parse::MAX_SYMBOL_LENGTH).collect::<String>(),
+                    ));
+                }
+                DataNode::Symbol(symbol)
+            },
             6 => {
                 _ = self.reader.read_i32::<LittleEndian>()?;
                 DataNode::Unhandled

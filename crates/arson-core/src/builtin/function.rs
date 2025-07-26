@@ -67,7 +67,7 @@ fn func(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     let body = args.slice(1..)?.to_owned();
     let function = Function { name: name.clone(), body };
 
-    Ok(context.register_object(name, function).into())
+    context.register_object(name, function).map(|o| o.into())
 }
 
 fn closure(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -92,13 +92,13 @@ mod tests {
     fn func() -> crate::Result {
         let mut context = Context::new();
 
-        let sym_func = context.add_symbol("func");
-        let sym_plus = context.add_symbol("+");
-        let sym_three = context.add_symbol("three");
-        let sym_add = context.add_symbol("add");
+        let sym_func = context.add_required_symbol("func");
+        let sym_plus = context.add_required_symbol("+");
+        let sym_three = context.add_required_symbol("three");
+        let sym_add = context.add_required_symbol("add");
 
-        let var_num1 = Variable::new("num1", &mut context);
-        let var_num2 = Variable::new("num2", &mut context);
+        let var_num1 = Variable::new_required("num1", &mut context);
+        let var_num2 = Variable::new_required("num2", &mut context);
 
         assert_eq!(context.get_func("three"), None);
         assert_eq!(context.get_func("add"), None);
@@ -151,13 +151,13 @@ mod tests {
     fn closure() -> crate::Result {
         let mut context = Context::new();
 
-        let sym_do = context.add_symbol("do");
-        let sym_closure = context.add_symbol("closure");
-        let sym_plus = context.add_symbol("+");
+        let sym_do = context.add_required_symbol("do");
+        let sym_closure = context.add_required_symbol("closure");
+        let sym_plus = context.add_required_symbol("+");
 
-        let var_num1 = Variable::new("num1", &mut context);
-        let var_num2 = Variable::new("num2", &mut context);
-        let var_base = Variable::new("base", &mut context);
+        let var_num1 = Variable::new_required("num1", &mut context);
+        let var_num2 = Variable::new_required("num2", &mut context);
+        let var_base = Variable::new_required("base", &mut context);
 
         // no arguments
         /*

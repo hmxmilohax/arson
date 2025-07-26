@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
 
+use crate::arson_fail;
+
 /// Maps symbols by hash to an associated value. Alias for [`HashMap<ScriptSymbol, T>`].
 pub type SymbolMap<T> = HashMap<Symbol, T>;
 
@@ -14,6 +16,11 @@ pub struct Symbol {
 }
 
 impl Symbol {
+    #[cfg(feature = "text-loading")]
+    pub const MAX_LENGTH: usize = arson_parse::MAX_SYMBOL_LENGTH;
+    #[cfg(not(feature = "text-loading"))]
+    pub const MAX_LENGTH: usize = 50;
+
     /// Returns the underlying name of this symbol.
     pub const fn name(&self) -> &Rc<String> {
         &self.name
@@ -91,14 +98,38 @@ impl SymbolTable {
 
     /// Adds a symbol by name to the table.
     /// The created symbol is also returned for convenience.
-    pub fn add(&mut self, name: &str) -> Symbol {
+    ///
+    /// If a symbol for this name already exists, that symbol is returned.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the name is longer than [`Symbol::MAX_LENGTH`].
+    pub fn add(&mut self, name: &str) -> crate::Result<Symbol> {
         if let Some(existing) = self.get(name) {
-            return existing;
+            return Ok(existing);
+        }
+
+        if name.len() > Symbol::MAX_LENGTH {
+            arson_fail!(
+                "symbol '{}...' exceeds length safety limit",
+                name.chars().take(Symbol::MAX_LENGTH).collect::<String>()
+            );
         }
 
         let sym = new_symbol(name);
-        self.table.insert(sym.name().as_ref().clone(), sym.clone());
-        sym.clone()
+        self.table.insert(sym.name.as_ref().clone(), sym.clone());
+        Ok(sym.clone())
+    }
+
+    /// Adds a symbol by name to the table, panicking if an error occurs.
+    ///
+    /// See [`Self::add`] for additional details.
+    ///
+    /// # Panics
+    ///
+    /// Panics when [`Self::add`] returns an error.
+    pub fn add_required(&mut self, name: &str) -> Symbol {
+        self.add(name).expect("failed to add symbol")
     }
 
     /// Returns the corresponding symbol for a given name, if one exists.
@@ -185,7 +216,7 @@ mod tests {
         #[test]
         fn add() {
             let mut table = SymbolTable::new();
-            let symbol = table.add("asdf");
+            let symbol = table.add_required("asdf");
 
             assert!(table.table.contains_key("asdf"));
             assert!(table.table.contains_key(&*symbol.name));
@@ -194,7 +225,7 @@ mod tests {
         #[test]
         fn get() {
             let mut table = SymbolTable::new();
-            let symbol = table.add("asdf");
+            let symbol = table.add_required("asdf");
             let symbol2 = table.get("asdf").expect("The symbol should be added");
 
             assert_eq!(symbol, symbol2);
@@ -203,15 +234,21 @@ mod tests {
         #[test]
         fn remove() {
             let mut table = SymbolTable::new();
-            let sym_asdf = table.add("asdf");
+            let sym_asdf = table.add_required("asdf");
 
             let sym_asdf_2 = table.get("asdf").expect("The symbol should be added");
 
             table.remove(sym_asdf);
-            assert!(table.get("asdf").is_some(), "Symbols won't get removed from the table while instances of it exist");
+            assert!(
+                table.get("asdf").is_some(),
+                "Symbols won't get removed from the table while instances of it exist"
+            );
 
             table.remove(sym_asdf_2);
-            assert!(table.get("asdf").is_none(), "Symbols will get removed from the table when the last instance is removed");
+            assert!(
+                table.get("asdf").is_none(),
+                "Symbols will get removed from the table when the last instance is removed"
+            );
         }
     }
 }

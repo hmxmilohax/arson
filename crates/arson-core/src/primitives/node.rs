@@ -685,10 +685,10 @@ impl NodeValue {
         }
     }
 
-    pub fn force_symbol(&self, context: &mut Context) -> Option<Symbol> {
+    pub fn force_symbol(&self, context: &mut Context) -> Option<crate::Result<Symbol>> {
         match self {
             Self::String(value) => Some(context.add_symbol(value)),
-            Self::Symbol(value) => Some(value.clone()),
+            Self::Symbol(value) => Some(Ok(value.clone())),
             _ => None,
         }
     }
@@ -807,19 +807,36 @@ impl NodeValue {
 }
 
 pub trait SymbolDefault {
-    fn into_symbol(self) -> Symbol;
+    fn into_symbol(self) -> crate::Result<Symbol>;
 }
 
 impl SymbolDefault for &Symbol {
-    fn into_symbol(self) -> Symbol {
-        self.clone()
+    fn into_symbol(self) -> crate::Result<Symbol> {
+        Ok(self.clone())
     }
 }
 
 impl<N: IntoSymbol> SymbolDefault for (&mut Context, N) {
-    fn into_symbol(self) -> Symbol {
+    fn into_symbol(self) -> crate::Result<Symbol> {
         self.1.into_symbol(self.0)
     }
+}
+
+macro_rules! get_value_or_else {
+    ($value:expr, $default:expr) => {{
+        if let Some(value) = $value {
+            Ok(value)
+        } else {
+            $default
+        }
+    }};
+    ($value:expr => Result, $default:expr) => {{
+        if let Some(value) = $value {
+            value
+        } else {
+            $default
+        }
+    }};
 }
 
 impl NodeValue {
@@ -843,12 +860,12 @@ impl NodeValue {
         self.string().cloned().unwrap_or_else(|| default.clone())
     }
 
-    pub fn symbol_or(&self, default: impl SymbolDefault) -> Symbol {
-        self.symbol().cloned().unwrap_or_else(|| default.into_symbol())
+    pub fn symbol_or(&self, default: impl SymbolDefault) -> crate::Result<Symbol> {
+        get_value_or_else!(self.symbol().cloned(), default.into_symbol())
     }
 
-    pub fn force_symbol_or(&self, context: &mut Context, default: impl IntoSymbol) -> Symbol {
-        self.force_symbol(context).unwrap_or_else(|| default.into_symbol(context))
+    pub fn force_symbol_or(&self, context: &mut Context, default: impl IntoSymbol) -> crate::Result<Symbol> {
+        get_value_or_else!(self.force_symbol(context) => Result, default.into_symbol(context))
     }
 
     pub fn array_tag_or(&self, default: &ArrayTag) -> ArrayTag {
@@ -875,56 +892,94 @@ impl NodeValue {
         self.property().cloned().unwrap_or_else(|| default.clone())
     }
 
-    pub fn integer_or_else(&self, default: impl FnOnce() -> Integer) -> Integer {
-        self.integer().unwrap_or_else(default)
+    pub fn integer_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Integer>,
+    ) -> crate::Result<Integer> {
+        get_value_or_else!(self.integer(), default())
     }
 
-    pub fn float_or_else(&self, default: impl FnOnce() -> FloatValue) -> FloatValue {
-        self.float().unwrap_or_else(default)
+    pub fn float_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<FloatValue>,
+    ) -> crate::Result<FloatValue> {
+        get_value_or_else!(self.float(), default())
     }
 
-    pub fn number_or_else(&self, default: impl FnOnce() -> Number) -> Number {
-        self.number().unwrap_or_else(default)
+    pub fn number_or_else(&self, default: impl FnOnce() -> crate::Result<Number>) -> crate::Result<Number> {
+        get_value_or_else!(self.number(), default())
     }
 
-    pub fn size_integer_or_else(&self, default: impl FnOnce() -> usize) -> usize {
-        self.size_integer_opt().unwrap_or_else(default)
+    pub fn size_integer_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<usize>,
+    ) -> crate::Result<usize> {
+        get_value_or_else!(self.size_integer_opt(), default())
     }
 
-    pub fn string_or_else(&self, default: impl FnOnce() -> Rc<String>) -> Rc<String> {
-        self.string().cloned().unwrap_or_else(default)
+    pub fn string_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Rc<String>>,
+    ) -> crate::Result<Rc<String>> {
+        get_value_or_else!(self.string().cloned(), default())
     }
 
-    pub fn symbol_or_else(&self, default: impl FnOnce() -> Symbol) -> Symbol {
-        self.symbol().cloned().unwrap_or_else(default)
+    pub fn symbol_or_else(&self, default: impl FnOnce() -> crate::Result<Symbol>) -> crate::Result<Symbol> {
+        get_value_or_else!(self.symbol().cloned(), default())
     }
 
-    pub fn force_symbol_or_else(&self, context: &mut Context, default: impl FnOnce() -> Symbol) -> Symbol {
-        self.force_symbol(context).unwrap_or_else(default)
+    pub fn force_symbol_or_else(
+        &self,
+        context: &mut Context,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
+    ) -> crate::Result<Symbol> {
+        if let Some(value) = self.force_symbol(context) {
+            value
+        } else {
+            default(context)
+        }
     }
 
-    pub fn array_tag_or_else(&self, default: impl FnOnce() -> ArrayTag) -> ArrayTag {
-        self.array_tag().unwrap_or_else(default)
+    pub fn array_tag_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<ArrayTag>,
+    ) -> crate::Result<ArrayTag> {
+        get_value_or_else!(self.array_tag(), default())
     }
 
-    pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
-        self.variable().cloned().unwrap_or_else(default)
+    pub fn variable_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Variable>,
+    ) -> crate::Result<Variable> {
+        get_value_or_else!(self.variable().cloned(), default())
     }
 
-    pub fn object_or_else(&self, default: impl FnOnce() -> ObjectRef) -> ObjectRef {
-        self.object().cloned().unwrap_or_else(default)
+    pub fn object_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<ObjectRef>,
+    ) -> crate::Result<ObjectRef> {
+        get_value_or_else!(self.object().cloned(), default())
     }
 
-    pub fn array_or_else(&self, default: impl FnOnce() -> ArrayRef) -> ArrayRef {
-        self.array().cloned().unwrap_or_else(default)
+    pub fn array_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<ArrayRef>,
+    ) -> crate::Result<ArrayRef> {
+        get_value_or_else!(self.array().cloned(), default())
     }
 
-    pub fn command_or_else(&self, default: impl FnOnce() -> Rc<NodeCommand>) -> Rc<NodeCommand> {
-        self.command().cloned().unwrap_or_else(default)
+    pub fn command_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
+    ) -> crate::Result<Rc<NodeCommand>> {
+        get_value_or_else!(self.command().cloned(), default())
     }
 
-    pub fn property_or_else(&self, default: impl FnOnce() -> Rc<NodeProperty>) -> Rc<NodeProperty> {
-        self.property().cloned().unwrap_or_else(default)
+    pub fn property_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
+    ) -> crate::Result<Rc<NodeProperty>> {
+        get_value_or_else!(self.property().cloned(), default())
     }
 }
 
@@ -1085,7 +1140,13 @@ impl Node {
     }
 
     pub fn force_symbol(&self, context: &mut Context) -> crate::Result<Symbol> {
-        match_option!(self.evaluate(context)?, |value| value.force_symbol(context), Symbol)
+        let value = self.evaluate(context)?;
+        match value.force_symbol(context) {
+            Some(value) => value,
+            None => {
+                Err(EvaluationError::NotConvertible { src: value.get_kind(), dest: NodeKind::Symbol }.into())
+            },
+        }
     }
 
     pub fn array_tag(&self, context: &mut Context) -> crate::Result<ArrayTag> {
@@ -1103,7 +1164,7 @@ impl Node {
     pub fn set_variable(&self, context: &mut Context, value: impl Into<Node>) -> crate::Result<Option<Node>> {
         let old = match self.unevaluated() {
             NodeValue::Variable(var) => var.set(context, value),
-            NodeValue::Property(_prop) => todo!("op_assign property access"),
+            NodeValue::Property(_prop) => todo!("set_variable property access"),
             unhandled => arson_fail!("Cannot set non-variable value {:?}", unhandled),
         };
         Ok(old)
@@ -1187,36 +1248,36 @@ impl Node {
 
 // Optional value retrieval
 impl Node {
-    pub fn integer_opt(&self, context: &mut Context) -> Option<crate::Result<Integer>> {
-        self.evaluate(context).map(|n| n.integer()).transpose()
+    pub fn integer_opt(&self, context: &mut Context) -> crate::Result<Option<Integer>> {
+        self.evaluate(context).map(|n| n.integer())
     }
 
-    pub fn float_opt(&self, context: &mut Context) -> Option<crate::Result<FloatValue>> {
-        self.evaluate(context).map(|n| n.float()).transpose()
+    pub fn float_opt(&self, context: &mut Context) -> crate::Result<Option<FloatValue>> {
+        self.evaluate(context).map(|n| n.float())
     }
 
-    pub fn number_opt(&self, context: &mut Context) -> Option<crate::Result<Number>> {
-        self.evaluate(context).map(|n| n.number()).transpose()
+    pub fn number_opt(&self, context: &mut Context) -> crate::Result<Option<Number>> {
+        self.evaluate(context).map(|n| n.number())
     }
 
-    pub fn size_integer_opt(&self, context: &mut Context) -> Option<crate::Result<usize>> {
-        self.evaluate(context).map(|n| n.size_integer_opt()).transpose()
+    pub fn size_integer_opt(&self, context: &mut Context) -> crate::Result<Option<usize>> {
+        self.evaluate(context).map(|n| n.size_integer_opt())
     }
 
-    pub fn string_opt(&self, context: &mut Context) -> Option<crate::Result<Rc<String>>> {
-        self.evaluate(context).map(|n| n.string().cloned()).transpose()
+    pub fn string_opt(&self, context: &mut Context) -> crate::Result<Option<Rc<String>>> {
+        self.evaluate(context).map(|n| n.string().cloned())
     }
 
-    pub fn symbol_opt(&self, context: &mut Context) -> Option<crate::Result<Symbol>> {
-        self.evaluate(context).map(|n| n.symbol().cloned()).transpose()
+    pub fn symbol_opt(&self, context: &mut Context) -> crate::Result<Option<Symbol>> {
+        self.evaluate(context).map(|n| n.symbol().cloned())
     }
 
-    pub fn force_symbol_opt(&self, context: &mut Context) -> Option<crate::Result<Symbol>> {
-        self.evaluate(context).map(|n| n.force_symbol(context)).transpose()
+    pub fn force_symbol_opt(&self, context: &mut Context) -> crate::Result<Option<Symbol>> {
+        self.evaluate(context).and_then(|n| n.force_symbol(context).transpose())
     }
 
-    pub fn array_tag_opt(&self, context: &mut Context) -> Option<crate::Result<ArrayTag>> {
-        self.evaluate(context).map(|n| n.array_tag()).transpose()
+    pub fn array_tag_opt(&self, context: &mut Context) -> crate::Result<Option<ArrayTag>> {
+        self.evaluate(context).map(|n| n.array_tag())
     }
 
     pub const fn variable_opt(&self) -> Option<&Variable> {
@@ -1226,17 +1287,17 @@ impl Node {
     pub fn set_variable_opt(&self, context: &mut Context, value: impl Into<Node>) {
         match self.unevaluated() {
             NodeValue::Variable(var) => _ = var.set(context, value),
-            NodeValue::Property(_prop) => todo!("op_assign property access"),
+            NodeValue::Property(_prop) => todo!("set_variable property access"),
             _ => (),
         }
     }
 
-    pub fn object_opt(&self, context: &mut Context) -> Option<crate::Result<ObjectRef>> {
-        self.evaluate(context).map(|n| n.object().cloned()).transpose()
+    pub fn object_opt(&self, context: &mut Context) -> crate::Result<Option<ObjectRef>> {
+        self.evaluate(context).map(|n| n.object().cloned())
     }
 
-    pub fn array_opt(&self, context: &mut Context) -> Option<crate::Result<ArrayRef>> {
-        self.evaluate(context).map(|n| n.array().cloned()).transpose()
+    pub fn array_opt(&self, context: &mut Context) -> crate::Result<Option<ArrayRef>> {
+        self.evaluate(context).map(|n| n.array().cloned())
     }
 
     pub const fn command_opt(&self) -> Option<&Rc<NodeCommand>> {
@@ -1271,11 +1332,11 @@ impl Node {
     }
 
     pub fn symbol_or(&self, context: &mut Context, default: impl IntoSymbol) -> crate::Result<Symbol> {
-        self.evaluate(context).map(|v| v.symbol_or((context, default)))
+        self.evaluate(context).and_then(|v| v.symbol_or((context, default)))
     }
 
     pub fn force_symbol_or(&self, context: &mut Context, default: impl IntoSymbol) -> crate::Result<Symbol> {
-        self.evaluate(context).map(|v| v.force_symbol_or(context, default))
+        self.evaluate(context).and_then(|v| v.force_symbol_or(context, default))
     }
 
     pub fn array_tag_or(&self, context: &mut Context, default: &ArrayTag) -> crate::Result<ArrayTag> {
@@ -1305,92 +1366,101 @@ impl Node {
     pub fn integer_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> Integer,
+        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
     ) -> crate::Result<Integer> {
-        self.evaluate(context).map(|v| v.integer_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.integer(), default(context))
     }
 
     pub fn float_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> FloatValue,
+        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
     ) -> crate::Result<FloatValue> {
-        self.evaluate(context).map(|v| v.float_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.float(), default(context))
     }
 
     pub fn number_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> Number,
+        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
     ) -> crate::Result<Number> {
-        self.evaluate(context).map(|v| v.number_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.number(), default(context))
     }
 
     pub fn size_integer_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> usize,
+        default: impl FnOnce(&mut Context) -> crate::Result<usize>,
     ) -> crate::Result<usize> {
-        self.evaluate(context).map(|v| v.size_integer_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.size_integer() => Result, default(context))
     }
 
     pub fn string_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> Rc<String>,
+        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
     ) -> crate::Result<Rc<String>> {
-        self.evaluate(context).map(|v| v.string_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.string().cloned(), default(context))
     }
 
     pub fn symbol_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
-        self.evaluate(context).map(|v| v.symbol_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.symbol().cloned(), default(context))
     }
 
     pub fn force_symbol_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
-        self.evaluate(context).map(|v| v.force_symbol_or_else(context, default))
+        get_value_or_else!(self.evaluate(context)?.force_symbol(context) => Result, default(context))
     }
 
     pub fn array_tag_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> ArrayTag,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayTag>,
     ) -> crate::Result<ArrayTag> {
-        self.evaluate(context).map(|v| v.array_tag_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.array_tag(), default(context))
     }
 
-    pub fn variable_or_else(&self, default: impl FnOnce() -> Variable) -> Variable {
+    pub fn variable_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Variable>,
+    ) -> crate::Result<Variable> {
         self.unevaluated().variable_or_else(default)
     }
 
     pub fn object_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> ObjectRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ObjectRef>,
     ) -> crate::Result<ObjectRef> {
-        self.evaluate(context).map(|v| v.object_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.object().cloned(), default(context))
     }
 
     pub fn array_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce() -> ArrayRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayRef>,
     ) -> crate::Result<ArrayRef> {
-        self.evaluate(context).map(|v| v.array_or_else(default))
+        get_value_or_else!(self.evaluate(context)?.array().cloned(), default(context))
     }
 
-    pub fn command_or_else(&self, default: impl FnOnce() -> Rc<NodeCommand>) -> Rc<NodeCommand> {
+    pub fn command_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
+    ) -> crate::Result<Rc<NodeCommand>> {
         self.unevaluated().command_or_else(default)
     }
 
-    pub fn property_or_else(&self, default: impl FnOnce() -> Rc<NodeProperty>) -> Rc<NodeProperty> {
+    pub fn property_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
+    ) -> crate::Result<Rc<NodeProperty>> {
         self.unevaluated().property_or_else(default)
     }
 }
@@ -1473,9 +1543,9 @@ mod tests {
         #[test]
         fn symbol() {
             let mut context = Context::new();
-            let sym_foo = context.add_symbol("foo");
-            let sym_space = context.add_symbol("sym with\nwhitespace");
-            let sym_empty = context.add_symbol("");
+            let sym_foo = context.add_required_symbol("foo");
+            let sym_space = context.add_required_symbol("sym with\nwhitespace");
+            let sym_empty = context.add_required_symbol("");
 
             assert_eq!(NodeValue::Symbol(sym_foo).to_string(), "foo");
             assert_eq!(NodeValue::Symbol(sym_space).to_string(), "'sym with\nwhitespace'");
@@ -1485,8 +1555,8 @@ mod tests {
         #[test]
         fn variable() {
             let mut context = Context::new();
-            let var = Variable::new("var", &mut context);
-            let dollar_var = Variable::new("$var", &mut context);
+            let var = Variable::new_required("var", &mut context);
+            let dollar_var = Variable::new_required("$var", &mut context);
 
             assert_eq!(NodeValue::Variable(var).to_string(), "$var");
             assert_eq!(NodeValue::Variable(dollar_var).to_string(), "$$var");
@@ -1495,7 +1565,7 @@ mod tests {
         #[test]
         fn array() {
             let mut context = Context::new();
-            let sym = context.add_symbol("sym");
+            let sym = context.add_required_symbol("sym");
 
             let base_array = arson_array![sym, 1, "text"];
 

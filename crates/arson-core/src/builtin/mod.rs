@@ -19,14 +19,14 @@ pub(crate) struct BuiltinState {
 impl BuiltinState {
     pub(crate) fn new(symbol_table: &mut SymbolTable) -> Self {
         Self {
-            unquote: symbol_table.add("unquote"),
-            unquote_abbrev: symbol_table.add(","),
+            unquote: symbol_table.add_required("unquote"),
+            unquote_abbrev: symbol_table.add_required(","),
         }
     }
 }
 
 pub fn register_funcs(context: &mut Context) {
-    context.add_macro_define("ARSON");
+    context.add_required_macro_define("ARSON", true);
 
     array::register_funcs(context);
     flow::register_funcs(context);

@@ -36,3 +36,5 @@ pub mod prelude {
 #[cfg(feature = "reporting")]
 // Re-export so dependers don't have to sync versions
 pub use codespan_reporting as reporting;
+
+pub const MAX_SYMBOL_LENGTH: usize = 50;

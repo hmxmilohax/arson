@@ -97,8 +97,12 @@ impl Context {
         self.states.get_mut(&TypeId::of::<S>()).and_then(|s| s.downcast_mut())
     }
 
-    pub fn add_symbol(&mut self, name: &str) -> Symbol {
+    pub fn add_symbol(&mut self, name: &str) -> crate::Result<Symbol> {
         self.symbol_table.add(name)
+    }
+
+    pub fn add_required_symbol(&mut self, name: &str) -> Symbol {
+        self.symbol_table.add_required(name)
     }
 
     pub fn remove_symbol(&mut self, name: Symbol) {
@@ -109,18 +113,27 @@ impl Context {
         self.symbol_table.get(name)
     }
 
-    pub fn add_macro(&mut self, name: impl IntoSymbol, array: impl Into<Rc<NodeArray>>) {
-        let name = name.into_symbol(self);
+    pub fn add_macro(&mut self, name: impl IntoSymbol, array: impl Into<Rc<NodeArray>>) -> crate::Result {
+        let name = name.into_symbol(self)?;
+        self.macros.insert(name, array.into());
+        Ok(())
+    }
+
+    pub fn add_required_macro(&mut self, name: impl IntoSymbol, array: impl Into<Rc<NodeArray>>) {
+        let name = name.into_required_symbol(self);
         self.macros.insert(name, array.into());
     }
 
-    pub fn add_macro_define(&mut self, name: impl IntoSymbol) {
-        self.add_macro(name, arson_array![1]);
+    pub fn add_macro_define(&mut self, name: impl IntoSymbol, value: bool) -> crate::Result {
+        self.add_macro(name, arson_array![value])
     }
 
-    pub fn remove_macro(&mut self, name: impl IntoSymbol) {
-        let name = name.into_symbol(self);
-        self.macros.remove(&name);
+    pub fn add_required_macro_define(&mut self, name: impl IntoSymbol, value: bool) {
+        self.add_required_macro(name, arson_array![value])
+    }
+
+    pub fn remove_macro(&mut self, name: &Symbol) {
+        self.macros.remove(name);
     }
 
     pub fn get_macro(&self, name: impl IntoSymbol) -> Option<Rc<NodeArray>> {
@@ -149,36 +162,66 @@ impl Context {
     }
 
     pub fn set_variable(&mut self, name: impl IntoSymbol, value: impl Into<Node>) -> Option<Node> {
-        let name = name.into_symbol(self);
+        let name = name.into_required_symbol(self);
         self.variables.insert(name, value.into())
     }
 
-    pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F) -> bool
+    pub fn register_func<F>(&mut self, name: impl IntoSymbol, func: F)
     where
         // note: mutable closures are not allowed due to the out-to-in execution model, which causes
         // problems when a command argument to a function calls the very same function again
         F: Fn(&mut Context, &NodeSlice) -> ExecuteResult + 'static,
     {
-        let name = name.into_symbol(self);
-        self.functions.insert(name, HandleFn::new(func)).is_none()
+        let name = name.into_required_symbol(self);
+        if self.functions.contains_key(&name) {
+            panic!("required function '{name}' is already registered");
+        }
+
+        self.functions.insert(name, HandleFn::new(func));
+    }
+
+    pub fn remove_func(&mut self, name: impl IntoSymbol) {
+        if let Some(name) = name.get_symbol(self) {
+            self.functions.remove(&name);
+        }
     }
 
     pub fn get_func(&self, name: impl IntoSymbol) -> Option<HandleFn> {
         name.get_symbol(self).and_then(|name| self.functions.get(&name).cloned())
     }
 
-    pub fn register_object<O>(&mut self, name: impl IntoSymbol, object: O) -> ObjectRef
+    pub fn register_object<O>(&mut self, name: impl IntoSymbol, object: O) -> crate::Result<ObjectRef>
     where
-        O: Object + 'static,
+        O: Object + Into<Rc<O>>,
     {
-        let name = name.into_symbol(self);
-        let object = Rc::new(object);
+        let name = name.into_symbol(self)?;
+        let object = object.into();
+        self.objects.insert(name, object.clone());
+        Ok(object)
+    }
+
+    pub fn register_required_object<O>(&mut self, name: impl IntoSymbol, object: O) -> ObjectRef
+    where
+        O: Object + Into<Rc<O>>,
+    {
+        let name = name.into_required_symbol(self);
+        if self.objects.contains_key(&name) {
+            panic!("required object '{name}' is already registered");
+        }
+
+        let object = object.into();
         self.objects.insert(name, object.clone());
         object
     }
 
     pub fn get_object(&self, name: impl IntoSymbol) -> Option<ObjectRef> {
         name.get_symbol(self).and_then(|name| self.objects.get(&name).cloned())
+    }
+
+    pub fn remove_object(&mut self, name: impl IntoSymbol) {
+        if let Some(name) = name.get_symbol(self) {
+            self.objects.remove(&name);
+        }
     }
 
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
@@ -200,9 +243,7 @@ impl Context {
                 }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,
-            result => {
-                return Err(ExecutionError::NotAHandler(result.to_string(), result.get_kind()).into())
-            },
+            result => return Err(ExecutionError::NotAHandler(result.to_string(), result.get_kind()).into()),
         };
 
         if let NodeValue::Unhandled = result.unevaluated() {
@@ -269,13 +310,18 @@ impl Default for Context {
 /// assert_eq!(context.get_variable("text2"), "some text".into());
 /// ```
 pub trait IntoSymbol {
-    fn into_symbol(self, context: &mut Context) -> Symbol;
+    fn into_symbol(self, context: &mut Context) -> crate::Result<Symbol>;
+    fn into_required_symbol(self, context: &mut Context) -> Symbol;
     fn get_symbol(self, context: &Context) -> Option<Symbol>;
 }
 
 impl<N: AsRef<str>> IntoSymbol for N {
-    fn into_symbol(self, context: &mut Context) -> Symbol {
+    fn into_symbol(self, context: &mut Context) -> crate::Result<Symbol> {
         context.add_symbol(self.as_ref())
+    }
+
+    fn into_required_symbol(self, context: &mut Context) -> Symbol {
+        context.add_required_symbol(self.as_ref())
     }
 
     fn get_symbol(self, context: &Context) -> Option<Symbol> {
@@ -284,7 +330,11 @@ impl<N: AsRef<str>> IntoSymbol for N {
 }
 
 impl IntoSymbol for Symbol {
-    fn into_symbol(self, _context: &mut Context) -> Symbol {
+    fn into_symbol(self, _context: &mut Context) -> crate::Result<Symbol> {
+        Ok(self)
+    }
+
+    fn into_required_symbol(self, _context: &mut Context) -> Symbol {
         self
     }
 
@@ -294,7 +344,11 @@ impl IntoSymbol for Symbol {
 }
 
 impl IntoSymbol for &Symbol {
-    fn into_symbol(self, _context: &mut Context) -> Symbol {
+    fn into_symbol(self, _context: &mut Context) -> crate::Result<Symbol> {
+        Ok(self.clone())
+    }
+
+    fn into_required_symbol(self, _context: &mut Context) -> Symbol {
         self.clone()
     }
 

@@ -11,8 +11,12 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(name: &str, context: &mut Context) -> Self {
-        let symbol = context.add_symbol(name);
+    pub fn new(name: &str, context: &mut Context) -> crate::Result<Self> {
+        context.add_symbol(name).map(|symbol| Self { symbol })
+    }
+
+    pub fn new_required(name: &str, context: &mut Context) -> Self {
+        let symbol = context.add_required_symbol(name);
         Self { symbol }
     }
 

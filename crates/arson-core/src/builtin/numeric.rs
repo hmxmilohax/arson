@@ -4,8 +4,8 @@ use crate::prelude::*;
 use crate::{FloatValue, Integer, IntegerValue, Number};
 
 pub fn register_funcs(context: &mut Context) {
-    context.add_macro("TRUE", arson_array![1]);
-    context.add_macro("FALSE", arson_array![0]);
+    context.add_required_macro("TRUE", arson_array![true]);
+    context.add_required_macro("FALSE", arson_array![false]);
 
     bits::register_funcs(context);
     sign::register_funcs(context);

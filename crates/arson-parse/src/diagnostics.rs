@@ -55,6 +55,8 @@ pub enum DiagnosticKind {
     IntegerParseError(#[from] std::num::ParseIntError),
     #[error("float parse error")]
     FloatParseError(#[from] std::num::ParseFloatError),
+    #[error("symbol exceeds safety limit")]
+    SymbolTooLong,
 
     #[error("unrecognized parser directive")]
     BadDirective,
@@ -114,8 +116,7 @@ impl Diagnostic {
             .with_message(self.to_string())
             .with_labels(vec![Label::primary(file_id.clone(), self.location.clone())]);
 
-        // There are gaps in the error codes here to ease adding additional errors in the future.
-        // TODO: These gaps should be removed once things are stabilized.
+        // There are gaps in the error codes here to ease adding additional errors in the future
         match &self.kind {
             DiagnosticKind::UnexpectedEof => diagnostic
                 .with_code("DTA0000"),
@@ -135,6 +136,9 @@ impl Diagnostic {
             DiagnosticKind::FloatParseError(error) => diagnostic
                 .with_code("DTA0007")
                 .with_notes(vec![error.to_string()]),
+            DiagnosticKind::SymbolTooLong => diagnostic
+                .with_code("DTA0008")
+                .with_notes(vec![format!("max symbol length is {}", crate::MAX_SYMBOL_LENGTH)]),
 
             DiagnosticKind::BadDirective => diagnostic
                 .with_code("DTA0010"),
@@ -188,6 +192,7 @@ impl DiagnosticKind {
                 DiagnosticKind::TrimDelimiterError { .. } => 5,
                 DiagnosticKind::IntegerParseError(_) => 6,
                 DiagnosticKind::FloatParseError(_) => 7,
+                DiagnosticKind::SymbolTooLong => 8,
 
                 DiagnosticKind::BadDirective => 10,
                 DiagnosticKind::MissingDirectiveArgument { .. } => 11,

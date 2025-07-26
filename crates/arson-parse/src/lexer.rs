@@ -198,8 +198,8 @@ make_tokens! {
 
     // Symbol consumes almost all input which doesn't match any other token,
     // including technically malformed versions of integers/floats
-    #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| Cow::Borrowed(lex.slice()), priority = 0)]
-    #[regex(r#"'[^']*'"#, |lex| trim_delimiters(lex.slice(), 1, 1))]
+    #[regex(r#"[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| parse_symbol(lex, 0, 0), priority = 0)]
+    #[regex(r#"'[^']*'"#, |lex| parse_symbol(lex, 1, 1))]
     Symbol(Cow<'src, str>) {
         kind_display: "symbol",
         value_display: |f, value| {
@@ -211,7 +211,7 @@ make_tokens! {
             }
         },
     },
-    #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| trim_delimiters(lex.slice(), 1, 0))]
+    #[regex(r#"\$[^ \v\t\r\n\f\(\)\[\]\{\}]+"#, |lex| parse_symbol(lex, 1, 0))]
     Variable(Cow<'src, str>) {
         kind_display: "variable",
         value_display: |f, value| write!(f, "${}", value),
@@ -380,6 +380,19 @@ fn parse_float(lex: &mut Lexer<'_>) -> Result<FloatValue, std::num::ParseFloatEr
             _ => Err(err),
         },
     }
+}
+
+fn parse_symbol<'src>(
+    lex: &mut Lexer<'src>,
+    before: usize,
+    after: usize,
+) -> Result<Cow<'src, str>, DiagnosticKind> {
+    let trimmed = trim_delimiters(lex.slice(), before, after)?;
+    if trimmed.len() > crate::MAX_SYMBOL_LENGTH {
+        return Err(DiagnosticKind::SymbolTooLong);
+    }
+
+    Ok(trimmed)
 }
 
 fn parse_block_comment<'src>(lex: &mut Lexer<'src>) -> Result<BlockCommentToken<'src>, DiagnosticKind> {

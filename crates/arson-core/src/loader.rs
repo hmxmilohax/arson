@@ -45,6 +45,9 @@ pub enum LoadError {
     #[error("Error occurred in #autorun block: {0}")]
     AutorunError(#[source] crate::Error),
 
+    #[error(transparent)]
+    CoreError(#[from] crate::Error),
+
     #[error("Encountered errors while including other files")]
     Inner(Vec<LoadError>),
 }
@@ -134,13 +137,13 @@ impl<'ctx> Loader<'ctx> {
             ExpressionValue::String(value) => value.replace("\\q", "\"").replace("\\n", "\n").into(),
 
             ExpressionValue::Symbol(value) => {
-                let symbol = self.context.add_symbol(&value);
+                let symbol = self.context.add_symbol(&value)?;
                 match self.context.get_macro(&symbol) {
                     Some(replacement) => return Ok(NodeResult::IncludeMacro(replacement)),
                     None => symbol.into(),
                 }
             },
-            ExpressionValue::Variable(value) => Variable::new(&value, self.context).into(),
+            ExpressionValue::Variable(value) => Variable::new(&value, self.context)?.into(),
             ExpressionValue::Unhandled => Node::UNHANDLED,
 
             ExpressionValue::Array(exprs) => self.load_array(exprs)?.into(),
@@ -148,9 +151,9 @@ impl<'ctx> Loader<'ctx> {
             ExpressionValue::Property(exprs) => NodeProperty::from(self.load_array(exprs)?).into(),
 
             ExpressionValue::Define(name, exprs) => {
-                let name = self.context.add_symbol(&name.text);
+                let name = self.context.add_symbol(&name.text)?;
                 let define = self.load_array(exprs.exprs)?;
-                self.context.add_macro(&name, define);
+                self.context.add_macro(&name, define)?;
                 return Ok(NodeResult::Skip);
             },
             ExpressionValue::Undefine(name) => {
@@ -372,9 +375,9 @@ mod tests {
     fn symbol() {
         let mut context = Context::new();
 
-        let sym_asdf = context.add_symbol("asdf");
-        let sym_plus = context.add_symbol("+");
-        let sym_10 = context.add_symbol("10");
+        let sym_asdf = context.add_required_symbol("asdf");
+        let sym_plus = context.add_required_symbol("+");
+        let sym_10 = context.add_required_symbol("10");
 
         assert_loaded(&mut context, "asdf + '10'", arson_array![sym_asdf, sym_plus, sym_10]);
     }
@@ -383,8 +386,8 @@ mod tests {
     fn variable() {
         let mut context = Context::new();
 
-        let var_asdf = Variable::new("asdf", &mut context);
-        let var_this = Variable::new("this", &mut context);
+        let var_asdf = Variable::new_required("asdf", &mut context);
+        let var_this = Variable::new_required("this", &mut context);
 
         assert_loaded(&mut context, "$asdf $this", arson_array![var_asdf, var_this]);
     }
@@ -400,28 +403,28 @@ mod tests {
         let mut context = Context::new();
 
         {
-            let sym_asdf = context.add_symbol("asdf");
+            let sym_asdf = context.add_required_symbol("asdf");
             let array = arson_array![sym_asdf, "text", 1];
             assert_loaded(&mut context, "(asdf \"text\" 1)", arson_array![array]);
         }
 
         {
-            let sym_set = context.add_symbol("set");
-            let var_var = Variable::new("var", &mut context);
+            let sym_set = context.add_required_symbol("set");
+            let var_var = Variable::new_required("var", &mut context);
             let command = NodeCommand::from(arson_array![sym_set, var_var, "asdf"]);
             assert_loaded(&mut context, "{set $var \"asdf\"}", arson_array![command]);
         }
 
         {
-            let sym_asdf = context.add_symbol("asdf");
+            let sym_asdf = context.add_required_symbol("asdf");
             let property = NodeProperty::from(arson_array![sym_asdf]);
             assert_loaded(&mut context, "[asdf]", arson_array![property]);
         }
 
         {
-            let sym_handle = context.add_symbol("handle");
-            let sym_set = context.add_symbol("set");
-            let sym_var = context.add_symbol("var");
+            let sym_handle = context.add_required_symbol("handle");
+            let sym_set = context.add_required_symbol("set");
+            let sym_var = context.add_required_symbol("var");
 
             let property = NodeProperty::from(arson_array![sym_var]);
             let command = NodeCommand::from(arson_array![sym_set, property, "asdf"]);
@@ -436,7 +439,7 @@ mod tests {
         let mut context = Context::new();
 
         #[allow(non_snake_case)]
-        let sym_kDefine = context.add_symbol("kDefine");
+        let sym_kDefine = context.add_required_symbol("kDefine");
         assert_eq!(context.get_macro(&sym_kDefine), None);
 
         assert_loaded(&mut context, "#define kDefine (1)", arson_array![]);
@@ -482,7 +485,7 @@ mod tests {
 
         // Ensure working directory behaves properly during includes
         let cwd = context.file_system().unwrap().cwd().clone();
-        let sym_included = context.add_symbol("included");
+        let sym_included = context.add_required_symbol("included");
         assert_loaded(&mut context, "(included #include ./config/config.dta)", arson_array![
             arson_array![sym_included, 1, 2, 3, 4, 5]
         ]);
@@ -501,12 +504,12 @@ mod tests {
         assert_loaded(&mut context, "#include_opt nonexistent.dta", arson_array![]);
 
         // Ensure #merge overrides included keys with already-present ones
-        let sym_number = context.add_symbol("number");
-        let sym_string = context.add_symbol("string");
-        let sym_list = context.add_symbol("list");
-        let sym_number2 = context.add_symbol("number2");
-        let sym_string2 = context.add_symbol("string2");
-        let sym_list2 = context.add_symbol("list2");
+        let sym_number = context.add_required_symbol("number");
+        let sym_string = context.add_required_symbol("string");
+        let sym_list = context.add_required_symbol("list");
+        let sym_number2 = context.add_required_symbol("number2");
+        let sym_string2 = context.add_required_symbol("string2");
+        let sym_list2 = context.add_required_symbol("list2");
         assert_loaded(
             &mut context,
             "
@@ -594,11 +597,11 @@ mod tests {
     fn conditionals() {
         let mut context = Context::new();
 
-        let sym_define = context.add_symbol("kDefine");
+        let sym_define = context.add_required_symbol("kDefine");
 
-        let sym_array = context.add_symbol("array");
-        let sym_array1 = context.add_symbol("array1");
-        let sym_array2 = context.add_symbol("array2");
+        let sym_array = context.add_required_symbol("array");
+        let sym_array1 = context.add_required_symbol("array1");
+        let sym_array2 = context.add_required_symbol("array2");
 
         // kDefine should not be set by default
         assert_loaded(
@@ -611,7 +614,7 @@ mod tests {
         ]);
 
         // Setting it causes the true paths to be taken
-        context.add_macro_define(&sym_define);
+        context.add_required_macro_define(&sym_define, true);
         assert_loaded(
             &mut context,
             "#ifdef kDefine (array1 10) #else (array2 5) #endif",

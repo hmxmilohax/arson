@@ -197,7 +197,7 @@ macro_rules! value_or_else {
         if let Some(node) = $value {
             $map(node, $context, $default)
         } else {
-            Ok($default())
+            $default($context)
         }
     };
     ($value:expr, $map:expr, $default:ident) => {
@@ -317,35 +317,35 @@ impl NodeSlice {
     }
 
     pub fn integer_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Integer>> {
-        self.get_opt(index).and_then(|n| n.integer_opt(context))
+        self.get_opt(index).and_then(|n| n.integer_opt(context).transpose())
     }
 
     pub fn float_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<FloatValue>> {
-        self.get_opt(index).and_then(|n| n.float_opt(context))
+        self.get_opt(index).and_then(|n| n.float_opt(context).transpose())
     }
 
     pub fn number_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Number>> {
-        self.get_opt(index).and_then(|n| n.number_opt(context))
+        self.get_opt(index).and_then(|n| n.number_opt(context).transpose())
     }
 
     pub fn size_integer_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<usize>> {
-        self.get_opt(index).and_then(|n| n.size_integer_opt(context))
+        self.get_opt(index).and_then(|n| n.size_integer_opt(context).transpose())
     }
 
     pub fn string_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Rc<String>>> {
-        self.get_opt(index).and_then(|n| n.string_opt(context))
+        self.get_opt(index).and_then(|n| n.string_opt(context).transpose())
     }
 
     pub fn symbol_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Symbol>> {
-        self.get_opt(index).and_then(|n| n.symbol_opt(context))
+        self.get_opt(index).and_then(|n| n.symbol_opt(context).transpose())
     }
 
     pub fn force_symbol_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Symbol>> {
-        self.get_opt(index).and_then(|n| n.force_symbol_opt(context))
+        self.get_opt(index).and_then(|n| n.force_symbol_opt(context).transpose())
     }
 
     pub fn array_tag_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<ArrayTag>> {
-        self.get_opt(index).and_then(|n| n.array_tag_opt(context))
+        self.get_opt(index).and_then(|n| n.array_tag_opt(context).transpose())
     }
 
     pub fn variable_opt(&self, index: usize) -> Option<&Variable> {
@@ -359,11 +359,11 @@ impl NodeSlice {
     }
 
     pub fn object_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<ObjectRef>> {
-        self.get_opt(index)?.object_opt(context)
+        self.get_opt(index).and_then(|n| n.object_opt(context).transpose())
     }
 
     pub fn array_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<ArrayRef>> {
-        self.get_opt(index)?.array_opt(context)
+        self.get_opt(index).and_then(|n| n.array_opt(context).transpose())
     }
 
     pub fn command_opt(&self, index: usize) -> Option<&Rc<NodeCommand>> {
@@ -440,7 +440,7 @@ impl NodeSlice {
         index: usize,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        index_value_or!(self, context, index, Node::symbol_or, default => default.into_symbol(context))
+        index_value_or!(self, context, index, Node::symbol_or, default => default.into_symbol(context)?)
     }
 
     pub fn force_symbol_or(
@@ -449,7 +449,7 @@ impl NodeSlice {
         index: usize,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        index_value_or!(self, context, index, Node::force_symbol_or, default => default.into_symbol(context))
+        index_value_or!(self, context, index, Node::force_symbol_or, default => default.into_symbol(context)?)
     }
 
     pub fn array_tag_or(
@@ -501,18 +501,18 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> NodeValue,
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeValue>,
     ) -> crate::Result<NodeValue> {
         self.get_opt(index)
             .map(|n| n.evaluate(context))
-            .unwrap_or_else(|| Ok(default()))
+            .unwrap_or_else(|| default(context))
     }
 
     pub fn integer_or_else(
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> Integer,
+        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
     ) -> crate::Result<Integer> {
         index_value_or_else!(self, context, index, Node::integer_or_else, default)
     }
@@ -521,7 +521,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> FloatValue,
+        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
     ) -> crate::Result<FloatValue> {
         index_value_or_else!(self, context, index, Node::float_or_else, default)
     }
@@ -530,7 +530,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> Number,
+        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
     ) -> crate::Result<Number> {
         index_value_or_else!(self, context, index, Node::number_or_else, default)
     }
@@ -539,7 +539,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> usize,
+        default: impl FnOnce(&mut Context) -> crate::Result<usize>,
     ) -> crate::Result<usize> {
         index_value_or_else!(self, context, index, Node::size_integer_or_else, default)
     }
@@ -548,7 +548,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> Rc<String>,
+        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
     ) -> crate::Result<Rc<String>> {
         index_value_or_else!(self, context, index, Node::string_or_else, default)
     }
@@ -557,7 +557,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
         index_value_or_else!(self, context, index, Node::symbol_or_else, default)
     }
@@ -566,7 +566,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
         index_value_or_else!(self, context, index, Node::force_symbol_or_else, default)
     }
@@ -575,12 +575,16 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> ArrayTag,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayTag>,
     ) -> crate::Result<ArrayTag> {
         index_value_or_else!(self, context, index, Node::array_tag_or_else, default)
     }
 
-    pub fn variable_or_else(&self, index: usize, default: impl FnOnce() -> Variable) -> Variable {
+    pub fn variable_or_else(
+        &self,
+        index: usize,
+        default: impl FnOnce() -> crate::Result<Variable>,
+    ) -> crate::Result<Variable> {
         index_value_or_else!(self, index, Node::variable_or_else, default)
     }
 
@@ -588,7 +592,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> ObjectRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ObjectRef>,
     ) -> crate::Result<ObjectRef> {
         index_value_or_else!(self, context, index, Node::object_or_else, default)
     }
@@ -597,7 +601,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce() -> ArrayRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayRef>,
     ) -> crate::Result<ArrayRef> {
         index_value_or_else!(self, context, index, Node::array_or_else, default)
     }
@@ -605,16 +609,16 @@ impl NodeSlice {
     pub fn command_or_else(
         &self,
         index: usize,
-        default: impl FnOnce() -> Rc<NodeCommand>,
-    ) -> Rc<NodeCommand> {
+        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
+    ) -> crate::Result<Rc<NodeCommand>> {
         index_value_or_else!(self, index, Node::command_or_else, default)
     }
 
     pub fn property_or_else(
         &self,
         index: usize,
-        default: impl FnOnce() -> Rc<NodeProperty>,
-    ) -> Rc<NodeProperty> {
+        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
+    ) -> crate::Result<Rc<NodeProperty>> {
         index_value_or_else!(self, index, Node::property_or_else, default)
     }
 }
@@ -716,18 +720,6 @@ macro_rules! find_pred_impl {
                     $err_string_block
                 }
             }
-
-            // Using a blanket implementation for this isn't possible due to the
-            // impl for Fn(&NodeValue) -> bool, which inherently handles references
-            impl FindDataPredicate for &$type {
-                fn matches(&self, value: &NodeValue) -> bool {
-                    FindDataPredicate::matches(*self, value)
-                }
-
-                fn err_string(&self) -> String {
-                    FindDataPredicate::err_string(*self)
-                }
-            }
         )+
     };
 }
@@ -759,64 +751,78 @@ find_pred_impl! {
     },
 }
 
-impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for F {
+// TODO: Custom predicate function
+// struct FindDataFn<F: Fn(&NodeValue) -> bool>(F);
+
+// impl<F: Fn(&NodeValue) -> bool> FindDataPredicate for FindDataFn<F> {
+//     fn matches(&self, value: &NodeValue) -> bool {
+//         self.0(value)
+//     }
+
+//     fn err_string(&self) -> String {
+//         "custom predicate".to_owned()
+//     }
+// }
+
+impl<T: FindDataPredicate> FindDataPredicate for &T {
     fn matches(&self, value: &NodeValue) -> bool {
-        self(value)
+        FindDataPredicate::matches(*self, value)
     }
 
     fn err_string(&self) -> String {
-        "custom predicate".to_owned()
+        FindDataPredicate::err_string(*self)
     }
 }
-
-// Clashes with the Fn(&NodeValue) -> bool implementation
-// impl<T: FindDataPredicate> FindDataPredicate for &T {
-//     fn matches(&self, value: &NodeValue) -> bool {
-//         FindDataPredicate::matches(*self, value)
-//     }
-// }
 
 pub trait IntoDataPredicate {
     type Target: FindDataPredicate;
 
-    fn into_predicate(self) -> Self::Target;
+    fn into_predicate(self) -> crate::Result<Self::Target>;
 }
 
 impl<T: FindDataPredicate> IntoDataPredicate for T {
     type Target = T;
 
-    fn into_predicate(self) -> Self::Target {
-        self
+    fn into_predicate(self) -> crate::Result<Self::Target> {
+        Ok(self)
     }
 }
 
 impl<T: AsRef<str>> IntoDataPredicate for (&mut Context, T) {
     type Target = Symbol;
 
-    fn into_predicate(self) -> Self::Target {
+    fn into_predicate(self) -> crate::Result<Self::Target> {
         self.0.add_symbol(self.1.as_ref())
     }
 }
+
+// impl<F: Fn(&NodeValue) -> bool> IntoDataPredicate for F {
+//     type Target = FindDataFn<F>;
+
+//     fn into_predicate(self) -> crate::Result<Self::Target> {
+//         Ok(FindDataFn(self))
+//     }
+// }
 
 // this is kinda stupid lol
 pub trait IntoIntoDataPredicate {
     type Target: IntoDataPredicate;
 
-    fn into_predicate(self, context: &mut Context) -> Self::Target;
+    fn into_predicate(self, context: &mut Context) -> crate::Result<Self::Target>;
 }
 
 impl<T: IntoDataPredicate> IntoIntoDataPredicate for T {
     type Target = T;
 
-    fn into_predicate(self, _context: &mut Context) -> Self::Target {
-        self
+    fn into_predicate(self, _context: &mut Context) -> crate::Result<Self::Target> {
+        Ok(self)
     }
 }
 
 impl IntoIntoDataPredicate for &str {
     type Target = Symbol;
 
-    fn into_predicate(self, context: &mut Context) -> Self::Target {
+    fn into_predicate(self, context: &mut Context) -> crate::Result<Self::Target> {
         context.add_symbol(self)
     }
 }
@@ -824,7 +830,7 @@ impl IntoIntoDataPredicate for &str {
 impl IntoIntoDataPredicate for &String {
     type Target = Symbol;
 
-    fn into_predicate(self, context: &mut Context) -> Self::Target {
+    fn into_predicate(self, context: &mut Context) -> crate::Result<Self::Target> {
         context.add_symbol(self)
     }
 }
@@ -832,7 +838,7 @@ impl IntoIntoDataPredicate for &String {
 macro_rules! predicate_value_or {
     ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident) => {
         value_or!(
-            &$self.find_data_opt($predicate.into_predicate($context)),
+            &$self.find_data_opt($predicate.into_predicate($context)?),
             $context,
             $map,
             $default
@@ -840,7 +846,7 @@ macro_rules! predicate_value_or {
     };
     ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident => $make_default:expr) => {
         value_or!(
-            &$self.find_data_opt($predicate.into_predicate($context)),
+            &$self.find_data_opt($predicate.into_predicate($context)?),
             $context,
             $map,
             $default => $make_default
@@ -854,7 +860,7 @@ macro_rules! predicate_value_or {
 macro_rules! predicate_value_or_else {
     ($self:ident, $context:ident, $predicate:ident, $map:expr, $default:ident) => {
         value_or_else!(
-            &$self.find_data_opt($predicate.into_predicate($context)),
+            &$self.find_data_opt($predicate.into_predicate($context)?),
             $context,
             $map,
             $default
@@ -876,7 +882,7 @@ macro_rules! predicate_value_or_else {
 // Data retrieval by predicate
 impl NodeSlice {
     pub fn find_tag(&self, predicate: impl IntoDataPredicate) -> crate::Result<ArrayRef> {
-        let predicate = predicate.into_predicate();
+        let predicate = predicate.into_predicate()?;
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -903,7 +909,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Integer> {
-        self.find_data(predicate.into_predicate(context))?.integer(context)
+        self.find_data(predicate.into_predicate(context)?)?.integer(context)
     }
 
     pub fn find_float(
@@ -911,7 +917,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<FloatValue> {
-        self.find_data(predicate.into_predicate(context))?.float(context)
+        self.find_data(predicate.into_predicate(context)?)?.float(context)
     }
 
     pub fn find_number(
@@ -919,7 +925,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Number> {
-        self.find_data(predicate.into_predicate(context))?.number(context)
+        self.find_data(predicate.into_predicate(context)?)?.number(context)
     }
 
     pub fn find_size_integer(
@@ -927,7 +933,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<usize> {
-        self.find_data(predicate.into_predicate(context))?.size_integer(context)
+        self.find_data(predicate.into_predicate(context)?)?.size_integer(context)
     }
 
     pub fn find_boolean(
@@ -935,7 +941,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<bool> {
-        self.find_data(predicate.into_predicate(context))?.boolean(context)
+        self.find_data(predicate.into_predicate(context)?)?.boolean(context)
     }
 
     pub fn find_string(
@@ -943,7 +949,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Rc<String>> {
-        self.find_data(predicate.into_predicate(context))?.string(context)
+        self.find_data(predicate.into_predicate(context)?)?.string(context)
     }
 
     pub fn find_symbol(
@@ -951,7 +957,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Symbol> {
-        self.find_data(predicate.into_predicate(context))?.symbol(context)
+        self.find_data(predicate.into_predicate(context)?)?.symbol(context)
     }
 
     pub fn find_symbol_forced(
@@ -959,7 +965,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<Symbol> {
-        self.find_data(predicate.into_predicate(context))?.force_symbol(context)
+        self.find_data(predicate.into_predicate(context)?)?.force_symbol(context)
     }
 
     pub fn find_array_tag(
@@ -967,7 +973,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<ArrayTag> {
-        self.find_data(predicate.into_predicate(context))?.array_tag(context)
+        self.find_data(predicate.into_predicate(context)?)?.array_tag(context)
     }
 
     pub fn find_variable(&self, predicate: impl IntoDataPredicate) -> crate::Result<Variable> {
@@ -979,7 +985,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<ObjectRef> {
-        self.find_data(predicate.into_predicate(context))?.object(context)
+        self.find_data(predicate.into_predicate(context)?)?.object(context)
     }
 
     pub fn find_array(
@@ -987,7 +993,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> crate::Result<ArrayRef> {
-        self.find_data(predicate.into_predicate(context))?.array(context)
+        self.find_data(predicate.into_predicate(context)?)?.array(context)
     }
 
     pub fn find_command(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeCommand>> {
@@ -999,10 +1005,23 @@ impl NodeSlice {
     }
 }
 
+macro_rules! find_opt {
+    ($self:ident, $predicate:ident, $context:ident) => {{
+        let Ok(predicate) = $predicate.into_predicate($context) else {
+            return None;
+        };
+
+        $self.find_data_opt(predicate)
+    }};
+}
+
 // Optional data retrieval by predicate
 impl NodeSlice {
     pub fn find_tag_opt(&self, predicate: impl IntoDataPredicate) -> Option<ArrayRef> {
-        let predicate = predicate.into_predicate();
+        let Ok(predicate) = predicate.into_predicate() else {
+            return None;
+        };
+
         for node in self.iter() {
             let NodeValue::Array(array) = node.unevaluated() else {
                 continue;
@@ -1036,7 +1055,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<Integer>> {
-        self.find_data_opt(predicate.into_predicate(context))?.integer_opt(context)
+        find_opt!(self, predicate, context)?.integer_opt(context).transpose()
     }
 
     pub fn find_float_opt(
@@ -1044,7 +1063,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<FloatValue>> {
-        self.find_data_opt(predicate.into_predicate(context))?.float_opt(context)
+        find_opt!(self, predicate, context)?.float_opt(context).transpose()
     }
 
     pub fn find_number_opt(
@@ -1052,7 +1071,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<Number>> {
-        self.find_data_opt(predicate.into_predicate(context))?.number_opt(context)
+        find_opt!(self, predicate, context)?.number_opt(context).transpose()
     }
 
     pub fn find_size_integer_opt(
@@ -1060,8 +1079,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<usize>> {
-        self.find_data_opt(predicate.into_predicate(context))?
-            .size_integer_opt(context)
+        find_opt!(self, predicate, context)?.size_integer_opt(context).transpose()
     }
 
     pub fn find_string_opt(
@@ -1069,7 +1087,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<Rc<String>>> {
-        self.find_data_opt(predicate.into_predicate(context))?.string_opt(context)
+        find_opt!(self, predicate, context)?.string_opt(context).transpose()
     }
 
     pub fn find_symbol_opt(
@@ -1077,7 +1095,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<Symbol>> {
-        self.find_data_opt(predicate.into_predicate(context))?.symbol_opt(context)
+        find_opt!(self, predicate, context)?.symbol_opt(context).transpose()
     }
 
     pub fn find_symbol_forced_opt(
@@ -1085,8 +1103,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<Symbol>> {
-        self.find_data_opt(predicate.into_predicate(context))?
-            .force_symbol_opt(context)
+        find_opt!(self, predicate, context)?.force_symbol_opt(context).transpose()
     }
 
     pub fn find_array_tag_opt(
@@ -1094,8 +1111,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<ArrayTag>> {
-        self.find_data_opt(predicate.into_predicate(context))?
-            .array_tag_opt(context)
+        find_opt!(self, predicate, context)?.array_tag_opt(context).transpose()
     }
 
     pub fn find_variable_opt(&self, predicate: impl IntoDataPredicate) -> Option<Variable> {
@@ -1107,7 +1123,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<ObjectRef>> {
-        self.find_data_opt(predicate.into_predicate(context))?.object_opt(context)
+        find_opt!(self, predicate, context)?.object_opt(context).transpose()
     }
 
     pub fn find_array_opt(
@@ -1115,7 +1131,7 @@ impl NodeSlice {
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
     ) -> Option<crate::Result<ArrayRef>> {
-        self.find_data_opt(predicate.into_predicate(context))?.array_opt(context)
+        find_opt!(self, predicate, context)?.array_opt(context).transpose()
     }
 
     pub fn find_command_opt(&self, predicate: impl IntoDataPredicate) -> Option<Rc<NodeCommand>> {
@@ -1188,7 +1204,7 @@ impl NodeSlice {
         predicate: impl IntoIntoDataPredicate,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        predicate_value_or!(self, context, predicate, Node::symbol_or, default => default.into_symbol(context))
+        predicate_value_or!(self, context, predicate, Node::symbol_or, default => default.into_symbol(context)?)
     }
 
     pub fn find_force_symbol_or(
@@ -1197,7 +1213,7 @@ impl NodeSlice {
         predicate: impl IntoIntoDataPredicate,
         default: impl IntoSymbol,
     ) -> crate::Result<Symbol> {
-        predicate_value_or!(self, context, predicate, Node::force_symbol_or, default => default.into_symbol(context))
+        predicate_value_or!(self, context, predicate, Node::force_symbol_or, default => default.into_symbol(context)?)
     }
 
     pub fn find_array_tag_or(
@@ -1250,24 +1266,32 @@ impl NodeSlice {
     pub fn find_tag_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> ArrayRef,
-    ) -> ArrayRef {
-        self.find_tag_opt(predicate).unwrap_or_else(default)
+        default: impl FnOnce() -> crate::Result<ArrayRef>,
+    ) -> crate::Result<ArrayRef> {
+        if let Some(tag) = self.find_tag_opt(predicate) {
+            return Ok(tag);
+        }
+
+        default()
     }
 
     pub fn find_data_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> Node,
-    ) -> Node {
-        self.find_data_opt(predicate).unwrap_or_else(default)
+        default: impl FnOnce() -> crate::Result<Node>,
+    ) -> crate::Result<Node> {
+        if let Some(data) = self.find_data_opt(predicate) {
+            return Ok(data);
+        }
+
+        default()
     }
 
     pub fn find_integer_or_else(
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> Integer,
+        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
     ) -> crate::Result<Integer> {
         predicate_value_or_else!(self, context, predicate, Node::integer_or_else, default)
     }
@@ -1276,7 +1300,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> FloatValue,
+        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
     ) -> crate::Result<FloatValue> {
         predicate_value_or_else!(self, context, predicate, Node::float_or_else, default)
     }
@@ -1285,7 +1309,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> Number,
+        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
     ) -> crate::Result<Number> {
         predicate_value_or_else!(self, context, predicate, Node::number_or_else, default)
     }
@@ -1294,7 +1318,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> usize,
+        default: impl FnOnce(&mut Context) -> crate::Result<usize>,
     ) -> crate::Result<usize> {
         predicate_value_or_else!(self, context, predicate, Node::size_integer_or_else, default)
     }
@@ -1303,7 +1327,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> Rc<String>,
+        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
     ) -> crate::Result<Rc<String>> {
         predicate_value_or_else!(self, context, predicate, Node::string_or_else, default)
     }
@@ -1312,7 +1336,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
         predicate_value_or_else!(self, context, predicate, Node::symbol_or_else, default)
     }
@@ -1321,7 +1345,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> Symbol,
+        default: impl FnOnce(&mut Context) -> crate::Result<Symbol>,
     ) -> crate::Result<Symbol> {
         predicate_value_or_else!(self, context, predicate, Node::force_symbol_or_else, default)
     }
@@ -1330,7 +1354,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> ArrayTag,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayTag>,
     ) -> crate::Result<ArrayTag> {
         predicate_value_or_else!(self, context, predicate, Node::array_tag_or_else, default)
     }
@@ -1338,8 +1362,8 @@ impl NodeSlice {
     pub fn find_variable_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> Variable,
-    ) -> Variable {
+        default: impl FnOnce() -> crate::Result<Variable>,
+    ) -> crate::Result<Variable> {
         predicate_value_or_else!(self, predicate, Node::variable_or_else, default)
     }
 
@@ -1347,7 +1371,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> ObjectRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ObjectRef>,
     ) -> crate::Result<ObjectRef> {
         predicate_value_or_else!(self, context, predicate, Node::object_or_else, default)
     }
@@ -1356,7 +1380,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce() -> ArrayRef,
+        default: impl FnOnce(&mut Context) -> crate::Result<ArrayRef>,
     ) -> crate::Result<ArrayRef> {
         predicate_value_or_else!(self, context, predicate, Node::array_or_else, default)
     }
@@ -1364,16 +1388,16 @@ impl NodeSlice {
     pub fn find_command_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> Rc<NodeCommand>,
-    ) -> Rc<NodeCommand> {
+        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
+    ) -> crate::Result<Rc<NodeCommand>> {
         predicate_value_or_else!(self, predicate, Node::command_or_else, default)
     }
 
     pub fn find_property_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> Rc<NodeProperty>,
-    ) -> Rc<NodeProperty> {
+        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
+    ) -> crate::Result<Rc<NodeProperty>> {
         predicate_value_or_else!(self, predicate, Node::property_or_else, default)
     }
 }
@@ -1683,10 +1707,8 @@ impl NodeArray {
                 continue;
             };
 
-            let predicate: &dyn Fn(&NodeValue) -> bool = match source_tag.unevaluated() {
-                NodeValue::Symbol(left) => &move |right| *left == *right,
-                NodeValue::Integer(left) => &move |right| *left == *right,
-                _ => continue,
+            let Some(predicate) = source_tag.unevaluated().array_tag() else {
+                continue;
             };
 
             match self.find_tag_opt(predicate) {
@@ -1719,10 +1741,8 @@ impl NodeArray {
                     continue;
                 };
 
-                let predicate: &dyn Fn(&NodeValue) -> bool = match dest_tag.unevaluated() {
-                    NodeValue::Symbol(left) => &move |right| *left == *right,
-                    NodeValue::Integer(left) => &move |right| *left == *right,
-                    _ => continue,
+                let Some(predicate) = dest_tag.unevaluated().array_tag() else {
+                    continue;
                 };
 
                 let Some(found) = source.find_tag_opt(predicate) else {
@@ -2236,10 +2256,10 @@ mod tests {
     fn merge_tags() {
         let mut context = Context::new();
 
-        let sym1 = context.add_symbol("sym1");
-        let sym2 = context.add_symbol("sym2");
-        let sym_asdf = context.add_symbol("asdf");
-        let sym_jkl = context.add_symbol("jkl");
+        let sym1 = context.add_required_symbol("sym1");
+        let sym2 = context.add_required_symbol("sym2");
+        let sym_asdf = context.add_required_symbol("asdf");
+        let sym_jkl = context.add_required_symbol("jkl");
 
         /*
         (sym1 5)
@@ -2329,10 +2349,10 @@ mod tests {
     fn replace_tags() {
         let mut context = Context::new();
 
-        let sym1 = context.add_symbol("sym1");
-        let sym2 = context.add_symbol("sym2");
-        let sym_asdf = context.add_symbol("asdf");
-        let sym_jkl = context.add_symbol("jkl");
+        let sym1 = context.add_required_symbol("sym1");
+        let sym2 = context.add_required_symbol("sym2");
+        let sym_asdf = context.add_required_symbol("asdf");
+        let sym_jkl = context.add_required_symbol("jkl");
 
         /*
         (sym1 5)
@@ -2462,8 +2482,8 @@ mod tests {
         #[test]
         fn symbol() {
             let mut context = Context::new();
-            let sym = context.add_symbol("sym");
-            let sym_space = context.add_symbol("sym with\nwhitespace");
+            let sym = context.add_required_symbol("sym");
+            let sym_space = context.add_required_symbol("sym with\nwhitespace");
 
             assert_display_node(NodeValue::Symbol(sym), "(sym)");
             assert_display_node(NodeValue::Symbol(sym_space), "('sym with\nwhitespace')");
@@ -2472,8 +2492,8 @@ mod tests {
         #[test]
         fn variable() {
             let mut context = Context::new();
-            let var = Variable::new("var", &mut context);
-            let dollar_var = Variable::new("$var", &mut context);
+            let var = Variable::new_required("var", &mut context);
+            let dollar_var = Variable::new_required("$var", &mut context);
 
             assert_display_node(NodeValue::Variable(var), "($var)");
             assert_display_node(NodeValue::Variable(dollar_var), "($$var)");
@@ -2494,8 +2514,8 @@ mod tests {
         #[test]
         fn inner_arrays() {
             let mut context = Context::new();
-            let sym1 = context.add_symbol("sym1");
-            let sym2 = context.add_symbol("sym2");
+            let sym1 = context.add_required_symbol("sym1");
+            let sym2 = context.add_required_symbol("sym2");
 
             assert_display(
                 arson_array![sym1.clone(), arson_array![sym2.clone(), 100]],
@@ -2518,8 +2538,8 @@ mod tests {
         fn multiple_arrays() {
             let mut context = Context::new();
 
-            let sym1 = context.add_symbol("sym1");
-            let sym2 = context.add_symbol("sym2");
+            let sym1 = context.add_required_symbol("sym1");
+            let sym2 = context.add_required_symbol("sym2");
 
             #[rustfmt::skip] // preserve correlation between array formatting and display output
             assert_display(
@@ -2541,10 +2561,10 @@ mod tests {
         fn big_example() {
             let mut context = Context::new();
 
-            let sym1 = context.add_symbol("sym1");
-            let sym2 = context.add_symbol("sym2");
-            let sym_asdf = context.add_symbol("asdf");
-            let sym_jkl = context.add_symbol("jkl");
+            let sym1 = context.add_required_symbol("sym1");
+            let sym2 = context.add_required_symbol("sym2");
+            let sym_asdf = context.add_required_symbol("asdf");
+            let sym_jkl = context.add_required_symbol("jkl");
 
             #[rustfmt::skip] // preserve correlation between array formatting and display output
             assert_display(

@@ -4,9 +4,9 @@ use arson_core::prelude::*;
 use arson_core::Number;
 
 pub fn register_funcs(context: &mut Context) {
-    context.add_macro("PI", arson_array![std::f64::consts::PI]);
-    context.add_macro("TAU", arson_array![std::f64::consts::TAU]);
-    context.add_macro("EULER", arson_array![std::f64::consts::E]);
+    context.add_required_macro("PI", arson_array![std::f64::consts::PI]);
+    context.add_required_macro("TAU", arson_array![std::f64::consts::TAU]);
+    context.add_required_macro("EULER", arson_array![std::f64::consts::E]);
 
     exponential::register_funcs(context);
     trigonometry::register_funcs(context);
