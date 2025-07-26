@@ -207,7 +207,7 @@ make_tokens! {
             if regex_is_match!(r#"[^ \v\t\r\n\f\(\)\[\]\{\}\']+"#, value) {
                 f.write_str(value)
             } else {
-                write!(f, "'{}'", value)
+                write!(f, "'{value}'")
             }
         },
     },

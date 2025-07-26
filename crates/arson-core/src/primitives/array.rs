@@ -2070,7 +2070,7 @@ pub struct ArrayDisplay<'a> {
     options: ArrayDisplayOptions,
 
     indent_level: Cell<usize>,
-    indent_text: Cow<'a, String>,
+    indent_text: Cow<'a, str>,
 }
 
 impl<'a> ArrayDisplay<'a> {

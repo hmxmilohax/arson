@@ -59,12 +59,12 @@ impl FileSystem {
 
     /// Determines whether the given path exists and refers to a file.
     pub fn is_file<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.metadata(path).map_or(false, |m| m.is_file())
+        self.metadata(path).is_ok_and(|m| m.is_file())
     }
 
     /// Determines whether the given path exists and refers to a directory.
     pub fn is_dir<P: AsRef<VirtualPath>>(&self, path: P) -> bool {
-        self.metadata(path).map_or(false, |m| m.is_dir())
+        self.metadata(path).is_ok_and(|m| m.is_dir())
     }
 
     /// Opens a file in write-only mode, creating if it doesn't exist yet, and truncating if it does.

@@ -477,7 +477,7 @@ define_node_types! {
         cmp: |left, right| left.partial_cmp(right),
         total_cmp: |left, right| left.total_cmp(right),
         type_eq: {
-            NodeArray => |left, right| ArrayRef::borrow(left).map_or(false, |a| a.eq(right)),
+            NodeArray => |left, right| ArrayRef::borrow(left).is_ok_and(|a| a.eq(right)),
         },
     },
     /// A script command (see [`NodeCommand`]).
@@ -643,10 +643,7 @@ impl NodeValue {
 
     pub fn size_integer_opt(&self) -> Option<usize> {
         match self {
-            Self::Integer(value) => match usize::try_from(value.0) {
-                Ok(value) => Some(value),
-                Err(_) => None,
-            },
+            Self::Integer(value) => usize::try_from(value.0).ok(),
             _ => None,
         }
     }
@@ -662,7 +659,7 @@ impl NodeValue {
             NodeValue::Function(_) => true,
             NodeValue::Object(_) => true,
 
-            NodeValue::Array(value) => ArrayRef::borrow(value).map_or(false, |a| !a.is_empty()),
+            NodeValue::Array(value) => ArrayRef::borrow(value).is_ok_and(|a| !a.is_empty()),
             NodeValue::Command(value) => !value.is_empty(),
             NodeValue::Property(value) => !value.is_empty(),
 

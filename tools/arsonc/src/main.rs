@@ -416,7 +416,7 @@ fn main() -> anyhow::Result<()> {
 
 fn validate_paths(input: &Path, output: &Path, input_ext: &str, output_ext: &str) -> anyhow::Result<()> {
     fn check_extension(path: &Path, extension: &str) -> bool {
-        path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case(extension))
+        path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
     }
 
     if input != Path::new("-") {
