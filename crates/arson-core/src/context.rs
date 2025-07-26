@@ -101,9 +101,9 @@ impl Context {
         self.symbol_table.add(name)
     }
 
-    // pub fn remove_symbol(&mut self, name: &Symbol) {
-    //     self.symbol_table.remove(name);
-    // }
+    pub fn remove_symbol(&mut self, name: Symbol) {
+        self.symbol_table.remove(name);
+    }
 
     pub fn get_symbol(&self, name: &str) -> Option<Symbol> {
         self.symbol_table.get(name)

@@ -106,13 +106,23 @@ impl SymbolTable {
         self.table.get(name).cloned()
     }
 
-    // TODO: Find a way to implement this more soundly
-    // Being able to just remove a symbol and invalidate any existing instances
-    // of that symbol is really bad lol
-    // /// Removes the given symbol from the table.
-    // pub fn remove(&mut self, symbol: &Symbol) {
-    //     self.table.remove(&*symbol.name);
-    // }
+    /// Removes the given symbol from the table.
+    pub fn remove(&mut self, symbol: Symbol) {
+        // Only remove the symbol if there are no other active references to it
+        // There will be one reference in the symbol table, and another in the symbol being passed in
+        if Rc::strong_count(&symbol.name) > 2 {
+            return;
+        }
+
+        let Some(in_table) = self.table.get(symbol.name.as_ref()) else {
+            return;
+        };
+
+        // Don't remove if the symbol did not come from this table
+        if Rc::ptr_eq(&symbol.name, &in_table.name) {
+            self.table.remove(&*symbol.name);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -190,14 +200,18 @@ mod tests {
             assert_eq!(symbol, symbol2);
         }
 
-        // #[test]
-        // fn remove() {
-        //     let mut table = SymbolTable::new();
-        //     table.add("asdf");
+        #[test]
+        fn remove() {
+            let mut table = SymbolTable::new();
+            let sym_asdf = table.add("asdf");
 
-        //     let symbol = table.get("asdf").expect("The symbol should be added");
-        //     table.remove(&symbol);
-        //     assert!(table.get("asdf") == None);
-        // }
+            let sym_asdf_2 = table.get("asdf").expect("The symbol should be added");
+
+            table.remove(sym_asdf);
+            assert!(table.get("asdf").is_some(), "Symbols won't get removed from the table while instances of it exist");
+
+            table.remove(sym_asdf_2);
+            assert!(table.get("asdf").is_none(), "Symbols will get removed from the table when the last instance is removed");
+        }
     }
 }
