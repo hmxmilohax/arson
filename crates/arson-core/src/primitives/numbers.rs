@@ -4,7 +4,9 @@ use std::num::Wrapping;
 use std::ops::{self, RangeBounds};
 
 #[cfg(feature = "text-loading")]
-pub use arson_parse::{FloatValue, IntegerValue};
+pub type IntegerValue = arson_parse::IntegerValue;
+#[cfg(feature = "text-loading")]
+pub type FloatValue = arson_parse::FloatValue;
 
 #[cfg(not(feature = "text-loading"))]
 pub type IntegerValue = i64;
