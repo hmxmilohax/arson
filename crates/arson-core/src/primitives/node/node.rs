@@ -180,11 +180,11 @@ impl Node {
         match_value!(self.evaluate(context)?, Array(value) => value)
     }
 
-    pub fn command(&self) -> crate::Result<&Rc<NodeCommand>> {
+    pub fn command(&self) -> crate::Result<&NodeCommand> {
         match_value!(self.unevaluated(), Command(value) => value)
     }
 
-    pub fn property(&self) -> crate::Result<&Rc<NodeProperty>> {
+    pub fn property(&self) -> crate::Result<&NodeProperty> {
         match_value!(self.unevaluated(), Property(value) => value)
     }
 
@@ -302,11 +302,11 @@ impl Node {
         self.evaluate(context).map(|n| n.array().cloned())
     }
 
-    pub const fn command_opt(&self) -> Option<&Rc<NodeCommand>> {
+    pub const fn command_opt(&self) -> Option<&NodeCommand> {
         self.unevaluated().command()
     }
 
-    pub const fn property_opt(&self) -> Option<&Rc<NodeProperty>> {
+    pub const fn property_opt(&self) -> Option<&NodeProperty> {
         self.unevaluated().property()
     }
 }

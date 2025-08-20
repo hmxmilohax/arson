@@ -216,11 +216,11 @@ impl NodeSlice {
         self.get(index)?.array(context)
     }
 
-    pub fn command(&self, index: usize) -> crate::Result<&Rc<NodeCommand>> {
+    pub fn command(&self, index: usize) -> crate::Result<&NodeCommand> {
         self.get(index)?.command()
     }
 
-    pub fn property(&self, index: usize) -> crate::Result<&Rc<NodeProperty>> {
+    pub fn property(&self, index: usize) -> crate::Result<&NodeProperty> {
         self.get(index)?.property()
     }
 }
@@ -285,11 +285,11 @@ impl NodeSlice {
         self.get_opt(index).and_then(|n| n.array_opt(context).transpose())
     }
 
-    pub fn command_opt(&self, index: usize) -> Option<&Rc<NodeCommand>> {
+    pub fn command_opt(&self, index: usize) -> Option<&NodeCommand> {
         self.get_opt(index)?.command_opt()
     }
 
-    pub fn property_opt(&self, index: usize) -> Option<&Rc<NodeProperty>> {
+    pub fn property_opt(&self, index: usize) -> Option<&NodeProperty> {
         self.get_opt(index)?.property_opt()
     }
 }
@@ -402,11 +402,11 @@ impl NodeSlice {
         index_value_or!(self, context, index, Node::array_or, default)
     }
 
-    pub fn command_or(&self, index: usize, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
+    pub fn command_or(&self, index: usize, default: &NodeCommand) -> NodeCommand {
         index_value_or!(self, index, Node::command_or, default)
     }
 
-    pub fn property_or(&self, index: usize, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
+    pub fn property_or(&self, index: usize, default: &NodeProperty) -> NodeProperty {
         index_value_or!(self, index, Node::property_or, default)
     }
 
@@ -528,16 +528,16 @@ impl NodeSlice {
     pub fn command_or_else(
         &self,
         index: usize,
-        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
-    ) -> crate::Result<Rc<NodeCommand>> {
+        default: impl FnOnce() -> crate::Result<NodeCommand>,
+    ) -> crate::Result<NodeCommand> {
         index_value_or_else!(self, index, Node::command_or_else, default)
     }
 
     pub fn property_or_else(
         &self,
         index: usize,
-        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
-    ) -> crate::Result<Rc<NodeProperty>> {
+        default: impl FnOnce() -> crate::Result<NodeProperty>,
+    ) -> crate::Result<NodeProperty> {
         index_value_or_else!(self, index, Node::property_or_else, default)
     }
 }

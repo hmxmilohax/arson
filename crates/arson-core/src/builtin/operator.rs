@@ -404,7 +404,7 @@ pub mod escape {
             }
         }
 
-        fn quote_array(context: &mut Context, array: &NodeArray) -> crate::Result<NodeArray> {
+        fn quote_array(context: &mut Context, array: &NodeSlice) -> crate::Result<NodeArray> {
             let mut quoted = NodeArray::with_capacity(array.len());
             for value in array {
                 let value = do_quasiquote(context, value)?;

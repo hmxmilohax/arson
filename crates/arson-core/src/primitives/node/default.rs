@@ -97,11 +97,11 @@ impl NodeValue {
         self.array().cloned().unwrap_or_else(|| default.clone())
     }
 
-    pub fn command_or(&self, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
+    pub fn command_or(&self, default: &NodeCommand) -> NodeCommand {
         self.command().cloned().unwrap_or_else(|| default.clone())
     }
 
-    pub fn property_or(&self, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
+    pub fn property_or(&self, default: &NodeProperty) -> NodeProperty {
         self.property().cloned().unwrap_or_else(|| default.clone())
     }
 
@@ -183,15 +183,15 @@ impl NodeValue {
 
     pub fn command_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
-    ) -> crate::Result<Rc<NodeCommand>> {
+        default: impl FnOnce() -> crate::Result<NodeCommand>,
+    ) -> crate::Result<NodeCommand> {
         get_value_or_else!(self.command().cloned(), default())
     }
 
     pub fn property_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
-    ) -> crate::Result<Rc<NodeProperty>> {
+        default: impl FnOnce() -> crate::Result<NodeProperty>,
+    ) -> crate::Result<NodeProperty> {
         get_value_or_else!(self.property().cloned(), default())
     }
 }
@@ -242,11 +242,11 @@ impl Node {
         self.evaluate(context).map(|v| v.array_or(default))
     }
 
-    pub fn command_or(&self, default: &Rc<NodeCommand>) -> Rc<NodeCommand> {
+    pub fn command_or(&self, default: &NodeCommand) -> NodeCommand {
         self.unevaluated().command_or(default)
     }
 
-    pub fn property_or(&self, default: &Rc<NodeProperty>) -> Rc<NodeProperty> {
+    pub fn property_or(&self, default: &NodeProperty) -> NodeProperty {
         self.unevaluated().property_or(default)
     }
 
@@ -339,15 +339,15 @@ impl Node {
 
     pub fn command_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
-    ) -> crate::Result<Rc<NodeCommand>> {
+        default: impl FnOnce() -> crate::Result<NodeCommand>,
+    ) -> crate::Result<NodeCommand> {
         self.unevaluated().command_or_else(default)
     }
 
     pub fn property_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
-    ) -> crate::Result<Rc<NodeProperty>> {
+        default: impl FnOnce() -> crate::Result<NodeProperty>,
+    ) -> crate::Result<NodeProperty> {
         self.unevaluated().property_or_else(default)
     }
 }

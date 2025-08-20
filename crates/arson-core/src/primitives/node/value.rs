@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::num::Wrapping;
 use std::rc::Rc;
@@ -431,28 +430,16 @@ define_node_types! {
         },
     },
     /// A script command (see [`NodeCommand`]).
-    Command(Rc<NodeCommand>) {
-        from: {
-            NodeCommand => |value| Rc::new(value),
-        },
+    Command(NodeCommand) {
         eq: |left, right| left == right,
         cmp: |left, right| left.partial_cmp(right),
         total_cmp: |left, right| left.total_cmp(right),
-        type_eq: {
-            NodeCommand => |left, right| Borrow::<NodeCommand>::borrow(left) == right,
-        },
     },
     /// An object property (see [`NodeProperty`]).
-    Property(Rc<NodeProperty>) {
-        from: {
-            NodeProperty => |value| Rc::new(value),
-        },
+    Property(NodeProperty) {
         eq: |left, right| left == right,
         cmp: |left, right| left.partial_cmp(right),
         total_cmp: |left, right| left.total_cmp(right),
-        type_eq: {
-            NodeProperty => |left, right| Borrow::<NodeProperty>::borrow(left) == right,
-        },
     },
 
     /// An "undefined" value, typically used when a command or function does not
@@ -618,14 +605,14 @@ impl NodeValue {
         }
     }
 
-    pub const fn command(&self) -> Option<&Rc<NodeCommand>> {
+    pub const fn command(&self) -> Option<&NodeCommand> {
         match self {
             Self::Command(value) => Some(value),
             _ => None,
         }
     }
 
-    pub const fn property(&self) -> Option<&Rc<NodeProperty>> {
+    pub const fn property(&self) -> Option<&NodeProperty> {
         match self {
             Self::Property(value) => Some(value),
             _ => None,

@@ -388,11 +388,11 @@ impl NodeSlice {
         self.find_data(predicate.into_predicate(context)?)?.array(context)
     }
 
-    pub fn find_command(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeCommand>> {
+    pub fn find_command(&self, predicate: impl IntoDataPredicate) -> crate::Result<NodeCommand> {
         self.find_data(predicate)?.command().cloned()
     }
 
-    pub fn find_property(&self, predicate: impl IntoDataPredicate) -> crate::Result<Rc<NodeProperty>> {
+    pub fn find_property(&self, predicate: impl IntoDataPredicate) -> crate::Result<NodeProperty> {
         self.find_data(predicate)?.property().cloned()
     }
 }
@@ -526,11 +526,11 @@ impl NodeSlice {
         find_opt!(self, predicate, context)?.array_opt(context).transpose()
     }
 
-    pub fn find_command_opt(&self, predicate: impl IntoDataPredicate) -> Option<Rc<NodeCommand>> {
+    pub fn find_command_opt(&self, predicate: impl IntoDataPredicate) -> Option<NodeCommand> {
         self.find_data_opt(predicate)?.command_opt().cloned()
     }
 
-    pub fn find_property_opt(&self, predicate: impl IntoDataPredicate) -> Option<Rc<NodeProperty>> {
+    pub fn find_property_opt(&self, predicate: impl IntoDataPredicate) -> Option<NodeProperty> {
         self.find_data_opt(predicate)?.property_opt().cloned()
     }
 }
@@ -642,16 +642,16 @@ impl NodeSlice {
     pub fn find_command_or(
         &self,
         predicate: impl IntoDataPredicate,
-        default: &Rc<NodeCommand>,
-    ) -> Rc<NodeCommand> {
+        default: &NodeCommand,
+    ) -> NodeCommand {
         predicate_value_or!(self, predicate, Node::command_or, default)
     }
 
     pub fn find_property_or(
         &self,
         predicate: impl IntoDataPredicate,
-        default: &Rc<NodeProperty>,
-    ) -> Rc<NodeProperty> {
+        default: &NodeProperty,
+    ) -> NodeProperty {
         predicate_value_or!(self, predicate, Node::property_or, default)
     }
 
@@ -780,16 +780,16 @@ impl NodeSlice {
     pub fn find_command_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> crate::Result<Rc<NodeCommand>>,
-    ) -> crate::Result<Rc<NodeCommand>> {
+        default: impl FnOnce() -> crate::Result<NodeCommand>,
+    ) -> crate::Result<NodeCommand> {
         predicate_value_or_else!(self, predicate, Node::command_or_else, default)
     }
 
     pub fn find_property_or_else(
         &self,
         predicate: impl IntoDataPredicate,
-        default: impl FnOnce() -> crate::Result<Rc<NodeProperty>>,
-    ) -> crate::Result<Rc<NodeProperty>> {
+        default: impl FnOnce() -> crate::Result<NodeProperty>,
+    ) -> crate::Result<NodeProperty> {
         predicate_value_or_else!(self, predicate, Node::property_or_else, default)
     }
 }

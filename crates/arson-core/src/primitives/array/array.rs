@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use crate::prelude::*;
 use crate::{ArrayDisplay, ArrayDisplayOptions, ArrayKind, NumericError};
@@ -252,32 +253,6 @@ impl NodeArray {
     }
 }
 
-impl From<Vec<Node>> for NodeArray {
-    fn from(value: Vec<Node>) -> Self {
-        Self { nodes: value }
-    }
-}
-
-impl FromIterator<Node> for NodeArray {
-    fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
-        Self { nodes: Vec::from_iter(iter) }
-    }
-}
-
-impl FromIterator<NodeValue> for NodeArray {
-    fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
-        Self {
-            nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
-        }
-    }
-}
-
-impl std::iter::Extend<Node> for NodeArray {
-    fn extend<T: IntoIterator<Item = Node>>(&mut self, iter: T) {
-        self.nodes.extend(iter)
-    }
-}
-
 impl std::ops::Deref for NodeArray {
     type Target = NodeSlice;
 
@@ -325,6 +300,32 @@ impl AsRef<Vec<Node>> for NodeArray {
 impl AsMut<Vec<Node>> for NodeArray {
     fn as_mut(&mut self) -> &mut Vec<Node> {
         &mut self.nodes
+    }
+}
+
+impl From<Vec<Node>> for NodeArray {
+    fn from(value: Vec<Node>) -> Self {
+        Self { nodes: value }
+    }
+}
+
+impl FromIterator<Node> for NodeArray {
+    fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
+        Self { nodes: Vec::from_iter(iter) }
+    }
+}
+
+impl FromIterator<NodeValue> for NodeArray {
+    fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
+        Self {
+            nodes: Vec::from_iter(iter.into_iter().map(Node::from)),
+        }
+    }
+}
+
+impl std::iter::Extend<Node> for NodeArray {
+    fn extend<T: IntoIterator<Item = Node>>(&mut self, iter: T) {
+        self.nodes.extend(iter)
     }
 }
 
@@ -384,77 +385,59 @@ macro_rules! define_array_wrapper {
     ) => {
         $(
             $(#[$attr])*
-            #[derive(Clone, Default, PartialEq, PartialOrd)]
+            #[derive(Clone, PartialEq, PartialOrd)]
             pub struct $name {
-                nodes: NodeArray,
+                nodes: Rc<[Node]>,
             }
 
-            impl $name {
-                pub const fn new() -> Self {
-                    Self { nodes: NodeArray::new() }
+            impl std::ops::Deref for $name {
+                type Target = NodeSlice;
+
+                fn deref(&self) -> &Self::Target {
+                    NodeSlice::from(&self.nodes)
+                }
+            }
+
+            impl std::borrow::Borrow<[Node]> for $name {
+                fn borrow(&self) -> &[Node] {
+                    &self.nodes
+                }
+            }
+
+            impl From<NodeArray> for $name {
+                fn from(value: NodeArray) -> Self {
+                    Self { nodes: value.nodes.into() }
                 }
             }
 
             impl<T> From<T> for $name
-                where NodeArray: From<T>
+                where T: AsRef<[Node]>
             {
                 fn from(value: T) -> Self {
-                    Self { nodes: NodeArray::from(value) }
+                    Self { nodes: value.as_ref().into() }
                 }
             }
 
-            impl<T> FromIterator<T> for $name
-                where NodeArray: FromIterator<T>
-            {
-                fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-                    Self { nodes: NodeArray::from_iter(iter) }
+            impl FromIterator<Node> for $name {
+                fn from_iter<T: IntoIterator<Item = Node>>(iter: T) -> Self {
+                    Self { nodes: Rc::from_iter(iter) }
                 }
             }
 
-            impl std::ops::Deref for $name {
-                type Target = NodeArray;
-
-                fn deref(&self) -> &Self::Target {
-                    &self.nodes
-                }
-            }
-
-            impl std::ops::DerefMut for $name {
-                fn deref_mut(&mut self) -> &mut Self::Target {
-                    &mut self.nodes
-                }
-            }
-
-            impl std::borrow::Borrow<NodeArray> for $name {
-                fn borrow(&self) -> &NodeArray {
-                    &self.nodes
-                }
-            }
-
-            impl IntoIterator for $name {
-                type Item = <NodeArray as IntoIterator>::Item;
-                type IntoIter = <NodeArray as IntoIterator>::IntoIter;
-
-                fn into_iter(self) -> Self::IntoIter {
-                    self.nodes.into_iter()
+            impl FromIterator<NodeValue> for $name {
+                fn from_iter<T: IntoIterator<Item = NodeValue>>(iter: T) -> Self {
+                    Self {
+                        nodes: Rc::from_iter(iter.into_iter().map(Node::from)),
+                    }
                 }
             }
 
             impl<'nodes> IntoIterator for &'nodes $name {
-                type Item = <&'nodes NodeArray as IntoIterator>::Item;
-                type IntoIter = <&'nodes NodeArray as IntoIterator>::IntoIter;
+                type Item = <&'nodes [Node] as IntoIterator>::Item;
+                type IntoIter = <&'nodes [Node] as IntoIterator>::IntoIter;
 
                 fn into_iter(self) -> Self::IntoIter {
                     (&self.nodes).into_iter()
-                }
-            }
-
-            impl<'nodes> IntoIterator for &'nodes mut $name {
-                type Item = <&'nodes mut NodeArray as IntoIterator>::Item;
-                type IntoIter = <&'nodes mut NodeArray as IntoIterator>::IntoIter;
-
-                fn into_iter(self) -> Self::IntoIter {
-                    (&mut self.nodes).into_iter()
                 }
             }
         )+
