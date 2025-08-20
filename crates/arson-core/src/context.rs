@@ -246,10 +246,6 @@ impl Context {
             result => return Err(ExecutionError::NotAHandler(result.to_string(), result.get_kind()).into()),
         };
 
-        if let NodeValue::Unhandled = result.unevaluated() {
-            todo!("default handler")
-        }
-
         Ok(result)
     }
 
