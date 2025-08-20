@@ -6,6 +6,8 @@ use crate::prelude::*;
 use crate::{EvaluationError, ExecutionError};
 
 pub fn register_funcs(context: &mut Context) {
+    context.register_func("array", self::array);
+
     size::register_funcs(context);
     elem::register_funcs(context);
     manip::register_funcs(context);
@@ -20,6 +22,24 @@ fn with_array(array: &NodeValue, f: impl FnOnce(&NodeSlice) -> ExecuteResult) ->
         NodeValue::Property(array) => f(array),
         _ => Err(EvaluationError::NotConvertible { src: array.get_kind(), dest: NodeKind::Array }.into()),
     }
+}
+
+fn array(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+    let arg = args.evaluate(context, 0)?;
+
+    // Make a new array with the given size
+    if let Some(size) = arg.size_integer() {
+        return Ok(arson_array![0; size?].into());
+    }
+
+    // Clone an existing array
+    if let Some(array) = arg.array() {
+        let borrow = array.borrow()?;
+        let cloned = borrow.deep_clone_evaluated(context)?;
+        return Ok(cloned.into());
+    }
+
+    arson_fail!("invalid argument")
 }
 
 mod size {
