@@ -6,8 +6,6 @@ use std::ops::{self, RangeBounds};
 #[cfg(feature = "text-loading")]
 pub use arson_parse::{FloatValue, IntegerValue};
 
-use crate::Node;
-
 #[cfg(not(feature = "text-loading"))]
 pub type IntegerValue = i64;
 #[cfg(not(feature = "text-loading"))]
@@ -118,80 +116,3 @@ impl std::fmt::Display for NumericError {
         }
     }
 }
-
-pub trait NodeSliceIndex {
-    type Output: ?Sized;
-
-    fn get(self, slice: &[Node]) -> crate::Result<&Self::Output>;
-    fn get_mut(self, slice: &mut [Node]) -> crate::Result<&mut Self::Output>;
-
-    fn get_opt(self, slice: &[Node]) -> Option<&Self::Output>;
-    fn get_mut_opt(self, slice: &mut [Node]) -> Option<&mut Self::Output>;
-}
-
-impl NodeSliceIndex for usize {
-    type Output = Node;
-
-    fn get(self, slice: &[Node]) -> crate::Result<&Self::Output> {
-        slice
-            .get(self)
-            .ok_or_else(|| NumericError::IndexOutOfRange(self, 0..slice.len()).into())
-    }
-
-    fn get_mut(self, slice: &mut [Node]) -> crate::Result<&mut Self::Output> {
-        let length = slice.len(); // done here due to borrow rules
-        slice
-            .get_mut(self)
-            .ok_or_else(|| NumericError::IndexOutOfRange(self, 0..length).into())
-    }
-
-    fn get_opt(self, slice: &[Node]) -> Option<&Self::Output> {
-        slice.get(self)
-    }
-
-    fn get_mut_opt(self, slice: &mut [Node]) -> Option<&mut Self::Output> {
-        slice.get_mut(self)
-    }
-}
-
-macro_rules! range_error_impl {
-    ($($type:tt)+) => {
-        impl NodeSliceIndex for $($type)+ {
-            type Output = [Node];
-
-            fn get(self, slice: &[Node]) -> crate::Result<&Self::Output> {
-                slice.get(self.clone()).ok_or_else(|| {
-                    NumericError::slice_out_of_range(self, 0..slice.len()).into()
-                })
-            }
-
-            fn get_mut(self, slice: &mut [Node]) -> crate::Result<&mut Self::Output> {
-                let length = slice.len(); // done here due to borrow rules
-                slice.get_mut(self.clone()).ok_or_else(|| {
-                    NumericError::slice_out_of_range(self, 0..length).into()
-                })
-            }
-
-            fn get_opt(self, slice: &[Node]) -> Option<&Self::Output> {
-                slice.get(self)
-            }
-
-            fn get_mut_opt(self, slice: &mut [Node]) -> Option<&mut Self::Output> {
-                slice.get_mut(self)
-            }
-        }
-    }
-}
-
-range_error_impl!(ops::Range<usize>);
-range_error_impl!(ops::RangeTo<usize>);
-range_error_impl!(ops::RangeFrom<usize>);
-range_error_impl!(ops::RangeFull);
-range_error_impl!(ops::RangeInclusive<usize>);
-range_error_impl!(ops::RangeToInclusive<usize>);
-range_error_impl!((ops::Bound<usize>, ops::Bound<usize>));
-
-// unstable
-// std::range::Range<usize>
-// std::range::RangeInclusive<usize>
-// std::range::RangeFrom<usize>
