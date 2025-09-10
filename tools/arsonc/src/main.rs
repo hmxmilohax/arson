@@ -87,6 +87,9 @@ struct CompileArgs {
     /// Leave unspecified to use a default key.
     #[arg(short = 'k', long, value_parser = parse_key)]
     output_key: Option<u32>,
+    /// Use time-based entropy to scramble the encryption seed.
+    #[arg(long)]
+    output_entropy: bool,
 
     /// Skip file extension checks/errors.
     #[arg(long)]
@@ -185,6 +188,9 @@ struct CrossCryptArgs {
     /// Leave unspecified to use a default key.
     #[arg(long, value_parser = parse_key)]
     output_key: Option<u32>,
+    /// Use time-based entropy to scramble the encryption seed.
+    #[arg(long)]
+    output_entropy: bool,
 
     /// Skip file extension checks/errors.
     #[arg(long)]
@@ -338,6 +344,7 @@ fn main() -> anyhow::Result<()> {
             output_encoding: None,
             output_encryption: None,
             output_key: None,
+            output_entropy: false,
             ignore_extension: true,
             allow_overwrite: true,
             input_path: args.input_path,
@@ -376,6 +383,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: None,
             output_key: None,
+            output_entropy: false,
             ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
@@ -386,6 +394,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: None,
             output_key: None,
+            output_entropy: false,
             ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
@@ -396,6 +405,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: Some(EncryptionModeArg::New),
             output_key: args.output_key,
+            output_entropy: false,
             ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
@@ -406,6 +416,7 @@ fn main() -> anyhow::Result<()> {
             input_key: None,
             output_encryption: Some(EncryptionModeArg::Old),
             output_key: args.output_key,
+            output_entropy: false,
             ignore_extension: true,
             allow_overwrite: false,
             input_path: args.input_path,
@@ -467,6 +478,7 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
         encryption: EncryptionSettings {
             mode: args.output_encryption.map(EncryptionModeArg::to_arson),
             key: args.output_key,
+            time_entropy: args.output_entropy,
         },
     };
     arson_dtb::write(&array, &mut output_bytes, settings).context("couldn't write output .dtb file bytes")?;
@@ -561,6 +573,7 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
     let settings = EncryptionSettings {
         mode: args.output_encryption.map(EncryptionModeArg::to_arson),
         key: args.output_key,
+        time_entropy: args.output_entropy,
     };
     arson_dtb::encrypt(&bytes, &mut output_bytes, settings).context("couldn't encrypt output .dtb file")?;
 

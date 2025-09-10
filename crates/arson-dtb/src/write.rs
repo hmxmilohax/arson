@@ -42,6 +42,7 @@ impl WriteSettings {
 pub struct EncryptionSettings {
     pub mode: Option<EncryptionMode>,
     pub key: Option<u32>,
+    pub time_entropy: bool,
 }
 
 impl EncryptionSettings {
@@ -52,6 +53,11 @@ impl EncryptionSettings {
 
     pub fn with_key(mut self, key: Option<u32>) -> Self {
         self.key = key;
+        self
+    }
+
+    pub fn with_time_entropy(mut self, time_entropy: bool) -> Self {
+        self.time_entropy = time_entropy;
         self
     }
 }
@@ -170,43 +176,38 @@ impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
     }
 }
 
-static NEWSTYLE_SEEDER: Seeder<NewRandom> = Seeder::new(NewRandom::default());
-static OLDSTYLE_SEEDER: Seeder<OldRandom> = Seeder::new(OldRandom::default());
+static NEWSTYLE_SEEDER: Mutex<NewRandom> = Mutex::new(NewRandom::default());
+static OLDSTYLE_SEEDER: Mutex<OldRandom> = Mutex::new(OldRandom::default());
 
-struct Seeder<Crypt: CryptAlgorithm>(Mutex<Crypt>);
+fn make_key<C: CryptAlgorithm>(encryption: &EncryptionSettings, seeder: &Mutex<C>) -> u32 {
+    use std::time::SystemTime;
 
-impl<C: CryptAlgorithm> Seeder<C> {
-    const fn new(crypt: C) -> Self {
-        Self(Mutex::new(crypt))
+    let key = encryption
+        .key
+        .unwrap_or_else(|| seeder.lock().map_or(C::DEFAULT_SEED, |mut g| g.next()));
+    if !encryption.time_entropy {
+        return key;
     }
 
-    fn next(&self) -> u32 {
-        let seed = self.0.lock().map_or(C::DEFAULT_SEED, |mut g| g.next());
-        let salt = Self::make_salt();
-        seed.wrapping_mul(salt)
-    }
-
-    fn make_salt() -> u32 {
-        use std::time::SystemTime;
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|duration| duration.as_micros() as u32)
-            .unwrap_or(0)
-    }
+    let salt = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_micros() as u32)
+        .unwrap_or(0);
+    key.wrapping_mul(salt)
 }
 
 macro_rules! match_encryption {
     ($data:ident, $writer:ident, $settings:ident, $encryption:expr, $func:path) => {
         match $encryption.mode {
             Some(EncryptionMode::New) => {
-                let key = $encryption.key.unwrap_or_else(|| NEWSTYLE_SEEDER.next());
+                let key = make_key(&$encryption, &NEWSTYLE_SEEDER);
                 $writer.write_u32::<LittleEndian>(key)?;
 
                 let writer = CryptWriter::new($writer, NewRandom::new(key));
                 $func($data, writer, $settings)
             },
             Some(EncryptionMode::Old) => {
-                let key = $encryption.key.unwrap_or_else(|| OLDSTYLE_SEEDER.next());
+                let key = make_key(&$encryption, &OLDSTYLE_SEEDER);
                 $writer.write_u32::<LittleEndian>(key)?;
 
                 let writer = CryptWriter::new($writer, OldRandom::new(key));
