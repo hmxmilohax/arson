@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::arson_fail;
 
-/// Maps symbols by hash to an associated value. Alias for [`HashMap<ScriptSymbol, T>`].
+/// Maps symbols by hash to an associated value. Alias for [`HashMap<Symbol, T>`].
 pub type SymbolMap<T> = HashMap<Symbol, T>;
 
 /// A unique identifier for a scripting element, such as a type or method.
