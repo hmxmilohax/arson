@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, ensure, Context};
+use anyhow::{bail, Context};
 use arson_dtb::prelude::*;
 use arson_dtb::{EncryptionMode, TokenizeOptions};
 use arson_parse::encoding::DtaEncoding;
@@ -90,9 +90,6 @@ struct CompileArgs {
     #[arg(long)]
     output_entropy: bool,
 
-    /// Skip file extension checks/errors.
-    #[arg(long)]
-    ignore_extension: bool,
     /// Allow output path to overwrite an existing file.
     #[arg(short = 'o', long)]
     allow_overwrite: bool,
@@ -345,7 +342,6 @@ fn main() -> anyhow::Result<()> {
             output_encryption: EncryptionModeArg::None,
             output_key: None,
             output_entropy: false,
-            ignore_extension: true,
             allow_overwrite: true,
             input_path: args.input_path,
             output_path: Some(args.output_path),
@@ -425,35 +421,8 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn validate_paths(input: &Path, output: &Path, input_ext: &str, output_ext: &str) -> anyhow::Result<()> {
-    fn check_extension(path: &Path, extension: &str) -> bool {
-        path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
-    }
-
-    if input != Path::new("-") {
-        ensure!(
-            check_extension(input, input_ext),
-            "invalid {input_ext} input path {}",
-            input.display()
-        );
-    }
-
-    if output != Path::new("-") {
-        ensure!(
-            check_extension(output, output_ext),
-            "invalid {output_ext} output path {}",
-            output.display()
-        );
-    }
-
-    Ok(())
-}
-
 fn compile(args: CompileArgs) -> anyhow::Result<()> {
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dtb"));
-    if !args.ignore_extension {
-        validate_paths(&args.input_path, &output_path, "DTA", "DTB")?;
-    }
 
     let input_bytes = read_file(&args.input_path)?;
     let (input_file, input_encoding) =
@@ -488,9 +457,6 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
 
 fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
     let output_path = args.output_path.unwrap_or_else(|| args.input_path.with_extension("dta"));
-    if !args.ignore_extension {
-        validate_paths(&args.input_path, &output_path, "DTB", "DTA")?;
-    }
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
@@ -556,10 +522,6 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
 
         args.input_path.with_file_name(name).with_extension("dtb")
     });
-
-    if !args.ignore_extension {
-        validate_paths(&args.input_path, &output_path, "DTB", "DTB")?;
-    }
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
