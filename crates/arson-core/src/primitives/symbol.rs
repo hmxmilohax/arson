@@ -19,7 +19,7 @@ impl Symbol {
     #[cfg(feature = "text-loading")]
     pub const MAX_LENGTH: usize = arson_parse::MAX_SYMBOL_LENGTH;
     #[cfg(not(feature = "text-loading"))]
-    pub const MAX_LENGTH: usize = 50;
+    pub const MAX_LENGTH: usize = 512;
 
     /// Returns the underlying name of this symbol.
     pub const fn name(&self) -> &Rc<String> {
