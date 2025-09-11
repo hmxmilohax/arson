@@ -66,28 +66,28 @@ const READ_SETTINGS: ReadSettings = ReadSettings {
 const WRITE_SETTINGS: WriteSettings = WriteSettings {
     format: FormatVersion::Milo,
     encoding: DtaEncoding::Utf8,
-    encryption: EncryptionSettings { mode: None, key: None, time_entropy: false },
+    encryption: EncryptionSettings { mode: EncryptionMode::None, key: None, time_entropy: false },
 };
 
 fn test_encryption(source_array: &DataArray, source_bytes: &[u8], mode: Option<EncryptionMode>) {
     // read
-    let mut read_settings = READ_SETTINGS.with_decryption_mode(mode);
-    let read_array = arson_dtb::read(Cursor::new(source_bytes), &mut read_settings).unwrap();
-    assert_eq!(read_array, *source_array);
+    let read_settings = READ_SETTINGS.with_decryption_mode(mode);
+    let read_result = arson_dtb::read(Cursor::new(source_bytes), &read_settings).unwrap();
+    assert_eq!(read_result.value, *source_array);
 
     // write
     let mut written_bytes = Vec::new();
     let write_settings = WRITE_SETTINGS
-        .with_encryption_mode(read_settings.decryption.mode)
-        .with_encryption_key(read_settings.decryption.key);
-    arson_dtb::write(&read_array, Cursor::new(&mut written_bytes), write_settings).unwrap();
+        .with_encryption_mode(read_result.encryption)
+        .with_encryption_key(Some(read_result.key));
+    arson_dtb::write(&read_result.value, Cursor::new(&mut written_bytes), &write_settings).unwrap();
     assert_eq!(written_bytes, source_bytes);
 
     // cycle
     for _i in 0..25 {
         let mut read_settings = READ_SETTINGS.with_decryption_mode(mode);
-        let array = arson_dtb::read(Cursor::new(&written_bytes), &mut read_settings).unwrap();
-        assert_eq!(array, *source_array);
+        let read_result = arson_dtb::read(Cursor::new(&written_bytes), &read_settings).unwrap();
+        assert_eq!(read_result.value, *source_array);
 
         if let Some(key) = read_settings.decryption.key {
             let a = key.wrapping_rem(0x1F31D).wrapping_mul(0x41A7);
@@ -100,11 +100,11 @@ fn test_encryption(source_array: &DataArray, source_bytes: &[u8], mode: Option<E
         }
 
         let write_settings = WRITE_SETTINGS
-            .with_encryption_mode(read_settings.decryption.mode)
-            .with_encryption_key(read_settings.decryption.key);
+            .with_encryption_mode(read_result.encryption)
+            .with_encryption_key(Some(read_result.key));
 
         written_bytes.clear();
-        arson_dtb::write(&array, Cursor::new(&mut written_bytes), write_settings).unwrap();
+        arson_dtb::write(&read_result.value, Cursor::new(&mut written_bytes), &write_settings).unwrap();
     }
 }
 

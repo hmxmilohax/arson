@@ -74,17 +74,17 @@ pub enum WriteError {
     IO(#[from] io::Error),
 }
 
-struct Writer<Writer: io::Write, Crypt: CryptAlgorithm> {
-    settings: WriteSettings,
+struct Writer<'settings, Writer: io::Write, Crypt: CryptAlgorithm> {
+    settings: &'settings WriteSettings,
 
     writer: CryptWriter<Writer, Crypt>,
 }
 
-impl<W: io::Write, C: CryptAlgorithm> Writer<W, C> {
+impl<'s, W: io::Write, C: CryptAlgorithm> Writer<'s, W, C> {
     fn write_file(
         array: &DataArray,
         mut writer: CryptWriter<W, C>,
-        settings: WriteSettings,
+        settings: &'s WriteSettings,
     ) -> Result<(), WriteError> {
         writer.write_u8(1)?; // Array always exists under our model
 
@@ -224,7 +224,7 @@ macro_rules! match_encryption {
 pub fn write(
     array: &DataArray,
     mut writer: impl io::Write,
-    settings: WriteSettings,
+    settings: &WriteSettings,
 ) -> Result<(), WriteError> {
     match_encryption!(array, writer, settings, settings.encryption, Writer::write_file)
 }
@@ -250,7 +250,7 @@ mod tests {
         let mut writer = io::Cursor::new(&mut bytes);
 
         let mut crypt_writer = Writer {
-            settings: WriteSettings {
+            settings: &WriteSettings {
                 format: FormatVersion::Milo,
                 encoding: DtaEncoding::Utf8,
                 encryption: EncryptionSettings::default(),

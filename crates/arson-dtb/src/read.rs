@@ -55,6 +55,22 @@ impl DecryptionSettings {
     }
 }
 
+#[derive(Debug)]
+pub struct ReadValue<T> {
+    pub value: T,
+    pub format: FormatVersion,
+    pub encryption: EncryptionMode,
+    pub key: u32,
+    pub encoding: Option<DtaEncoding>,
+}
+
+#[derive(Debug)]
+pub struct DecryptValue<T> {
+    pub value: T,
+    pub encryption: EncryptionMode,
+    pub key: u32,
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum ReadError {
     #[error("position {0}: malformed data")]
@@ -82,30 +98,58 @@ pub enum ReadError {
         actual: DataKind,
     },
 
+    #[error("{}", format_probe_failure(.0))]
+    ProbeFailure(Vec<ProbeError>),
+
     #[error(transparent)]
     IO(#[from] io::Error),
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("{context}: {inner}")]
+pub struct ProbeError {
+    inner: ReadError,
+    context: String,
+}
+
+fn format_probe_failure(errors: &Vec<ProbeError>) -> String {
+    use std::fmt::Write;
+
+    let mut text = String::from("failed to probe file for decoding details");
+    for error in errors {
+        write!(text, "\nwhile probing {}: {}", error.context, error.inner).unwrap();
+    }
+
+    text
+}
+
 struct Reader<'settings, Reader: io::Read + io::Seek, Crypt: CryptAlgorithm> {
     reader: CryptReader<Reader, Crypt>,
-    settings: &'settings mut ReadSettings,
+    settings: &'settings ReadSettings,
 
     probing_encoding: bool,
+    probed_encoding: Option<DtaEncoding>,
 }
 
 impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
-    fn new(reader: CryptReader<R, C>, settings: &'s mut ReadSettings) -> Self {
-        let probing_encoding = settings.encoding.is_none();
-        Self { reader, settings, probing_encoding }
+    fn new(reader: CryptReader<R, C>, settings: &'s ReadSettings) -> Self {
+        Self {
+            reader,
+            settings,
+
+            probing_encoding: settings.encoding.is_none(),
+            probed_encoding: settings.encoding
+        }
     }
 
-    fn read_file(mut reader: CryptReader<R, C>, settings: &mut ReadSettings) -> Result<DataArray, ReadError> {
+    fn read_file(mut reader: CryptReader<R, C>, settings: &ReadSettings) -> Result<(DataArray, Option<DtaEncoding>), ReadError> {
         let exists = reader.read_u8()?;
         match exists {
-            0 => Ok(DataArray::new(1, 0)),
+            0 => Ok((DataArray::new(1, 0), None)),
             1 => {
                 let mut reader = Reader::new(reader, settings);
-                reader.read_array()
+                let array = reader.read_array()?;
+                Ok((array, reader.probed_encoding))
             },
             _ => Err(ReadError::MalformedData(0)),
         }
@@ -266,15 +310,16 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
         let bytes = self.read_glob()?;
         let decoded = match arson_parse::encoding::decode(&bytes, self.settings.encoding) {
             Ok((decoded, encoding)) => {
+                // Check encoding
                 if self.probing_encoding {
-                    match self.settings.encoding {
+                    match self.probed_encoding {
                         Some(probed_encoding) => {
                             if probed_encoding != encoding {
-                                self.settings.encoding = None;
+                                self.probed_encoding = None;
                                 self.probing_encoding = false;
                             }
                         },
-                        None => self.settings.encoding = Some(encoding),
+                        None => self.probed_encoding = Some(encoding),
                     }
                 }
 
@@ -295,22 +340,18 @@ macro_rules! match_encryption {
                 // Note: the key is always present in the file when encrypted and must always be read,
                 // unwrap_or instead of unwrap_or_else is deliberate here
                 let key = $decryption.key.unwrap_or($reader.read_u32::<LittleEndian>()?);
-                $decryption.key = Some(key);
-
                 let reader = CryptReader::new($reader, NewRandom::new(key));
-                $func(reader, $settings)
+                ($func(reader, $settings)?, key)
             },
             Some(EncryptionMode::Old) => {
                 // Same note as above
                 let key = $decryption.key.unwrap_or($reader.read_u32::<LittleEndian>()?);
-                $decryption.key = Some(key);
-
                 let reader = CryptReader::new($reader, OldRandom::new(key));
-                $func(reader, $settings)
+                ($func(reader, $settings)?, key)
             },
             Some(EncryptionMode::None) | None => {
                 let reader = CryptReader::new($reader, NoopCrypt);
-                $func(reader, $settings)
+                ($func(reader, $settings)?, 0)
             },
         }
     };
@@ -318,89 +359,132 @@ macro_rules! match_encryption {
 
 pub fn read(
     mut reader: impl io::Seek + io::Read,
-    settings: &mut ReadSettings,
-) -> Result<DataArray, ReadError> {
+    settings: &ReadSettings,
+) -> Result<ReadValue<DataArray>, ReadError> {
     let position = reader.stream_position()?;
 
     match settings.format {
-        Some(_) => probe_encryption(&mut reader, settings),
+        Some(format) => {
+            let (array, encryption, key, encoding) = probe_encryption(&mut reader, settings)?;
+            Ok(ReadValue {
+                value: array,
+                format,
+                encryption,
+                key,
+                encoding,
+            })
+        },
         None => {
+            let mut errors = Vec::new();
+
             for format in [/*FormatVersion::Rnd,*/ FormatVersion::Milo, FormatVersion::Forge] {
                 reader.seek(io::SeekFrom::Start(position))?;
 
-                settings.format = Some(format);
-                if let Ok(array) = probe_encryption(&mut reader, settings) {
-                    return Ok(array);
+                let settings = ReadSettings {
+                    format: Some(format),
+                    ..settings.clone()
+                };
+                match probe_encryption(&mut reader, &settings) {
+                    Ok((array, encryption, key, encoding)) => {
+                        return Ok(ReadValue {
+                            value: array,
+                            format,
+                            encryption,
+                            key,
+                            encoding,
+                        });
+                    },
+                    Err(error) => match error {
+                        ReadError::ProbeFailure(inner) => {
+                            for error in inner {
+                                errors.push(ProbeError {
+                                    context: format!("format type {format:?}, {}", error.context),
+                                    ..error
+                                })
+                            }
+                        },
+                        _ => errors.push(ProbeError {
+                            inner: error,
+                            context: format!("format type {format:?}"),
+                        })
+                    }
                 }
             }
 
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "input data could not be decoded through any known format",
-            )
-            .into())
+            Err(ReadError::ProbeFailure(errors))
         },
     }
 }
 
 fn probe_encryption(
     mut reader: impl io::Seek + io::Read,
-    settings: &mut ReadSettings,
-) -> Result<DataArray, ReadError> {
+    settings: &ReadSettings,
+) -> Result<(DataArray, EncryptionMode, u32, Option<DtaEncoding>), ReadError> {
     match settings.decryption.mode {
-        Some(_) => read_impl(&mut reader, settings),
+        Some(encryption) => {
+            let (array, key, encoding) = read_impl(&mut reader, settings)?;
+            Ok((array, encryption, key, encoding))
+        },
         None => {
             let position = reader.stream_position()?;
+            let mut errors = Vec::new();
 
-            for mode in [Some(EncryptionMode::New), Some(EncryptionMode::Old), None] {
+            for encryption in [EncryptionMode::New, EncryptionMode::Old, EncryptionMode::None] {
                 reader.seek(io::SeekFrom::Start(position))?;
 
-                settings.decryption.mode = mode;
-                if let Ok(array) = read_impl(&mut reader, settings) {
-                    return Ok(array);
+                let settings = ReadSettings {
+                    decryption: DecryptionSettings {
+                        mode: Some(encryption),
+                        ..settings.decryption
+                    },
+                    ..settings.clone()
+                };
+                match read_impl(&mut reader, &settings) {
+                    Ok((array, key, encoding)) => {
+                        return Ok((array, encryption, key, encoding));
+                    },
+                    Err(error) => match error {
+                        ReadError::ProbeFailure(mut inner) => errors.append(&mut inner),
+                        _ => errors.push(ProbeError {
+                            inner: error,
+                            context: format!("encryption type {encryption:?}"),
+                        })
+                    }
                 };
             }
 
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "input data could not be decoded through any known encryption",
-            )
-            .into())
+            Err(ReadError::ProbeFailure(errors))
         },
     }
 }
 
 fn read_impl(
     mut reader: impl io::Seek + io::Read,
-    settings: &mut ReadSettings,
-) -> Result<DataArray, ReadError> {
-    match_encryption!(reader, settings, settings.decryption, Reader::read_file)
+    settings: &ReadSettings,
+) -> Result<(DataArray, u32, Option<DtaEncoding>), ReadError> {
+    let ((array, encoding), key) = match_encryption!(reader, settings, settings.decryption, Reader::read_file);
+    Ok((array, key, encoding))
 }
 
 pub fn decrypt(
     mut reader: impl io::Read + io::Seek,
-    settings: &mut DecryptionSettings,
-) -> io::Result<Vec<u8>> {
-    if settings.mode.is_none() {
-        let position = reader.stream_position()?;
+    settings: &DecryptionSettings,
+) -> Result<DecryptValue<Vec<u8>>, ReadError> {
+    let position = reader.stream_position()?;
 
-        let mut read_settings = ReadSettings {
-            format: None,
-            decryption: settings.clone(),
-            ..Default::default()
-        };
-        let Ok(_) = read(&mut reader, &mut read_settings) else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "couldn't probe file for format/encryption properties",
-            ));
-        };
-        *settings = read_settings.decryption;
+    // Combination sanity check for specified decryption,
+    // and probing for unspecified decryption
+    let read_settings = ReadSettings {
+        decryption: settings.clone(),
+        ..Default::default()
+    };
+    let value = read(&mut reader, &read_settings)?;
+    let encryption = settings.mode.unwrap_or(value.encryption);
 
-        reader.seek(io::SeekFrom::Start(position))?;
-    }
+    reader.seek(io::SeekFrom::Start(position))?;
 
-    match_encryption!(reader, settings, settings, decrypt_impl)
+    let (bytes, key) = match_encryption!(reader, settings, settings, decrypt_impl);
+    Ok(DecryptValue { value: bytes, encryption, key })
 }
 
 fn decrypt_impl<R: io::Read, C: CryptAlgorithm>(

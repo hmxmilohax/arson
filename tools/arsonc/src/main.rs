@@ -481,7 +481,7 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
             time_entropy: args.output_entropy,
         },
     };
-    arson_dtb::write(&array, &mut output_bytes, settings).context("couldn't write output .dtb file bytes")?;
+    arson_dtb::write(&array, &mut output_bytes, &settings).context("couldn't write output .dtb file bytes")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }
@@ -494,7 +494,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
-    let mut settings = ReadSettings {
+    let settings = ReadSettings {
         format: args.input_format.map(FormatVersionArg::to_arson),
         encoding: args.input_encoding.map(EncodingArg::to_arson),
         decryption: DecryptionSettings {
@@ -502,8 +502,8 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
             key: args.input_key,
         },
     };
-    let array = arson_dtb::read(input_bytes, &mut settings).context("couldn't parse input .dtb file")?;
-    let tokens = array.to_tokens(TokenizeOptions {
+    let result = arson_dtb::read(input_bytes, &settings).context("couldn't parse input .dtb file")?;
+    let tokens = result.value.to_tokens(TokenizeOptions {
         line_numbers: args.output_line_numbers,
         array_ids: args.output_array_ids,
     });
@@ -563,11 +563,11 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
 
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
-    let mut settings = DecryptionSettings {
+    let settings = DecryptionSettings {
         mode: args.input_decryption.to_arson(),
         key: args.input_key,
     };
-    let bytes = arson_dtb::decrypt(input_bytes, &mut settings).context("couldn't decrypt input .dtb file")?;
+    let result = arson_dtb::decrypt(input_bytes, &settings).context("couldn't decrypt input .dtb file")?;
 
     let mut output_bytes = Cursor::new(Vec::new());
     let settings = EncryptionSettings {
@@ -575,7 +575,7 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
         key: args.output_key,
         time_entropy: args.output_entropy,
     };
-    arson_dtb::encrypt(&bytes, &mut output_bytes, settings).context("couldn't encrypt output .dtb file")?;
+    arson_dtb::encrypt(&result.value, &mut output_bytes, settings).context("couldn't encrypt output .dtb file")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }
