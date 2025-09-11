@@ -27,7 +27,7 @@ impl WriteSettings {
         self
     }
 
-    pub fn with_encryption_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+    pub fn with_encryption_mode(mut self, mode: EncryptionMode) -> Self {
         self.encryption = self.encryption.with_mode(mode);
         self
     }
@@ -40,13 +40,13 @@ impl WriteSettings {
 
 #[derive(Debug, Clone, Default)]
 pub struct EncryptionSettings {
-    pub mode: Option<EncryptionMode>,
+    pub mode: EncryptionMode,
     pub key: Option<u32>,
     pub time_entropy: bool,
 }
 
 impl EncryptionSettings {
-    pub fn with_mode(mut self, mode: Option<EncryptionMode>) -> Self {
+    pub fn with_mode(mut self, mode: EncryptionMode) -> Self {
         self.mode = mode;
         self
     }
@@ -199,21 +199,21 @@ fn make_key<C: CryptAlgorithm>(encryption: &EncryptionSettings, seeder: &Mutex<C
 macro_rules! match_encryption {
     ($data:ident, $writer:ident, $settings:ident, $encryption:expr, $func:path) => {
         match $encryption.mode {
-            Some(EncryptionMode::New) => {
+            EncryptionMode::New => {
                 let key = make_key(&$encryption, &NEWSTYLE_SEEDER);
                 $writer.write_u32::<LittleEndian>(key)?;
 
                 let writer = CryptWriter::new($writer, NewRandom::new(key));
                 $func($data, writer, $settings)
             },
-            Some(EncryptionMode::Old) => {
+            EncryptionMode::Old => {
                 let key = make_key(&$encryption, &OLDSTYLE_SEEDER);
                 $writer.write_u32::<LittleEndian>(key)?;
 
                 let writer = CryptWriter::new($writer, OldRandom::new(key));
                 $func($data, writer, $settings)
             },
-            None => {
+            EncryptionMode::None => {
                 let writer = CryptWriter::new($writer, NoopCrypt);
                 $func($data, writer, $settings)
             },

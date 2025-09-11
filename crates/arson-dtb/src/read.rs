@@ -308,7 +308,7 @@ macro_rules! match_encryption {
                 let reader = CryptReader::new($reader, OldRandom::new(key));
                 $func(reader, $settings)
             },
-            None => {
+            Some(EncryptionMode::None) | None => {
                 let reader = CryptReader::new($reader, NoopCrypt);
                 $func(reader, $settings)
             },

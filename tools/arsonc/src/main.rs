@@ -13,7 +13,6 @@ use arson_parse::reporting::files::SimpleFile;
 use arson_parse::reporting::term::termcolor::{ColorChoice, StandardStream};
 use arson_parse::reporting::term::{self, Chars};
 use arson_parse::{ParseError, TokenValue};
-use clap::builder::{PossibleValue, TypedValueParser};
 use clap::Parser;
 
 /// The Arson DTA<->DTB compiler/decompiler.
@@ -80,8 +79,8 @@ struct CompileArgs {
     /// The encryption method to use for the output file.
     ///
     /// Leave unspecified for no encryption.
-    #[arg(short = 'e', long, value_parser = OutputEncryptionParser)]
-    output_encryption: Option<EncryptionModeArg>,
+    #[arg(short = 'e', long)]
+    output_encryption: EncryptionModeArg,
     /// The key to use for encryption.
     ///
     /// Leave unspecified to use a default key.
@@ -125,8 +124,8 @@ struct DecompileArgs {
     /// The decryption method to use for the input file.
     ///
     /// Leave unspecified to automatically detect, or to signify that the file is not encrypted.
-    #[arg(short = 'd', long)]
-    input_decryption: Option<EncryptionModeArg>,
+    #[arg(short = 'd', long, default_value = "unknown")]
+    input_decryption: DecryptionModeArg,
     /// The key to use for decryption.
     ///
     /// Leave unspecified to determine from the file.
@@ -170,8 +169,8 @@ struct CrossCryptArgs {
     /// The decryption method to use for the input file.
     ///
     /// Leave unspecified to automatically detect, or to signify that the file is not encrypted.
-    #[arg(long)]
-    input_decryption: Option<EncryptionModeArg>,
+    #[arg(long, default_value = "unknown")]
+    input_decryption: DecryptionModeArg,
     /// The key to use for decrypting the input file.
     ///
     /// Leave unspecified to determine from the file.
@@ -181,8 +180,8 @@ struct CrossCryptArgs {
     /// The encryption method to use for the output file.
     ///
     /// Leave unspecified for no encryption.
-    #[arg(long, value_parser = OutputEncryptionParser)]
-    output_encryption: Option<EncryptionModeArg>,
+    #[arg(long)]
+    output_encryption: EncryptionModeArg,
     /// The key to use for encrypting the output file.
     ///
     /// Leave unspecified to use a default key.
@@ -261,7 +260,9 @@ impl FormatVersionArg {
 /// The encoding to use for text.
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 enum EncodingArg {
+    /// UTF-8.
     UTF8,
+    /// Latin-1 (Windows-1252).
     Latin1,
 }
 
@@ -274,9 +275,37 @@ impl EncodingArg {
     }
 }
 
-/// The encryption/decryption mode to use.
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+/// The decryption to use.
+#[derive(clap::ValueEnum, Debug, Default, Clone, Copy)]
+enum DecryptionModeArg {
+    /// Guess the encryption (default).
+    #[default]
+    Unknown,
+    /// No encryption.
+    None,
+    /// Old-style encryption (pre-GH2).
+    Old,
+    /// New-style encryption (GH2 onwards).
+    New,
+}
+
+impl DecryptionModeArg {
+    fn to_arson(self) -> Option<EncryptionMode> {
+        match self {
+            Self::Unknown => None,
+            Self::None => Some(EncryptionMode::None),
+            Self::Old => Some(EncryptionMode::Old),
+            Self::New => Some(EncryptionMode::New),
+        }
+    }
+}
+
+/// The encryption to use.
+#[derive(clap::ValueEnum, Debug, Default, Clone, Copy)]
 enum EncryptionModeArg {
+    /// No encryption.
+    #[default]
+    None,
     /// Old-style encryption (pre-GH2).
     Old,
     /// New-style encryption (GH2 onwards).
@@ -286,39 +315,10 @@ enum EncryptionModeArg {
 impl EncryptionModeArg {
     fn to_arson(self) -> EncryptionMode {
         match self {
+            Self::None => EncryptionMode::None,
             Self::Old => EncryptionMode::Old,
             Self::New => EncryptionMode::New,
         }
-    }
-}
-
-#[derive(Clone)]
-struct OutputEncryptionParser;
-
-impl TypedValueParser for OutputEncryptionParser {
-    type Value = Option<EncryptionModeArg>;
-
-    fn parse_ref(
-        &self,
-        cmd: &clap::Command,
-        arg: Option<&clap::Arg>,
-        value: &std::ffi::OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        if value.eq_ignore_ascii_case("none") {
-            Ok(None)
-        } else {
-            clap::value_parser!(EncryptionModeArg).parse_ref(cmd, arg, value).map(Some)
-        }
-    }
-
-    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue> + '_>> {
-        let base_parser = clap::value_parser!(EncryptionModeArg);
-        let base_values = base_parser.possible_values().unwrap();
-
-        let mut all_values = vec![PossibleValue::new("none")];
-        all_values.extend(base_values);
-
-        Some(Box::new(all_values.into_iter()))
     }
 }
 
@@ -342,7 +342,7 @@ fn main() -> anyhow::Result<()> {
             input_encoding: None,
             output_format: FormatVersionArg::Milo,
             output_encoding: None,
-            output_encryption: None,
+            output_encryption: EncryptionModeArg::None,
             output_key: None,
             output_entropy: false,
             ignore_extension: true,
@@ -353,7 +353,7 @@ fn main() -> anyhow::Result<()> {
         CompilerMode::DtabDecompileMilo(args) => decompile(DecompileArgs {
             input_format: Some(FormatVersionArg::Milo),
             input_encoding: None,
-            input_decryption: None,
+            input_decryption: DecryptionModeArg::None,
             input_key: None,
             output_encoding: EncodingArg::UTF8,
             output_line_numbers: false,
@@ -367,7 +367,7 @@ fn main() -> anyhow::Result<()> {
         CompilerMode::DtabDecompileForge(args) => decompile(DecompileArgs {
             input_format: Some(FormatVersionArg::Forge),
             input_encoding: None,
-            input_decryption: None,
+            input_decryption: DecryptionModeArg::None,
             input_key: None,
             output_encoding: EncodingArg::UTF8,
             output_line_numbers: false,
@@ -379,9 +379,9 @@ fn main() -> anyhow::Result<()> {
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabDecryptNewstyle(args) => cross_crypt(CrossCryptArgs {
-            input_decryption: Some(EncryptionModeArg::New),
+            input_decryption: DecryptionModeArg::New,
             input_key: None,
-            output_encryption: None,
+            output_encryption: EncryptionModeArg::None,
             output_key: None,
             output_entropy: false,
             ignore_extension: true,
@@ -390,9 +390,9 @@ fn main() -> anyhow::Result<()> {
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabDecryptOldstyle(args) => cross_crypt(CrossCryptArgs {
-            input_decryption: Some(EncryptionModeArg::Old),
+            input_decryption: DecryptionModeArg::Old,
             input_key: None,
-            output_encryption: None,
+            output_encryption: EncryptionModeArg::None,
             output_key: None,
             output_entropy: false,
             ignore_extension: true,
@@ -401,9 +401,9 @@ fn main() -> anyhow::Result<()> {
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabEncryptNewstyle(args) => cross_crypt(CrossCryptArgs {
-            input_decryption: None,
+            input_decryption: DecryptionModeArg::None,
             input_key: None,
-            output_encryption: Some(EncryptionModeArg::New),
+            output_encryption: EncryptionModeArg::New,
             output_key: args.output_key,
             output_entropy: false,
             ignore_extension: true,
@@ -412,9 +412,9 @@ fn main() -> anyhow::Result<()> {
             output_path: Some(args.output_path),
         }),
         CompilerMode::DtabEncryptOldstyle(args) => cross_crypt(CrossCryptArgs {
-            input_decryption: None,
+            input_decryption: DecryptionModeArg::None,
             input_key: None,
-            output_encryption: Some(EncryptionModeArg::Old),
+            output_encryption: EncryptionModeArg::Old,
             output_key: args.output_key,
             output_entropy: false,
             ignore_extension: true,
@@ -476,7 +476,7 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
         format: args.output_format.to_arson(),
         encoding: args.output_encoding.map(EncodingArg::to_arson).unwrap_or(input_encoding),
         encryption: EncryptionSettings {
-            mode: args.output_encryption.map(EncryptionModeArg::to_arson),
+            mode: args.output_encryption.to_arson(),
             key: args.output_key,
             time_entropy: args.output_entropy,
         },
@@ -498,7 +498,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
         format: args.input_format.map(FormatVersionArg::to_arson),
         encoding: args.input_encoding.map(EncodingArg::to_arson),
         decryption: DecryptionSettings {
-            mode: args.input_decryption.map(EncryptionModeArg::to_arson),
+            mode: args.input_decryption.to_arson(),
             key: args.input_key,
         },
     };
@@ -539,7 +539,7 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
 fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
     let output_path = args.output_path.unwrap_or_else(|| {
         let suffix = match args.output_encryption {
-            None => "decrypted",
+            EncryptionModeArg::None => "decrypted",
             _ => "encrypted",
         };
 
@@ -564,14 +564,14 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
     let input_bytes = Cursor::new(read_file(&args.input_path)?);
 
     let mut settings = DecryptionSettings {
-        mode: args.input_decryption.map(EncryptionModeArg::to_arson),
+        mode: args.input_decryption.to_arson(),
         key: args.input_key,
     };
     let bytes = arson_dtb::decrypt(input_bytes, &mut settings).context("couldn't decrypt input .dtb file")?;
 
     let mut output_bytes = Cursor::new(Vec::new());
     let settings = EncryptionSettings {
-        mode: args.output_encryption.map(EncryptionModeArg::to_arson),
+        mode: args.output_encryption.to_arson(),
         key: args.output_key,
         time_entropy: args.output_entropy,
     };
