@@ -145,7 +145,7 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
     fn read_file(mut reader: CryptReader<R, C>, settings: &ReadSettings) -> Result<(DataArray, Option<DtaEncoding>), ReadError> {
         let exists = reader.read_u8()?;
         match exists {
-            0 => Ok((DataArray::new(1, 0), None)),
+            0 => Ok((DataArray::new(1, 1, 0), None)),
             1 => {
                 let mut reader = Reader::new(reader, settings);
                 let array = reader.read_array()?;
@@ -166,23 +166,28 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
 
         let length;
         let line;
-        let id;
+        // This field is referred to as 'mDeprecated' according to the decomp. Some extrapolation
+        // regarding how scripts are structured in early HMX games leads to the conclusion that
+        // this may be a file ID/index: Frequency has all of its script files pre-processed,
+        // meaning all includes and merges are performed at compile time instead of load time. The
+        // scripts include a list of files, which is what the file IDs refer to.
+        let file_id;
 
         match self.settings.format {
             Some(FormatVersion::Milo) => {
                 length = read_size!(self, read_i16);
                 line = read_size!(self, read_i16);
-                id = read_size!(self, read_i16);
+                file_id = read_size!(self, read_i16);
             },
             Some(FormatVersion::Forge) => {
-                id = read_size!(self, read_i32);
+                file_id = read_size!(self, read_i32);
                 length = read_size!(self, read_i32);
                 line = read_size!(self, read_i16);
             },
             None => unreachable!("format is guaranteed to be set by prior code"),
         }
 
-        let mut array = DataArray::with_capacity(line, id, length);
+        let mut array = DataArray::with_capacity(line, 0, file_id, length);
         for _i in 0..length {
             // Some files have arrays which list a longer length than is actually contained in the file,
             // so an exception is made for an EOF condition encountered on a node boundary
@@ -553,12 +558,12 @@ mod tests {
         assert_node_bytes(&[9, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC], DataNode::Endif);
 
         #[rustfmt::skip]
-        const fn array_bytes<const KIND: u8, const LINE: u8, const ID: u8>() -> &'static [u8] {
+        const fn array_bytes<const KIND: u8, const LINE: u8, const FILE_ID: u8>() -> &'static [u8] {
             &[
                 KIND, 0, 0, 0,
                 3, 0, // size
                 LINE, 0, // line
-                ID, 0, // id
+                FILE_ID, 0, // file id
                 0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
                 1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
                 5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
@@ -567,7 +572,7 @@ mod tests {
 
         assert_node_bytes(
             array_bytes::<16, 13, 0>(),
-            DataNode::Array(DataArray::from_nodes(13, 0, vec![
+            DataNode::Array(DataArray::from_nodes(13, 0, 0, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -575,7 +580,7 @@ mod tests {
         );
         assert_node_bytes(
             array_bytes::<17, 14, 1>(),
-            DataNode::Command(DataArray::from_nodes(14, 1, vec![
+            DataNode::Command(DataArray::from_nodes(14, 0, 1, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -587,7 +592,7 @@ mod tests {
         );
         assert_node_bytes(
             array_bytes::<19, 16, 2>(),
-            DataNode::Property(DataArray::from_nodes(16, 2, vec![
+            DataNode::Property(DataArray::from_nodes(16, 0, 2, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -604,7 +609,7 @@ mod tests {
             &bytes,
             DataNode::Define(
                 "foo".to_owned(),
-                DataArray::from_nodes(19, 3, vec![
+                DataArray::from_nodes(19, 0, 3, vec![
                     DataNode::Integer(10),
                     DataNode::Float(1.0),
                     DataNode::Symbol("foo".to_owned()),
@@ -627,7 +632,7 @@ mod tests {
         bytes.extend_from_slice(array_bytes::<17, 23, 4>());
         assert_node_bytes(
             &bytes,
-            DataNode::Autorun(DataArray::from_nodes(23, 4, vec![
+            DataNode::Autorun(DataArray::from_nodes(23, 0, 4, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),

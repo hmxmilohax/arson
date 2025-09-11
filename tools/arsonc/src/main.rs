@@ -132,12 +132,12 @@ struct DecompileArgs {
     /// The encoding to use for text in the output file.
     #[arg(long)]
     output_encoding: EncodingArg,
+    /// Output file ID information to the file.
+    #[arg(long)]
+    output_file_ids: bool,
     /// Output line number information to the file.
-    #[arg(short = 'l', long)]
+    #[arg(long)]
     output_line_numbers: bool,
-    /// Output array ID information to the file.
-    #[arg(short = 'i', long)]
-    output_array_ids: bool,
 
     /// Skip file extension checks/errors.
     #[arg(long)]
@@ -352,8 +352,8 @@ fn main() -> anyhow::Result<()> {
             input_decryption: DecryptionModeArg::None,
             input_key: None,
             output_encoding: EncodingArg::UTF8,
+            output_file_ids: false,
             output_line_numbers: false,
-            output_array_ids: false,
             ignore_extension: true,
             suppress_format_errors: true,
             allow_overwrite: true,
@@ -366,8 +366,8 @@ fn main() -> anyhow::Result<()> {
             input_decryption: DecryptionModeArg::None,
             input_key: None,
             output_encoding: EncodingArg::UTF8,
+            output_file_ids: false,
             output_line_numbers: false,
-            output_array_ids: false,
             ignore_extension: true,
             suppress_format_errors: true,
             allow_overwrite: true,
@@ -470,8 +470,8 @@ fn decompile(args: DecompileArgs) -> anyhow::Result<()> {
     };
     let result = arson_dtb::read(input_bytes, &settings).context("couldn't parse input .dtb file")?;
     let tokens = result.value.to_tokens(TokenizeOptions {
+        file_ids: args.output_file_ids,
         line_numbers: args.output_line_numbers,
-        array_ids: args.output_array_ids,
     });
 
     let mut unformatted = String::with_capacity(tokens.len() * 5);

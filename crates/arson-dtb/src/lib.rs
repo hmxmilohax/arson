@@ -173,20 +173,21 @@ impl DataNode {
 pub struct DataArray {
     line: usize,
     id: usize,
+    file_id: usize,
     nodes: Vec<DataNode>,
 }
 
 impl DataArray {
-    pub fn new(line: usize, id: usize) -> Self {
-        Self { line, id, nodes: Vec::new() }
+    pub fn new(line: usize, id: usize, file_id: usize) -> Self {
+        Self { line, id, file_id, nodes: Vec::new() }
     }
 
-    pub fn with_capacity(line: usize, id: usize, capacity: usize) -> Self {
-        Self { line, id, nodes: Vec::with_capacity(capacity) }
+    pub fn with_capacity(line: usize, id: usize, file_id: usize, capacity: usize) -> Self {
+        Self { line, id, file_id, nodes: Vec::with_capacity(capacity) }
     }
 
-    pub fn from_nodes(line: usize, id: usize, nodes: Vec<DataNode>) -> Self {
-        Self { line, id, nodes }
+    pub fn from_nodes(line: usize, id: usize, file_id: usize, nodes: Vec<DataNode>) -> Self {
+        Self { line, id, file_id, nodes }
     }
 
     pub fn line(&self) -> usize {
@@ -195,6 +196,10 @@ impl DataArray {
 
     pub fn id(&self) -> usize {
         self.id
+    }
+
+    pub fn file_id(&self) -> usize {
+        self.file_id
     }
 }
 

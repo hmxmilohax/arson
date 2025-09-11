@@ -38,8 +38,8 @@ impl<'src> From<ParseRecoveryError<'src>> for DataParseError {
 
 #[derive(Default, Clone)]
 pub struct TokenizeOptions {
+    pub file_ids: bool,
     pub line_numbers: bool,
-    pub array_ids: bool,
 }
 
 impl DataArray {
@@ -83,7 +83,7 @@ fn convert_to_array(
             Ok(i) => i + 1,
             Err(i) => i,
         };
-        let mut array = DataArray::new(line, state.array_id);
+        let mut array = DataArray::new(line, state.array_id, 0);
         state.array_id += 1;
 
         convert_exprs_inner(state, &mut array, ast, lines)?;
@@ -187,10 +187,10 @@ fn convert_to_tokens<'src>(array: &'src DataArray, options: &TokenizeOptions) ->
 
         // Display line/ID info if enabled
         'info_comment: {
-            let comment = match (options.line_numbers, options.array_ids) {
-                (true, true) => format!("Line: {}, ID: {}", array.line(), array.id()),
-                (true, false) => format!("Line: {}", array.line()),
-                (false, true) => format!("ID: {}", array.id()),
+            let comment = match (options.file_ids, options.line_numbers) {
+                (true, true) => format!("File ID: {}, line: {}", array.file_id(), array.line()),
+                (true, false) => format!("File ID: {}", array.file_id()),
+                (false, true) => format!("Line: {}", array.line()),
                 (false, false) => break 'info_comment,
             };
 
@@ -260,7 +260,7 @@ mod tests {
         fn assert_parsed(text: &str, nodes: Vec<DataNode>) {
             assert_eq!(
                 DataArray::parse(text),
-                Ok(DataArray::from_nodes(1, 0, nodes)),
+                Ok(DataArray::from_nodes(1, 0, 0, nodes)),
                 "Unexpected result for '{text}'"
             );
         }
@@ -297,31 +297,31 @@ mod tests {
         #[test]
         fn arrays() {
             assert_parsed("(asdf \"text\" 1)", vec![
-                DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("asdf".to_owned()),
                     DataNode::String("text".to_owned()),
                     DataNode::Integer(1),
                 ])),
             ]);
             assert_parsed("{set $var \"asdf\"}", vec![
-                DataNode::Command(DataArray::from_nodes(1, 1, vec![
+                DataNode::Command(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("set".to_owned()),
                     DataNode::Variable("var".to_owned()),
                     DataNode::String("asdf".to_owned()),
                 ])),
             ]);
             assert_parsed("[asdf]", vec![
-                DataNode::Property(DataArray::from_nodes(1, 1, vec![
+                DataNode::Property(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("asdf".to_owned()),
                 ])),
             ]);
 
             assert_parsed("(handle {set [var] \"asdf\"})", vec![
-                DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("handle".to_owned()),
-                    DataNode::Command(DataArray::from_nodes(1, 2, vec![
+                    DataNode::Command(DataArray::from_nodes(1, 2, 0, vec![
                         DataNode::Symbol("set".to_owned()),
-                        DataNode::Property(DataArray::from_nodes(1, 3, vec![
+                        DataNode::Property(DataArray::from_nodes(1, 3, 0, vec![
                             DataNode::Symbol("var".to_owned()),
                         ])),
                         DataNode::String("asdf".to_owned()),
@@ -341,33 +341,33 @@ mod tests {
                \n)\
                \n(4 4)",
                 vec![
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("sym1".to_owned()),
                         DataNode::Integer(5),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(2, 2, vec![
+                    DataNode::Array(DataArray::from_nodes(2, 2, 0, vec![
                         DataNode::Symbol("sym2".to_owned()),
-                        DataNode::Array(DataArray::from_nodes(3, 3, vec![
+                        DataNode::Array(DataArray::from_nodes(3, 3, 0, vec![
                             DataNode::Symbol("asdf".to_owned()),
                             DataNode::Integer(100),
                         ])),
-                        DataNode::Array(DataArray::from_nodes(4, 4, vec![
+                        DataNode::Array(DataArray::from_nodes(4, 4, 0, vec![
                             DataNode::Symbol("jkl".to_owned()),
                             DataNode::Integer(250),
                         ])),
-                        DataNode::Array(DataArray::from_nodes(5, 5, vec![
+                        DataNode::Array(DataArray::from_nodes(5, 5, 0, vec![
                             DataNode::Integer(1),
-                            DataNode::Array(DataArray::from_nodes(6, 6, vec![
+                            DataNode::Array(DataArray::from_nodes(6, 6, 0, vec![
                                 DataNode::Integer(5),
                                 DataNode::String("foo".to_owned()),
                             ])),
-                            DataNode::Array(DataArray::from_nodes(7, 7, vec![
+                            DataNode::Array(DataArray::from_nodes(7, 7, 0, vec![
                                 DataNode::Integer(10),
                                 DataNode::String("baz".to_owned()),
                             ])),
                         ])),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(10, 8, vec![
+                    DataNode::Array(DataArray::from_nodes(10, 8, 0, vec![
                         DataNode::Integer(4),
                         DataNode::Integer(4),
                     ])),
@@ -379,12 +379,12 @@ mod tests {
         fn directives() {
             assert_parsed("#ifdef kDefine (array1 10) #else (array2 5) #endif", vec![
                 DataNode::Ifdef("kDefine".to_owned()),
-                DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("array1".to_owned()),
                     DataNode::Integer(10),
                 ])),
                 DataNode::Else,
-                DataNode::Array(DataArray::from_nodes(1, 2, vec![
+                DataNode::Array(DataArray::from_nodes(1, 2, 0, vec![
                     DataNode::Symbol("array2".to_owned()),
                     DataNode::Integer(5),
                 ])),
@@ -392,7 +392,7 @@ mod tests {
             ]);
             assert_parsed("#ifndef kDefine (array 10) #endif", vec![
                 DataNode::Ifndef("kDefine".to_owned()),
-                DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("array".to_owned()),
                     DataNode::Integer(10),
                 ])),
@@ -400,7 +400,7 @@ mod tests {
             ]);
 
             assert_parsed("#define kDefine (1)", vec![
-                DataNode::Define("kDefine".to_owned(), DataArray::from_nodes(1, 1, vec![
+                DataNode::Define("kDefine".to_owned(), DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Integer(1),
                 ])),
             ]);
@@ -414,7 +414,7 @@ mod tests {
                 DataNode::Merge("file.dta".to_owned()),
             ]);
             assert_parsed("#autorun {print \"text\"}", vec![
-                DataNode::Autorun(DataArray::from_nodes(1, 1, vec![
+                DataNode::Autorun(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("print".to_owned()),
                     DataNode::String("text".to_owned()),
                 ])),
@@ -434,7 +434,7 @@ mod tests {
             nodes: Vec<DataNode>,
             tokens: Vec<TokenValue<'_>>,
         ) {
-            assert_eq!(DataArray::from_nodes(1, 0, nodes).to_tokens(options), tokens,);
+            assert_eq!(DataArray::from_nodes(1, 0, 0, nodes).to_tokens(options), tokens,);
         }
 
         #[test]
@@ -498,7 +498,7 @@ mod tests {
             // (asdf "text" 1)
             assert_tokenized(
                 vec![
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("asdf".to_owned()),
                         DataNode::String("text".to_owned()),
                         DataNode::Integer(1),
@@ -515,7 +515,7 @@ mod tests {
             // {set $var "asdf"}
             assert_tokenized(
                 vec![
-                    DataNode::Command(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Command(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("set".to_owned()),
                         DataNode::Variable("var".to_owned()),
                         DataNode::String("asdf".to_owned()),
@@ -532,7 +532,7 @@ mod tests {
             // [asdf]
             assert_tokenized(
                 vec![
-                    DataNode::Property(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Property(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("asdf".to_owned()),
                     ])),
                 ],
@@ -546,11 +546,11 @@ mod tests {
             // (handle {set [var] "asdf"})
             assert_tokenized(
                 vec![
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("handle".to_owned()),
-                        DataNode::Command(DataArray::from_nodes(1, 2, vec![
+                        DataNode::Command(DataArray::from_nodes(1, 2, 0, vec![
                             DataNode::Symbol("set".to_owned()),
-                            DataNode::Property(DataArray::from_nodes(1, 3, vec![
+                            DataNode::Property(DataArray::from_nodes(1, 3, 0, vec![
                                 DataNode::Symbol("var".to_owned()),
                             ])),
                             DataNode::String("asdf".to_owned()),
@@ -585,33 +585,33 @@ mod tests {
             */
             assert_tokenized(
                 vec![
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("sym1".to_owned()),
                         DataNode::Integer(5),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(2, 2, vec![
+                    DataNode::Array(DataArray::from_nodes(2, 2, 0, vec![
                         DataNode::Symbol("sym2".to_owned()),
-                        DataNode::Array(DataArray::from_nodes(3, 3, vec![
+                        DataNode::Array(DataArray::from_nodes(3, 3, 0, vec![
                             DataNode::Symbol("asdf".to_owned()),
                             DataNode::Integer(100),
                         ])),
-                        DataNode::Array(DataArray::from_nodes(4, 4, vec![
+                        DataNode::Array(DataArray::from_nodes(4, 4, 0, vec![
                             DataNode::Symbol("jkl".to_owned()),
                             DataNode::Integer(250),
                         ])),
-                        DataNode::Array(DataArray::from_nodes(5, 5, vec![
+                        DataNode::Array(DataArray::from_nodes(5, 5, 0, vec![
                             DataNode::Integer(1),
-                            DataNode::Array(DataArray::from_nodes(6, 6, vec![
+                            DataNode::Array(DataArray::from_nodes(6, 6, 0, vec![
                                 DataNode::Integer(5),
                                 DataNode::String("foo".to_owned()),
                             ])),
-                            DataNode::Array(DataArray::from_nodes(7, 7, vec![
+                            DataNode::Array(DataArray::from_nodes(7, 7, 0, vec![
                                 DataNode::Integer(10),
                                 DataNode::String("baz".to_owned()),
                             ])),
                         ])),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(10, 8, vec![
+                    DataNode::Array(DataArray::from_nodes(10, 8, 0, vec![
                         DataNode::Integer(4),
                         DataNode::Integer(4),
                     ])),
@@ -666,40 +666,40 @@ mod tests {
             (4 4)
             */
             let array = vec![
-                DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                     DataNode::Symbol("sym1".to_owned()),
                     DataNode::Integer(5),
                 ])),
-                DataNode::Array(DataArray::from_nodes(2, 2, vec![
+                DataNode::Array(DataArray::from_nodes(2, 2, 0, vec![
                     DataNode::Symbol("sym2".to_owned()),
-                    DataNode::Array(DataArray::from_nodes(3, 3, vec![
+                    DataNode::Array(DataArray::from_nodes(3, 3, 0, vec![
                         DataNode::Symbol("asdf".to_owned()),
                         DataNode::Integer(100),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(4, 4, vec![
+                    DataNode::Array(DataArray::from_nodes(4, 4, 0, vec![
                         DataNode::Symbol("jkl".to_owned()),
                         DataNode::Integer(250),
                     ])),
-                    DataNode::Array(DataArray::from_nodes(5, 5, vec![
+                    DataNode::Array(DataArray::from_nodes(5, 5, 0, vec![
                         DataNode::Integer(1),
-                        DataNode::Array(DataArray::from_nodes(6, 6, vec![
+                        DataNode::Array(DataArray::from_nodes(6, 6, 0, vec![
                             DataNode::Integer(5),
                             DataNode::String("foo".to_owned()),
                         ])),
-                        DataNode::Array(DataArray::from_nodes(7, 7, vec![
+                        DataNode::Array(DataArray::from_nodes(7, 7, 0, vec![
                             DataNode::Integer(10),
                             DataNode::String("baz".to_owned()),
                         ])),
                     ])),
                 ])),
-                DataNode::Array(DataArray::from_nodes(10, 8, vec![
+                DataNode::Array(DataArray::from_nodes(10, 8, 0, vec![
                     DataNode::Integer(4),
                     DataNode::Integer(4),
                 ])),
             ];
 
             assert_tokenized_options(
-                TokenizeOptions { line_numbers: false, array_ids: false },
+                TokenizeOptions { line_numbers: false, file_ids: false },
                 array.clone(),
                 vec![
                     TokenValue::ArrayOpen,
@@ -735,7 +735,7 @@ mod tests {
                 ],
             );
             assert_tokenized_options(
-                TokenizeOptions { line_numbers: true, array_ids: false },
+                TokenizeOptions { line_numbers: true, file_ids: false },
                 array.clone(),
                 vec![
                     TokenValue::ArrayOpen,
@@ -811,13 +811,13 @@ mod tests {
                 ],
             );
             assert_tokenized_options(
-                TokenizeOptions { line_numbers: false, array_ids: true },
+                TokenizeOptions { line_numbers: false, file_ids: true },
                 array.clone(),
                 vec![
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("ID: 1", 0..0),
+                            body: TextToken::new("File ID: 0", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::make_symbol("sym1"),
@@ -826,14 +826,14 @@ mod tests {
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("ID: 2", 0..0),
+                            body: TextToken::new("File ID: 0", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::make_symbol("sym2"),
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("ID: 3", 0..0),
+                                body: TextToken::new("File ID: 0", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::make_symbol("asdf"),
@@ -842,7 +842,7 @@ mod tests {
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("ID: 4", 0..0),
+                                body: TextToken::new("File ID: 0", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::make_symbol("jkl"),
@@ -851,14 +851,14 @@ mod tests {
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("ID: 5", 0..0),
+                                body: TextToken::new("File ID: 0", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::Integer(1),
                             TokenValue::ArrayOpen,
                                 TokenValue::BlockComment(BlockCommentToken {
                                     open: TextToken::new("/* ", 0..0),
-                                    body: TextToken::new("ID: 6", 0..0),
+                                    body: TextToken::new("File ID: 0", 0..0),
                                     close: TextToken::new(" */", 0..0),
                                 }),
                                 TokenValue::Integer(5),
@@ -867,7 +867,7 @@ mod tests {
                             TokenValue::ArrayOpen,
                                 TokenValue::BlockComment(BlockCommentToken {
                                     open: TextToken::new("/* ", 0..0),
-                                    body: TextToken::new("ID: 7", 0..0),
+                                    body: TextToken::new("File ID: 0", 0..0),
                                     close: TextToken::new(" */", 0..0),
                                 }),
                                 TokenValue::Integer(10),
@@ -878,7 +878,7 @@ mod tests {
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("ID: 8", 0..0),
+                            body: TextToken::new("File ID: 0", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::Integer(4),
@@ -887,13 +887,13 @@ mod tests {
                 ],
             );
             assert_tokenized_options(
-                TokenizeOptions { line_numbers: true, array_ids: true },
+                TokenizeOptions { line_numbers: true, file_ids: true },
                 array.clone(),
                 vec![
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("Line: 1, ID: 1", 0..0),
+                            body: TextToken::new("File ID: 0, line: 1", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::make_symbol("sym1"),
@@ -902,14 +902,14 @@ mod tests {
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("Line: 2, ID: 2", 0..0),
+                            body: TextToken::new("File ID: 0, line: 2", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::make_symbol("sym2"),
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("Line: 3, ID: 3", 0..0),
+                                body: TextToken::new("File ID: 0, line: 3", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::make_symbol("asdf"),
@@ -918,7 +918,7 @@ mod tests {
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("Line: 4, ID: 4", 0..0),
+                                body: TextToken::new("File ID: 0, line: 4", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::make_symbol("jkl"),
@@ -927,14 +927,14 @@ mod tests {
                         TokenValue::ArrayOpen,
                             TokenValue::BlockComment(BlockCommentToken {
                                 open: TextToken::new("/* ", 0..0),
-                                body: TextToken::new("Line: 5, ID: 5", 0..0),
+                                body: TextToken::new("File ID: 0, line: 5", 0..0),
                                 close: TextToken::new(" */", 0..0),
                             }),
                             TokenValue::Integer(1),
                             TokenValue::ArrayOpen,
                                 TokenValue::BlockComment(BlockCommentToken {
                                     open: TextToken::new("/* ", 0..0),
-                                    body: TextToken::new("Line: 6, ID: 6", 0..0),
+                                    body: TextToken::new("File ID: 0, line: 6", 0..0),
                                     close: TextToken::new(" */", 0..0),
                                 }),
                                 TokenValue::Integer(5),
@@ -943,7 +943,7 @@ mod tests {
                             TokenValue::ArrayOpen,
                                 TokenValue::BlockComment(BlockCommentToken {
                                     open: TextToken::new("/* ", 0..0),
-                                    body: TextToken::new("Line: 7, ID: 7", 0..0),
+                                    body: TextToken::new("File ID: 0, line: 7", 0..0),
                                     close: TextToken::new(" */", 0..0),
                                 }),
                                 TokenValue::Integer(10),
@@ -954,7 +954,7 @@ mod tests {
                     TokenValue::ArrayOpen,
                         TokenValue::BlockComment(BlockCommentToken {
                             open: TextToken::new("/* ", 0..0),
-                            body: TextToken::new("Line: 10, ID: 8", 0..0),
+                            body: TextToken::new("File ID: 0, line: 10", 0..0),
                             close: TextToken::new(" */", 0..0),
                         }),
                         TokenValue::Integer(4),
@@ -970,12 +970,12 @@ mod tests {
             assert_tokenized(
                 vec![
                     DataNode::Ifdef("kDefine".to_owned()),
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("array1".to_owned()),
                         DataNode::Integer(10),
                     ])),
                     DataNode::Else,
-                    DataNode::Array(DataArray::from_nodes(1, 2, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 2, 0, vec![
                         DataNode::Symbol("array2".to_owned()),
                         DataNode::Integer(5),
                     ])),
@@ -1000,7 +1000,7 @@ mod tests {
             assert_tokenized(
                 vec![
                     DataNode::Ifndef("kDefine".to_owned()),
-                    DataNode::Array(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Array(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("array".to_owned()),
                         DataNode::Integer(10),
                     ])),
@@ -1020,7 +1020,7 @@ mod tests {
             // #define kDefine (1)
             assert_tokenized(
                 vec![
-                    DataNode::Define("kDefine".to_owned(), DataArray::from_nodes(1, 1, vec![
+                    DataNode::Define("kDefine".to_owned(), DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Integer(1),
                     ])),
                 ],
@@ -1065,7 +1065,7 @@ mod tests {
             // #autorun {print "text"}
             assert_tokenized(
                 vec![
-                    DataNode::Autorun(DataArray::from_nodes(1, 1, vec![
+                    DataNode::Autorun(DataArray::from_nodes(1, 1, 0, vec![
                         DataNode::Symbol("print".to_owned()),
                         DataNode::String("text".to_owned()),
                     ])),

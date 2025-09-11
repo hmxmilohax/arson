@@ -64,8 +64,8 @@ impl EncryptionSettings {
 
 #[derive(thiserror::Error, Debug)]
 pub enum WriteError {
-    #[error("length/line {0} is too large to be written")]
-    InvalidArrayInteger(usize),
+    #[error("length {0} is too large to be written")]
+    LengthTooLarge(usize),
 
     #[error("{0}: {1}")]
     EncodingFailed(EncodeError, String),
@@ -93,24 +93,31 @@ impl<'s, W: io::Write, C: CryptAlgorithm> Writer<'s, W, C> {
     }
 
     fn write_array(&mut self, array: &DataArray) -> Result<(), WriteError> {
-        macro_rules! write_size {
+        macro_rules! write_length {
             ($self:ident, $write:ident, $size:expr) => {{
                 let size = $size;
-                let value = size.try_into().map_err(|_| WriteError::InvalidArrayInteger(size))?;
+                let value = size.try_into().map_err(|_| WriteError::LengthTooLarge(size))?;
                 $self.writer.$write::<LittleEndian>(value)?;
+            }};
+        }
+
+        macro_rules! write_id {
+            ($self:ident, $write:ident, $inttype:ty, $value:expr) => {{
+                let value = $value.min(<$inttype>::MAX as usize);
+                $self.writer.$write::<LittleEndian>(value as $inttype)?;
             }};
         }
 
         match self.settings.format {
             FormatVersion::Milo => {
-                write_size!(self, write_i16, array.len());
-                write_size!(self, write_i16, array.line());
-                write_size!(self, write_i16, array.id());
+                write_length!(self, write_i16, array.len());
+                write_id!(self, write_i16, i16, array.line());
+                write_id!(self, write_i16, i16, array.file_id());
             },
             FormatVersion::Forge => {
-                write_size!(self, write_i32, array.line());
-                write_size!(self, write_i32, array.len());
-                write_size!(self, write_i16, array.line());
+                write_id!(self, write_i32, i32, array.file_id());
+                write_length!(self, write_i32, array.len());
+                write_id!(self, write_i16, i16, array.line());
             },
         }
 
@@ -163,7 +170,7 @@ impl<'s, W: io::Write, C: CryptAlgorithm> Writer<'s, W, C> {
     }
 
     fn write_glob(&mut self, bytes: &[u8]) -> Result<(), WriteError> {
-        let length = u32::try_from(bytes.len()).map_err(|_| WriteError::InvalidArrayInteger(bytes.len()))?;
+        let length = u32::try_from(bytes.len()).map_err(|_| WriteError::LengthTooLarge(bytes.len()))?;
         self.writer.write_u32::<LittleEndian>(length)?;
         Ok(self.writer.write_all(bytes)?)
     }
@@ -292,12 +299,12 @@ mod tests {
         assert_node_bytes(DataNode::Endif, &[9, 0, 0, 0, 0, 0, 0, 0]);
 
         #[rustfmt::skip]
-        const fn array_bytes<const KIND: u8, const LINE: u8, const ID: u8>() -> &'static [u8] {
+        const fn array_bytes<const KIND: u8, const LINE: u8, const FILE_ID: u8>() -> &'static [u8] {
             &[
                 KIND, 0, 0, 0,
                 3, 0, // size
                 LINE, 0, // line
-                ID, 0, // id
+                FILE_ID, 0, // file id
                 0, 0, 0, 0, 10, 0, 0, 0, // DataNode::Integer(10)
                 1, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F, // DataNode::Float(1.0)
                 5, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o', // DataNode::Symbol("foo")
@@ -305,7 +312,7 @@ mod tests {
         }
 
         assert_node_bytes(
-            DataNode::Array(DataArray::from_nodes(13, 0, vec![
+            DataNode::Array(DataArray::from_nodes(13, 0, 0, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -313,7 +320,7 @@ mod tests {
             array_bytes::<16, 13, 0>(),
         );
         assert_node_bytes(
-            DataNode::Command(DataArray::from_nodes(14, 1, vec![
+            DataNode::Command(DataArray::from_nodes(14, 0, 1, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -324,7 +331,7 @@ mod tests {
             18, 0, 0, 0, 3, 0, 0, 0, b'f', b'o', b'o',
         ]);
         assert_node_bytes(
-            DataNode::Property(DataArray::from_nodes(16, 2, vec![
+            DataNode::Property(DataArray::from_nodes(16, 0, 2, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),
@@ -340,7 +347,7 @@ mod tests {
         assert_node_bytes(
             DataNode::Define(
                 "foo".to_owned(),
-                DataArray::from_nodes(19, 3, vec![
+                DataArray::from_nodes(19, 0, 3, vec![
                     DataNode::Integer(10),
                     DataNode::Float(1.0),
                     DataNode::Symbol("foo".to_owned()),
@@ -360,7 +367,7 @@ mod tests {
         let mut bytes = [36, 0, 0, 0, 0, 0, 0, 0].to_vec();
         bytes.extend_from_slice(array_bytes::<17, 23, 4>());
         assert_node_bytes(
-            DataNode::Autorun(DataArray::from_nodes(23, 4, vec![
+            DataNode::Autorun(DataArray::from_nodes(23, 0, 4, vec![
                 DataNode::Integer(10),
                 DataNode::Float(1.0),
                 DataNode::Symbol("foo".to_owned()),

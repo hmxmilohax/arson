@@ -16,7 +16,7 @@ use arson_dtb::{
 use arson_parse::encoding::DtaEncoding;
 
 static TEST_ARRAY: LazyLock<DataArray> = LazyLock::new(|| {
-    DataArray::from_nodes(1, 0, vec![
+    DataArray::from_nodes(1, 0, 0, vec![
         DataNode::Integer(10),
         DataNode::Float(1.0),
         DataNode::Variable("foo".to_owned()),
