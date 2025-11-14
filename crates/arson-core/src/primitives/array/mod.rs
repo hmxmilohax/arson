@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#[allow(clippy::module_inception, reason = "module is private, and it makes sense file-wise")]
+#[allow(
+    clippy::module_inception,
+    reason = "module is private, and it makes sense file-wise"
+)]
 mod array;
 mod display;
 mod error;

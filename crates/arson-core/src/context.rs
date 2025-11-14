@@ -92,14 +92,13 @@ impl Context {
     }
 
     pub fn get_state<S: ContextState>(&self) -> crate::Result<&S> {
-        self.get_state_opt()
-            .ok_or_else(|| {
-                #[cfg(feature = "dynamic-typenames")]
-                return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
+        self.get_state_opt().ok_or_else(|| {
+            #[cfg(feature = "dynamic-typenames")]
+            return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
 
-                #[cfg(not(feature = "dynamic-typenames"))]
-                return ExecutionError::StateNotFound.into();
-            })
+            #[cfg(not(feature = "dynamic-typenames"))]
+            return ExecutionError::StateNotFound.into();
+        })
     }
 
     pub fn get_state_opt<S: ContextState>(&self) -> Option<&S> {
@@ -107,14 +106,13 @@ impl Context {
     }
 
     pub fn get_state_mut<S: ContextState>(&mut self) -> crate::Result<&mut S> {
-        self.get_state_mut_opt()
-            .ok_or_else(|| {
-                #[cfg(feature = "dynamic-typenames")]
-                return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
+        self.get_state_mut_opt().ok_or_else(|| {
+            #[cfg(feature = "dynamic-typenames")]
+            return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
 
-                #[cfg(not(feature = "dynamic-typenames"))]
-                return ExecutionError::StateNotFound.into();
-            })
+            #[cfg(not(feature = "dynamic-typenames"))]
+            return ExecutionError::StateNotFound.into();
+        })
     }
 
     pub fn get_state_mut_opt<S: ContextState>(&mut self) -> Option<&mut S> {

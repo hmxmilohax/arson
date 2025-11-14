@@ -3,7 +3,10 @@
 mod default;
 mod intern;
 mod kind;
-#[allow(clippy::module_inception, reason = "module is private, and it makes sense file-wise")]
+#[allow(
+    clippy::module_inception,
+    reason = "module is private, and it makes sense file-wise"
+)]
 mod node;
 mod value;
 

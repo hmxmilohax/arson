@@ -450,7 +450,8 @@ fn compile(args: CompileArgs) -> anyhow::Result<()> {
             time_entropy: args.output_entropy,
         },
     };
-    arson_dtb::write(&array, &mut output_bytes, &settings).context("couldn't write output .dtb file bytes")?;
+    arson_dtb::write(&array, &mut output_bytes, &settings)
+        .context("couldn't write output .dtb file bytes")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }
@@ -537,7 +538,8 @@ fn cross_crypt(args: CrossCryptArgs) -> anyhow::Result<()> {
         key: args.output_key,
         time_entropy: args.output_entropy,
     };
-    arson_dtb::encrypt(&result.value, &mut output_bytes, settings).context("couldn't encrypt output .dtb file")?;
+    arson_dtb::encrypt(&result.value, &mut output_bytes, settings)
+        .context("couldn't encrypt output .dtb file")?;
 
     write_file(&output_path, &output_bytes.into_inner(), args.allow_overwrite)
 }

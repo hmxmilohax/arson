@@ -66,7 +66,11 @@ const READ_SETTINGS: ReadSettings = ReadSettings {
 const WRITE_SETTINGS: WriteSettings = WriteSettings {
     format: FormatVersion::Milo,
     encoding: DtaEncoding::Utf8,
-    encryption: EncryptionSettings { mode: EncryptionMode::None, key: None, time_entropy: false },
+    encryption: EncryptionSettings {
+        mode: EncryptionMode::None,
+        key: None,
+        time_entropy: false,
+    },
 };
 
 fn test_encryption(source_array: &DataArray, source_bytes: &[u8], mode: Option<EncryptionMode>) {

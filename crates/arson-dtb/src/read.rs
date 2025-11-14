@@ -138,11 +138,14 @@ impl<'s, R: io::Read + io::Seek, C: CryptAlgorithm> Reader<'s, R, C> {
             settings,
 
             probing_encoding: settings.encoding.is_none(),
-            probed_encoding: settings.encoding
+            probed_encoding: settings.encoding,
         }
     }
 
-    fn read_file(mut reader: CryptReader<R, C>, settings: &ReadSettings) -> Result<(DataArray, Option<DtaEncoding>), ReadError> {
+    fn read_file(
+        mut reader: CryptReader<R, C>,
+        settings: &ReadSettings,
+    ) -> Result<(DataArray, Option<DtaEncoding>), ReadError> {
         let exists = reader.read_u8()?;
         match exists {
             0 => Ok((DataArray::new(1, 1, 0), None)),
@@ -371,13 +374,7 @@ pub fn read(
     match settings.format {
         Some(format) => {
             let (array, encryption, key, encoding) = probe_encryption(&mut reader, settings)?;
-            Ok(ReadValue {
-                value: array,
-                format,
-                encryption,
-                key,
-                encoding,
-            })
+            Ok(ReadValue { value: array, format, encryption, key, encoding })
         },
         None => {
             let mut errors = Vec::new();
@@ -385,19 +382,10 @@ pub fn read(
             for format in [/*FormatVersion::Rnd,*/ FormatVersion::Milo, FormatVersion::Forge] {
                 reader.seek(io::SeekFrom::Start(position))?;
 
-                let settings = ReadSettings {
-                    format: Some(format),
-                    ..settings.clone()
-                };
+                let settings = ReadSettings { format: Some(format), ..settings.clone() };
                 match probe_encryption(&mut reader, &settings) {
                     Ok((array, encryption, key, encoding)) => {
-                        return Ok(ReadValue {
-                            value: array,
-                            format,
-                            encryption,
-                            key,
-                            encoding,
-                        });
+                        return Ok(ReadValue { value: array, format, encryption, key, encoding });
                     },
                     Err(error) => match error {
                         ReadError::ProbeFailure(inner) => {
@@ -411,8 +399,8 @@ pub fn read(
                         _ => errors.push(ProbeError {
                             inner: error,
                             context: format!("format type {format:?}"),
-                        })
-                    }
+                        }),
+                    },
                 }
             }
 
@@ -438,10 +426,7 @@ fn probe_encryption(
                 reader.seek(io::SeekFrom::Start(position))?;
 
                 let settings = ReadSettings {
-                    decryption: DecryptionSettings {
-                        mode: Some(encryption),
-                        ..settings.decryption
-                    },
+                    decryption: DecryptionSettings { mode: Some(encryption), ..settings.decryption },
                     ..settings.clone()
                 };
                 match read_impl(&mut reader, &settings) {
@@ -453,8 +438,8 @@ fn probe_encryption(
                         _ => errors.push(ProbeError {
                             inner: error,
                             context: format!("encryption type {encryption:?}"),
-                        })
-                    }
+                        }),
+                    },
                 };
             }
 
@@ -467,7 +452,8 @@ fn read_impl(
     mut reader: impl io::Seek + io::Read,
     settings: &ReadSettings,
 ) -> Result<(DataArray, u32, Option<DtaEncoding>), ReadError> {
-    let ((array, encoding), key) = match_encryption!(reader, settings, settings.decryption, Reader::read_file);
+    let ((array, encoding), key) =
+        match_encryption!(reader, settings, settings.decryption, Reader::read_file);
     Ok((array, key, encoding))
 }
 
@@ -479,10 +465,7 @@ pub fn decrypt(
 
     // Combination sanity check for specified decryption,
     // and probing for unspecified decryption
-    let read_settings = ReadSettings {
-        decryption: settings.clone(),
-        ..Default::default()
-    };
+    let read_settings = ReadSettings { decryption: settings.clone(), ..Default::default() };
     let value = read(&mut reader, &read_settings)?;
     let encryption = settings.mode.unwrap_or(value.encryption);
 

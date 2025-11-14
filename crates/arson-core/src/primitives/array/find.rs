@@ -639,11 +639,7 @@ impl NodeSlice {
         predicate_value_or!(self, context, predicate, Node::array_or, default)
     }
 
-    pub fn find_command_or(
-        &self,
-        predicate: impl IntoDataPredicate,
-        default: &NodeCommand,
-    ) -> NodeCommand {
+    pub fn find_command_or(&self, predicate: impl IntoDataPredicate, default: &NodeCommand) -> NodeCommand {
         predicate_value_or!(self, predicate, Node::command_or, default)
     }
 

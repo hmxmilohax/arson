@@ -183,7 +183,12 @@ impl DataArray {
     }
 
     pub fn with_capacity(line: usize, id: usize, file_id: usize, capacity: usize) -> Self {
-        Self { line, id, file_id, nodes: Vec::with_capacity(capacity) }
+        Self {
+            line,
+            id,
+            file_id,
+            nodes: Vec::with_capacity(capacity),
+        }
     }
 
     pub fn from_nodes(line: usize, id: usize, file_id: usize, nodes: Vec<DataNode>) -> Self {
