@@ -44,6 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     let stdlib_options = StdlibOptions {
         file_load: LoadOptions { allow_include: true, allow_autorun: true },
+        rng_seed: None,
     };
     arson::stdlib::register_funcs(&mut context, stdlib_options);
 

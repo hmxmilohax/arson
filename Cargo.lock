@@ -157,6 +157,7 @@ version = "0.3.0"
 dependencies = [
  "arson-core",
  "arson-fs",
+ "squirrel3-rs",
  "thiserror",
 ]
 
@@ -565,6 +566,12 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "squirrel3-rs"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7624e6dc70987fa89ee0a34f003408f08a1389f85d269627f0a7f3ea73db75a1"
 
 [[package]]
 name = "strsim"

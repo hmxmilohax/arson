@@ -11,5 +11,6 @@ publish = false
 [dependencies]
 arson-core = { path = "../arson-core", features = ["file-loading"] }
 arson-fs = { path = "../arson-fs" }
+squirrel3-rs = "0.1.2"
 
 thiserror = "1.0.65"
