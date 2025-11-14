@@ -17,10 +17,6 @@ impl Object for Function {
         Some(self.name.name())
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
     fn handle(&self, context: &mut Context, msg: &NodeSlice) -> ExecuteResult {
         context.execute_args(&self.body, msg)
     }
@@ -40,10 +36,6 @@ struct Closure {
 impl Object for Closure {
     fn name(&self) -> Option<&String> {
         None
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 
     fn handle(&self, context: &mut Context, msg: &NodeSlice) -> ExecuteResult {

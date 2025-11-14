@@ -40,20 +40,6 @@ pub trait Object: Any + std::fmt::Debug {
     /// specified above.
     fn handle(&self, context: &mut Context, msg: &NodeSlice) -> ExecuteResult;
 
-    /// Interstitial workaround for [lack of trait upcasting coersion](https://github.com/rust-lang/rust/issues/65991).
-    ///
-    /// Simply implement as:
-    ///
-    /// ```rust,no_run
-    /// # struct Asdf;
-    /// # impl Asdf {
-    /// fn as_any(&self) -> &dyn std::any::Any {
-    ///     self
-    /// }
-    /// # }
-    /// ```
-    fn as_any(&self) -> &dyn Any;
-
     /// Gets the type name for this object.
     ///
     /// There is no particular reason to override this, simply leave it as-is.
@@ -65,7 +51,7 @@ pub trait Object: Any + std::fmt::Debug {
 
 impl dyn Object {
     pub fn is<T: Any>(&self) -> bool {
-        self.as_any().is::<T>()
+        (self as &dyn Any).is::<T>()
     }
 
     pub fn downcast<T: Any>(&self) -> crate::Result<&T> {
@@ -83,7 +69,28 @@ impl dyn Object {
     }
 
     pub fn downcast_opt<T: Any>(&self) -> Option<&T> {
-        self.as_any().downcast_ref()
+        (self as &dyn Any).downcast_ref()
+    }
+
+    pub fn downcast_mut<T: Any>(&mut self) -> crate::Result<&mut T> {
+        #[cfg(feature = "dynamic-typenames")]
+        let typename = self.type_name();
+
+        self.downcast_mut_opt().ok_or_else(|| {
+            #[cfg(feature = "dynamic-typenames")]
+            return ObjectError::BadObjectCast {
+                expected: std::any::type_name::<T>(),
+                actual: typename,
+            }
+            .into();
+
+            #[cfg(not(feature = "dynamic-typenames"))]
+            return ObjectError::BadObjectCast.into();
+        })
+    }
+
+    pub fn downcast_mut_opt<T: Any>(&mut self) -> Option<&mut T> {
+        (self as &mut dyn Any).downcast_mut()
     }
 
     fn as_ptr(&self) -> *const () {
