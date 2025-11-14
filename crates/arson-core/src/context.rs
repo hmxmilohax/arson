@@ -20,8 +20,13 @@ pub enum ExecutionError {
     #[error("bad length {actual}, expected {expected}")]
     LengthMismatch { expected: usize, actual: usize },
 
+    #[cfg(feature = "dynamic-typenames")]
     #[error("no state registered for name {0}")]
     StateNotFound(&'static str),
+
+    #[cfg(not(feature = "dynamic-typenames"))]
+    #[error("no state registered for name {0}")]
+    StateNotFound,
 
     #[error("no handler registered for name {0}")]
     HandlerNotFound(String),
@@ -88,7 +93,13 @@ impl Context {
 
     pub fn get_state<S: ContextState>(&self) -> crate::Result<&S> {
         self.get_state_opt()
-            .ok_or_else(|| ExecutionError::StateNotFound(std::any::type_name::<S>()).into())
+            .ok_or_else(|| {
+                #[cfg(feature = "dynamic-typenames")]
+                return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
+
+                #[cfg(not(feature = "dynamic-typenames"))]
+                return ExecutionError::StateNotFound.into();
+            })
     }
 
     pub fn get_state_opt<S: ContextState>(&self) -> Option<&S> {
@@ -97,7 +108,13 @@ impl Context {
 
     pub fn get_state_mut<S: ContextState>(&mut self) -> crate::Result<&mut S> {
         self.get_state_mut_opt()
-            .ok_or_else(|| ExecutionError::StateNotFound(std::any::type_name::<S>()).into())
+            .ok_or_else(|| {
+                #[cfg(feature = "dynamic-typenames")]
+                return ExecutionError::StateNotFound(std::any::type_name::<S>()).into();
+
+                #[cfg(not(feature = "dynamic-typenames"))]
+                return ExecutionError::StateNotFound.into();
+            })
     }
 
     pub fn get_state_mut_opt<S: ContextState>(&mut self) -> Option<&mut S> {
