@@ -76,6 +76,13 @@ impl Context {
     }
 
     pub fn register_state<S: ContextState>(&mut self, state: S) {
+        let exists = self.states.contains_key(&state.type_id());
+
+        #[cfg(feature = "dynamic-typenames")]
+        assert!(!exists, "duplicate {} state registered", std::any::type_name::<S>());
+        #[cfg(not(feature = "dynamic-typenames"))]
+        assert!(!exists, "duplicate state registered");
+
         self.states.insert(state.type_id(), Box::new(state));
     }
 
