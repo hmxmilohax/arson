@@ -23,7 +23,7 @@ pub fn register_funcs(context: &mut Context) {
 
     context.register_func("set", self::set);
     context.register_func("set_var", self::set_var);
-    context.register_func("set_this", self::set_this);
+    // context.register_func("set_this", self::set_this);
 
     context.register_func("var", self::var);
 }
@@ -49,10 +49,6 @@ fn set_var(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     context.set_variable(name, value.clone());
 
     Ok(value.into())
-}
-
-fn set_this(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
-    todo!("set_this")
 }
 
 fn var(context: &mut Context, args: &NodeSlice) -> ExecuteResult {

@@ -115,7 +115,7 @@ mod scope {
 
     pub fn register_funcs(context: &mut Context) {
         context.register_func("do", self::r#do);
-        context.register_func("with", self::with_block);
+        // context.register_func("with", self::with_block);
     }
 
     fn r#do(context: &mut Context, mut args: &NodeSlice) -> ExecuteResult {
@@ -125,9 +125,5 @@ mod scope {
         let result = saved_variables.context().execute_block(args);
         drop(saved_variables); // ensure drop does not occur until after execution
         result
-    }
-
-    fn with_block(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
-        todo!("`with` func")
     }
 }

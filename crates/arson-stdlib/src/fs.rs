@@ -22,8 +22,8 @@ pub fn register_funcs(context: &mut Context, options: LoadOptions) {
 
     context.register_func("file_exists", self::file_exists);
     context.register_func("file_read_only", self::file_read_only);
-    context.register_func("file_list", self::file_list);
-    context.register_func("file_list_paths", self::file_list_paths);
+    // context.register_func("file_list", self::file_list);
+    // context.register_func("file_list_paths", self::file_list_paths);
 }
 
 pub fn basename(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -105,12 +105,4 @@ pub fn file_read_only(context: &mut Context, args: &NodeSlice) -> ExecuteResult 
         Metadata::File { is_readonly, .. } => Ok(is_readonly.into()),
         Metadata::Directory { .. } => Err(io::Error::from(io::ErrorKind::NotADirectory).into()),
     }
-}
-
-pub fn file_list(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
-    todo!("file_list")
-}
-
-pub fn file_list_paths(_context: &mut Context, _args: &NodeSlice) -> ExecuteResult {
-    todo!("file_list_paths")
 }
