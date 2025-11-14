@@ -49,10 +49,11 @@ fn main() -> anyhow::Result<()> {
 
 fn make_context(args: &Arguments) -> anyhow::Result<arson::Context> {
     let mut context = arson::Context::new();
-    context.register_state(StdlibOptions {
-        file_load_options: LoadOptions { allow_include: true, allow_autorun: true },
-    });
-    arson::stdlib::register_funcs(&mut context);
+
+    let stdlib_options = StdlibOptions {
+        file_load: LoadOptions { allow_include: true, allow_autorun: true },
+    };
+    arson::stdlib::register_funcs(&mut context, stdlib_options);
 
     if let Some(ref directory) = args.mount_dir {
         let driver = BasicFileSystemDriver::new(directory).context("failed to create file driver")?;

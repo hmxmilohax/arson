@@ -41,10 +41,11 @@ fn main() -> anyhow::Result<()> {
 
     // Make context
     let mut context = arson::Context::new().with_filesystem_driver(driver);
-    context.register_state(StdlibOptions {
-        file_load_options: LoadOptions { allow_include: true, allow_autorun: true },
-    });
-    arson::stdlib::register_funcs(&mut context);
+
+    let stdlib_options = StdlibOptions {
+        file_load: LoadOptions { allow_include: true, allow_autorun: true },
+    };
+    arson::stdlib::register_funcs(&mut context, stdlib_options);
 
     // Load script file
     let options = LoadOptions { allow_include: true, allow_autorun: true };

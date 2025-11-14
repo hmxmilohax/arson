@@ -1,27 +1,23 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use arson_core::Context;
+use arson_core::{Context, LoadOptions};
 
 pub mod fs;
 pub mod math;
 pub mod process;
 pub mod stdio;
 
-mod options;
-pub use options::*;
+pub struct StdlibOptions {
+    pub file_load: LoadOptions,
+}
 
-pub fn register_funcs(context: &mut Context) {
-    assert!(
-        context.get_state::<StdlibOptions>().is_ok(),
-        "StdlibOptions state must be registered before registering stdlib"
-    );
-
-    fs::register_funcs(context);
+pub fn register_funcs(context: &mut Context, options: StdlibOptions) {
+    fs::register_funcs(context, options.file_load);
     math::register_funcs(context);
     process::register_funcs(context);
     stdio::register_funcs(context);
 }
 
 pub mod prelude {
-    pub use super::options::*;
+    pub use super::StdlibOptions;
 }

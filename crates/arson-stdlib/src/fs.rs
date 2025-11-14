@@ -6,9 +6,13 @@ use arson_core::prelude::*;
 use arson_fs::prelude::*;
 use arson_fs::Metadata;
 
-use crate::StdlibOptions;
+struct StdlibFsState(LoadOptions);
 
-pub fn register_funcs(context: &mut Context) {
+impl ContextState for StdlibFsState {}
+
+pub fn register_funcs(context: &mut Context, options: LoadOptions) {
+    context.register_state(StdlibFsState(options));
+
     context.register_func("basename", self::basename);
     context.register_func("dirname", self::dirname);
 
@@ -49,7 +53,7 @@ pub fn dirname(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 pub fn read_file(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
-    let options = context.get_state::<StdlibOptions>().map(|s| s.file_load_options.clone())?;
+    let options = context.get_state::<StdlibFsState>().map(|s| s.0.clone())?;
 
     let path = args.string(context, 0)?;
     let array = context.load_path(options, path.as_ref())?;
@@ -73,7 +77,7 @@ pub fn write_file(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 pub fn run(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     arson_assert_len!(args, 1);
 
-    let options = context.get_state::<StdlibOptions>().map(|s| s.file_load_options.clone())?;
+    let options = context.get_state::<StdlibFsState>().map(|s| s.0.clone())?;
 
     let path = args.string(context, 0)?;
     match context.load_path(options, path.as_ref()) {
