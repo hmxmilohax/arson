@@ -198,7 +198,7 @@ impl Context {
     {
         let name = name.into_required_symbol(self);
         if self.functions.contains_key(&name) {
-            panic!("required function '{name}' is already registered");
+            panic!("function '{name}' is already registered");
         }
 
         self.functions.insert(name, HandleFn::new(func));

@@ -20,7 +20,7 @@ pub type ObjectRef = std::rc::Rc<dyn Object>;
 
 pub trait Object: Any + std::fmt::Debug {
     /// Gets the name for this object, if any.
-    fn name(&self) -> Option<&String>;
+    fn name(&self) -> Option<&str>;
 
     /// Sends a message/command to the object to be handled.
     ///
@@ -36,7 +36,7 @@ pub trait Object: Any + std::fmt::Debug {
     /// This is also the reason why the `self` argument here is *immutable* as
     /// opposed to *mutable*. Making `self` mutable here results in all sorts
     /// of logistical issues in implementation, and additionally makes the
-    /// side-effect nature of argument evaluation less sound for the reasons
+    /// side-effect nature of argument evaluation unsound for the reasons
     /// specified above.
     fn handle(&self, context: &mut Context, msg: &NodeSlice) -> ExecuteResult;
 

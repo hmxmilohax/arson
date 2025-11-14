@@ -13,7 +13,7 @@ struct Function {
 }
 
 impl Object for Function {
-    fn name(&self) -> Option<&String> {
+    fn name(&self) -> Option<&str> {
         Some(self.name.name())
     }
 
@@ -34,7 +34,7 @@ struct Closure {
 }
 
 impl Object for Closure {
-    fn name(&self) -> Option<&String> {
+    fn name(&self) -> Option<&str> {
         None
     }
 
