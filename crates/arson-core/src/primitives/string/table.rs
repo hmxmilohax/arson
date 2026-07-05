@@ -72,7 +72,7 @@ impl StringTable {
         };
 
         // Don't remove if the string did not come from this table
-        if Rc::ptr_eq(&str, &in_table) {
+        if Rc::ptr_eq(&str, in_table) {
             self.table.remove(str.as_ref());
         }
     }

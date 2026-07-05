@@ -86,7 +86,7 @@ fn random_seed(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 }
 
 fn random(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-    arson_assert!(args.len() > 0, "need at least one element to pick from");
+    arson_assert!(!args.is_empty(), "need at least one element to pick from");
 
     let rng = context.get_state_mut::<RandomState>()?;
     let index = rng.range_usize(0, args.len());
@@ -109,7 +109,7 @@ fn random_int(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 }
 
 fn random_float(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-    if args.len() > 0 {
+    if !args.is_empty() {
         // {random_float <min: float> <max: float>} -> [<min>, <max>)
         arson_assert_len!(args, 2);
         let min = args.float(context, 0)?;
@@ -133,7 +133,7 @@ fn random_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     let array = args.array(context, 0)?;
     let borrow = array.borrow()?;
 
-    arson_assert!(borrow.len() > 0, "need at least one element to pick from");
+    arson_assert!(!borrow.is_empty(), "need at least one element to pick from");
 
     let rng = context.get_state_mut::<RandomState>()?;
     let index = rng.range_usize(0, borrow.len());
