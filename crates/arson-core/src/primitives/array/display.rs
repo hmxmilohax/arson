@@ -46,6 +46,7 @@ impl ArrayDisplayOptions {
     }
 }
 
+/// Pretty-prints an array into source-code form.
 #[derive(Debug)]
 pub struct ArrayDisplay<'a> {
     nodes: &'a [Node],

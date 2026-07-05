@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_core::prelude::*;
-use arson_core::ConcatSlice;
 
 pub fn register_funcs(context: &mut Context) {
     context.register_func("print", self::print);
@@ -10,7 +9,7 @@ pub fn register_funcs(context: &mut Context) {
 
 pub fn print(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     if !args.is_empty() {
-        println!("{}", ConcatSlice::new(context, args));
+        println!("{}", args.concat_evaluated(context));
     }
 
     Ok(Node::HANDLED)
@@ -18,7 +17,7 @@ pub fn print(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 
 pub fn sprint(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
     if !args.is_empty() {
-        Ok(ConcatSlice::new(context, args).to_string().into())
+        Ok(args.concat_evaluated(context).to_string().into())
     } else {
         Ok(String::new().into())
     }

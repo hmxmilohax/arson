@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_core::prelude::*;
-use arson_core::ConcatSlice;
 
 #[derive(Debug)]
 pub struct ExitError(pub Option<String>);
@@ -45,6 +44,6 @@ pub fn abort(_context: &mut Context, args: &NodeSlice) -> ExecuteResult {
 }
 
 pub fn panic(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-    let message = ConcatSlice::new(context, args).to_string();
+    let message = args.concat_evaluated(context).to_string();
     Err(arson_core::Error::from_custom(ExitError(Some(message))))
 }

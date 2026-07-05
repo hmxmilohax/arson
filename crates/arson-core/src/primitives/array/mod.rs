@@ -5,6 +5,7 @@
     reason = "module is private, and it makes sense file-wise"
 )]
 mod array;
+mod concat;
 mod display;
 mod error;
 mod find;
@@ -15,6 +16,7 @@ mod slice;
 mod util;
 
 pub use array::*;
+pub use concat::*;
 pub use display::*;
 pub use error::*;
 pub use find::*;

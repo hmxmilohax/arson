@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{ArrayDisplay, ArrayDisplayOptions, ArrayKind, Context, Node, NodeArray, NodeValue};
+use crate::{ArrayConcat, ArrayDisplay, ArrayDisplayOptions, ArrayKind, Context, Node, NodeArray, NodeValue};
 
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
@@ -72,6 +72,25 @@ impl NodeSlice {
         self.len().cmp(&other.len())
     }
 
+    /// Returns a [`Display`] object that concatenates the array into string form, without separators.
+    /// This version of the method does not perform any evaluation, and simply prints the raw value as-is.
+    ///
+    /// [`Display`]: std::fmt::Display
+    pub fn concat(&self) -> ArrayConcat<'_> {
+        ArrayConcat::new(self)
+    }
+
+    /// Returns a [`Display`] object that concatenates the array into string form, without separators.
+    /// This version of the method performs evaluation before printing the value.
+    ///
+    /// [`Display`]: std::fmt::Display
+    pub fn concat_evaluated<'a>(&'a self, context: &'a mut Context) -> ArrayConcat<'a> {
+        ArrayConcat::new_evaluated(self, context)
+    }
+
+    /// Returns a [`Display`] object that pretty-prints the array into source-code form.
+    ///
+    /// [`Display`]: std::fmt::Display
     pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
         ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
