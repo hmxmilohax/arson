@@ -8,8 +8,10 @@ use std::rc::Rc;
 use arson_fs::FileSystem;
 
 use crate::builtin::BuiltinState;
-use crate::prelude::*;
-use crate::{FindDataPredicate, SymbolTable};
+use crate::primitives::*;
+use crate::{arson_array, FindDataPredicate, SymbolTable};
+#[cfg(feature = "text-loading")]
+use crate::{LoadError, LoadOptions};
 
 /// The result of a script execution.
 pub type ExecuteResult = crate::Result<Node>;

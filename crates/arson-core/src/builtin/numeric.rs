@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use crate::prelude::*;
-use crate::{FloatValue, Integer, IntegerValue, Number};
+use crate::{NodeFloat, NodeInteger, NodeIntegerValue, NodeNumber};
 
 pub fn register_funcs(context: &mut Context) {
     context.add_required_macro("TRUE", arson_array![true]);
@@ -23,7 +23,10 @@ mod bits {
         context.register_func("count_bits", self::count_bits);
     }
 
-    fn first_active_bit<I: Iterator<Item = u32>>(value: IntegerValue, mut bit_range: I) -> IntegerValue {
+    fn first_active_bit<I: Iterator<Item = u32>>(
+        value: NodeIntegerValue,
+        mut bit_range: I,
+    ) -> NodeIntegerValue {
         match bit_range.find(|i| value & (1 << i) != 0) {
             Some(i) => 1 << i,
             None => 0,
@@ -33,20 +36,20 @@ mod bits {
     fn highest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value.0, (0..IntegerValue::BITS).rev());
+        let result = first_active_bit(value.0, (0..NodeIntegerValue::BITS).rev());
         Ok(result.into())
     }
 
     fn lowest_bit(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         let value = args.integer(context, 0)?;
-        let result = first_active_bit(value.0, 0..IntegerValue::BITS);
+        let result = first_active_bit(value.0, 0..NodeIntegerValue::BITS);
         Ok(result.into())
     }
 
     fn count_bits(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
-        let result = args.integer(context, 0)?.0.count_ones() as IntegerValue;
+        let result = args.integer(context, 0)?.0.count_ones() as NodeIntegerValue;
         Ok(result.into())
     }
 }
@@ -62,16 +65,16 @@ mod sign {
     fn abs(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
-            Number::Integer(value) => Ok(value.0.saturating_abs().into()),
-            Number::Float(value) => Ok(value.abs().into()),
+            NodeNumber::Integer(value) => Ok(value.0.saturating_abs().into()),
+            NodeNumber::Float(value) => Ok(value.abs().into()),
         }
     }
 
     fn sign(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.number(context, 0)? {
-            Number::Integer(value) => Ok(value.0.signum().into()),
-            Number::Float(value) => Ok(value.signum().into()),
+            NodeNumber::Integer(value) => Ok(value.0.signum().into()),
+            NodeNumber::Float(value) => Ok(value.signum().into()),
         }
     }
 }
@@ -106,12 +109,12 @@ mod limit {
     }
 
     fn clamp(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
-        fn integer_clamp(min: Integer, max: Integer, value: Integer) -> ExecuteResult {
+        fn integer_clamp(min: NodeInteger, max: NodeInteger, value: NodeInteger) -> ExecuteResult {
             arson_assert!(min <= max, "Invalid clamp range: min ({min}) is greater than max ({max})");
             Ok(value.clamp(min, max).into())
         }
 
-        fn float_clamp(min: FloatValue, max: FloatValue, value: FloatValue) -> ExecuteResult {
+        fn float_clamp(min: NodeFloat, max: NodeFloat, value: NodeFloat) -> ExecuteResult {
             use std::cmp::Ordering;
 
             // Manual handling of `min <= max` to make the `None` case explicitly defined,
@@ -138,14 +141,14 @@ mod limit {
         let min = args.number(context, 1)?;
         let max = args.number(context, 2)?;
 
-        let Number::Integer(min) = min else {
+        let NodeNumber::Integer(min) = min else {
             return float_clamp(min.float(), max.float(), value.float());
         };
-        let Number::Integer(max) = max else {
-            return float_clamp(min.0 as FloatValue, max.float(), value.float());
+        let NodeNumber::Integer(max) = max else {
+            return float_clamp(min.0 as NodeFloat, max.float(), value.float());
         };
-        let Number::Integer(value) = value else {
-            return float_clamp(min.0 as FloatValue, max.0 as FloatValue, value.float());
+        let NodeNumber::Integer(value) = value else {
+            return float_clamp(min.0 as NodeFloat, max.0 as NodeFloat, value.float());
         };
 
         integer_clamp(min, max, value)
@@ -215,9 +218,9 @@ mod convert {
         arson_assert_len!(args, 1);
         match args.evaluate(context, 0)? {
             NodeValue::Integer(value) => Ok(value.into()),
-            NodeValue::Float(value) => Ok((value as IntegerValue).into()),
-            NodeValue::String(value) => Ok(value.parse::<IntegerValue>()?.into()),
-            NodeValue::Symbol(value) => Ok(value.name().parse::<IntegerValue>()?.into()),
+            NodeValue::Float(value) => Ok((value as NodeIntegerValue).into()),
+            NodeValue::String(value) => Ok(value.parse::<NodeIntegerValue>()?.into()),
+            NodeValue::Symbol(value) => Ok(value.name().parse::<NodeIntegerValue>()?.into()),
             // NodeValue::Object(value) => Ok(value.as_ptr() as usize as IntegerValue),
             value => arson_fail!("value of type {:?} is not convertible to an integer", value.get_kind()),
         }
@@ -226,10 +229,10 @@ mod convert {
     fn float(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 1);
         match args.evaluate(context, 0)? {
-            NodeValue::Integer(value) => Ok((value.0 as FloatValue).into()),
+            NodeValue::Integer(value) => Ok((value.0 as NodeFloat).into()),
             NodeValue::Float(value) => Ok(value.into()),
-            NodeValue::String(value) => Ok(value.parse::<FloatValue>()?.into()),
-            NodeValue::Symbol(value) => Ok(value.name().parse::<FloatValue>()?.into()),
+            NodeValue::String(value) => Ok(value.parse::<NodeFloat>()?.into()),
+            NodeValue::Symbol(value) => Ok(value.name().parse::<NodeFloat>()?.into()),
             value => arson_fail!("value of type {:?} is not convertible to a float", value.get_kind()),
         }
     }

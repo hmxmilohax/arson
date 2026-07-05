@@ -3,7 +3,7 @@
 use std::ops::{Div, Rem};
 
 use crate::prelude::*;
-use crate::{FloatValue, Integer, Number};
+use crate::{NodeFloat, NodeInteger, NodeNumber};
 
 pub fn register_funcs(context: &mut Context) {
     arithmetic::register_funcs(context);
@@ -61,8 +61,8 @@ mod arithmetic {
         if args.len() == 1 {
             // unary negate
             match args.number(context, 0)? {
-                Number::Integer(value) => return Ok((-value).into()),
-                Number::Float(value) => return Ok((-value).into()),
+                NodeNumber::Integer(value) => return Ok((-value).into()),
+                NodeNumber::Float(value) => return Ok((-value).into()),
             }
         }
 
@@ -150,13 +150,13 @@ mod arithmetic {
         let right = args.number(context, 1)?;
 
         match (left, right) {
-            (Number::Integer(left), Number::Integer(right)) => div_rem(context, args, left, right),
-            (Number::Float(left), Number::Float(right)) => div_rem(context, args, left, right),
-            (Number::Integer(left), Number::Float(right)) => {
-                div_rem(context, args, left.0 as FloatValue, right)
+            (NodeNumber::Integer(left), NodeNumber::Integer(right)) => div_rem(context, args, left, right),
+            (NodeNumber::Float(left), NodeNumber::Float(right)) => div_rem(context, args, left, right),
+            (NodeNumber::Integer(left), NodeNumber::Float(right)) => {
+                div_rem(context, args, left.0 as NodeFloat, right)
             },
-            (Number::Float(left), Number::Integer(right)) => {
-                div_rem(context, args, left, right.0 as FloatValue)
+            (NodeNumber::Float(left), NodeNumber::Integer(right)) => {
+                div_rem(context, args, left, right.0 as NodeFloat)
             },
         }
     }
@@ -212,7 +212,7 @@ mod bitwise {
     fn bitwise_op(
         context: &mut Context,
         args: &NodeSlice,
-        f: fn(Integer, Integer) -> Integer,
+        f: fn(NodeInteger, NodeInteger) -> NodeInteger,
     ) -> ExecuteResult {
         let result = args.integer(context, 0)?;
         let result = args

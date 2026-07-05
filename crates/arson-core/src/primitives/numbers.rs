@@ -4,51 +4,51 @@ use std::num::Wrapping;
 use std::ops::{self, RangeBounds};
 
 #[cfg(feature = "text-loading")]
-pub type IntegerValue = arson_parse::IntegerValue;
+pub type NodeIntegerValue = arson_parse::IntegerValue;
 #[cfg(feature = "text-loading")]
-pub type FloatValue = arson_parse::FloatValue;
+pub type NodeFloat = arson_parse::FloatValue;
 
 #[cfg(not(feature = "text-loading"))]
-pub type IntegerValue = i64;
+pub type NodeIntegerValue = i64;
 #[cfg(not(feature = "text-loading"))]
-pub type FloatValue = f64;
+pub type NodeFloat = f64;
 
 /// An integer value with wrapping/overflow semantics.
-pub type Integer = Wrapping<IntegerValue>;
+pub type NodeInteger = Wrapping<NodeIntegerValue>;
 
 /// A numerical value, either integer or floating-point.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
-pub enum Number {
+pub enum NodeNumber {
     /// An integer value (see [`Integer`]).
-    Integer(Integer),
+    Integer(NodeInteger),
     /// A floating-point value (see [`Float`]).
-    Float(FloatValue),
+    Float(NodeFloat),
 }
 
-impl Number {
-    pub fn integer(&self) -> Integer {
+impl NodeNumber {
+    pub fn integer(&self) -> NodeInteger {
         match self {
-            Number::Integer(value) => *value,
-            Number::Float(value) => Wrapping(*value as IntegerValue),
+            NodeNumber::Integer(value) => *value,
+            NodeNumber::Float(value) => Wrapping(*value as NodeIntegerValue),
         }
     }
 
-    pub fn float(&self) -> FloatValue {
+    pub fn float(&self) -> NodeFloat {
         match self {
-            Number::Integer(value) => value.0 as FloatValue,
-            Number::Float(value) => *value,
+            NodeNumber::Integer(value) => value.0 as NodeFloat,
+            NodeNumber::Float(value) => *value,
         }
     }
 }
 
-impl From<Integer> for Number {
-    fn from(value: Integer) -> Self {
+impl From<NodeInteger> for NodeNumber {
+    fn from(value: NodeInteger) -> Self {
         Self::Integer(value)
     }
 }
 
-impl From<FloatValue> for Number {
-    fn from(value: FloatValue) -> Self {
+impl From<NodeFloat> for NodeNumber {
+    fn from(value: NodeFloat) -> Self {
         Self::Float(value)
     }
 }

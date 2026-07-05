@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+use std::rc::Rc;
+
+pub type NodeString = Rc<String>;
+
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum StringError {

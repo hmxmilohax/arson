@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 use arson_core::prelude::*;
-use arson_core::Number;
+use arson_core::NodeNumber;
 
 pub fn register_funcs(context: &mut Context) {
     context.add_required_macro("PI", arson_array![std::f64::consts::PI]);
@@ -32,10 +32,10 @@ pub mod exponential {
     pub fn power(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         arson_assert_len!(args, 2);
         match args.number(context, 0)? {
-            Number::Integer(left) => Ok(left.0.pow(args.integer(context, 1)?.0 as u32).into()),
-            Number::Float(left) => match args.number(context, 1)? {
-                Number::Integer(right) => Ok(left.powi(right.0 as i32).into()),
-                Number::Float(right) => Ok(left.powf(right).into()),
+            NodeNumber::Integer(left) => Ok(left.0.pow(args.integer(context, 1)?.0 as u32).into()),
+            NodeNumber::Float(left) => match args.number(context, 1)? {
+                NodeNumber::Integer(right) => Ok(left.powi(right.0 as i32).into()),
+                NodeNumber::Float(right) => Ok(left.powf(right).into()),
             },
         }
     }

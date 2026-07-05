@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::rc::Rc;
-
-use crate::prelude::*;
-use crate::{ArrayTag, FloatValue, Integer, IntoSymbol, Number, NumericError};
+use crate::primitives::*;
+use crate::{Context, IntoSymbol};
 
 pub trait NodeSliceIndex {
     type Output: ?Sized;
@@ -159,15 +157,15 @@ impl NodeSlice {
         self.get(index)?.evaluate(context)
     }
 
-    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<Integer> {
+    pub fn integer(&self, context: &mut Context, index: usize) -> crate::Result<NodeInteger> {
         self.get(index)?.integer(context)
     }
 
-    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<FloatValue> {
+    pub fn float(&self, context: &mut Context, index: usize) -> crate::Result<NodeFloat> {
         self.get(index)?.float(context)
     }
 
-    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<Number> {
+    pub fn number(&self, context: &mut Context, index: usize) -> crate::Result<NodeNumber> {
         self.get(index)?.number(context)
     }
 
@@ -179,7 +177,7 @@ impl NodeSlice {
         self.get(index)?.boolean(context)
     }
 
-    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<Rc<String>> {
+    pub fn string(&self, context: &mut Context, index: usize) -> crate::Result<NodeString> {
         self.get(index)?.string(context)
     }
 
@@ -235,15 +233,15 @@ impl NodeSlice {
         self.get_opt(index).map(|n| n.evaluate(context))
     }
 
-    pub fn integer_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Integer>> {
+    pub fn integer_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<NodeInteger>> {
         self.get_opt(index).and_then(|n| n.integer_opt(context).transpose())
     }
 
-    pub fn float_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<FloatValue>> {
+    pub fn float_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<NodeFloat>> {
         self.get_opt(index).and_then(|n| n.float_opt(context).transpose())
     }
 
-    pub fn number_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Number>> {
+    pub fn number_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<NodeNumber>> {
         self.get_opt(index).and_then(|n| n.number_opt(context).transpose())
     }
 
@@ -251,7 +249,7 @@ impl NodeSlice {
         self.get_opt(index).and_then(|n| n.size_integer_opt(context).transpose())
     }
 
-    pub fn string_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<Rc<String>>> {
+    pub fn string_opt(&self, context: &mut Context, index: usize) -> Option<crate::Result<NodeString>> {
         self.get_opt(index).and_then(|n| n.string_opt(context).transpose())
     }
 
@@ -317,8 +315,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: Integer,
-    ) -> crate::Result<Integer> {
+        default: NodeInteger,
+    ) -> crate::Result<NodeInteger> {
         index_value_or!(self, context, index, Node::integer_or, default)
     }
 
@@ -326,12 +324,17 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: FloatValue,
-    ) -> crate::Result<FloatValue> {
+        default: NodeFloat,
+    ) -> crate::Result<NodeFloat> {
         index_value_or!(self, context, index, Node::float_or, default)
     }
 
-    pub fn number_or(&self, context: &mut Context, index: usize, default: Number) -> crate::Result<Number> {
+    pub fn number_or(
+        &self,
+        context: &mut Context,
+        index: usize,
+        default: NodeNumber,
+    ) -> crate::Result<NodeNumber> {
         index_value_or!(self, context, index, Node::number_or, default)
     }
 
@@ -348,8 +351,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: &Rc<String>,
-    ) -> crate::Result<Rc<String>> {
+        default: &NodeString,
+    ) -> crate::Result<NodeString> {
         index_value_or!(self, context, index, Node::string_or, default)
     }
 
@@ -431,8 +434,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
-    ) -> crate::Result<Integer> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeInteger>,
+    ) -> crate::Result<NodeInteger> {
         index_value_or_else!(self, context, index, Node::integer_or_else, default)
     }
 
@@ -440,8 +443,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
-    ) -> crate::Result<FloatValue> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeFloat>,
+    ) -> crate::Result<NodeFloat> {
         index_value_or_else!(self, context, index, Node::float_or_else, default)
     }
 
@@ -449,8 +452,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
-    ) -> crate::Result<Number> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeNumber>,
+    ) -> crate::Result<NodeNumber> {
         index_value_or_else!(self, context, index, Node::number_or_else, default)
     }
 
@@ -467,8 +470,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         index: usize,
-        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
-    ) -> crate::Result<Rc<String>> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeString>,
+    ) -> crate::Result<NodeString> {
         index_value_or_else!(self, context, index, Node::string_or_else, default)
     }
 

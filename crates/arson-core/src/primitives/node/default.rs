@@ -1,23 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::rc::Rc;
-
-use crate::{
-    ArrayRef,
-    ArrayTag,
-    Context,
-    FloatValue,
-    Integer,
-    IntoSymbol,
-    Node,
-    NodeCommand,
-    NodeProperty,
-    NodeValue,
-    Number,
-    ObjectRef,
-    Symbol,
-    Variable,
-};
+use crate::primitives::*;
+use crate::{Context, IntoSymbol};
 
 macro_rules! get_value_or_else {
     ($value:expr, $default:expr) => {{
@@ -53,15 +37,15 @@ impl<N: IntoSymbol> SymbolDefault for (&mut Context, N) {
 }
 
 impl NodeValue {
-    pub fn integer_or(&self, default: Integer) -> Integer {
+    pub fn integer_or(&self, default: NodeInteger) -> NodeInteger {
         self.integer().unwrap_or(default)
     }
 
-    pub fn float_or(&self, default: FloatValue) -> FloatValue {
+    pub fn float_or(&self, default: NodeFloat) -> NodeFloat {
         self.float().unwrap_or(default)
     }
 
-    pub fn number_or(&self, default: Number) -> Number {
+    pub fn number_or(&self, default: NodeNumber) -> NodeNumber {
         self.number().unwrap_or(default)
     }
 
@@ -69,7 +53,7 @@ impl NodeValue {
         self.size_integer_opt().unwrap_or(default)
     }
 
-    pub fn string_or(&self, default: &Rc<String>) -> Rc<String> {
+    pub fn string_or(&self, default: &NodeString) -> NodeString {
         self.string().cloned().unwrap_or_else(|| default.clone())
     }
 
@@ -107,19 +91,22 @@ impl NodeValue {
 
     pub fn integer_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Integer>,
-    ) -> crate::Result<Integer> {
+        default: impl FnOnce() -> crate::Result<NodeInteger>,
+    ) -> crate::Result<NodeInteger> {
         get_value_or_else!(self.integer(), default())
     }
 
     pub fn float_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<FloatValue>,
-    ) -> crate::Result<FloatValue> {
+        default: impl FnOnce() -> crate::Result<NodeFloat>,
+    ) -> crate::Result<NodeFloat> {
         get_value_or_else!(self.float(), default())
     }
 
-    pub fn number_or_else(&self, default: impl FnOnce() -> crate::Result<Number>) -> crate::Result<Number> {
+    pub fn number_or_else(
+        &self,
+        default: impl FnOnce() -> crate::Result<NodeNumber>,
+    ) -> crate::Result<NodeNumber> {
         get_value_or_else!(self.number(), default())
     }
 
@@ -132,8 +119,8 @@ impl NodeValue {
 
     pub fn string_or_else(
         &self,
-        default: impl FnOnce() -> crate::Result<Rc<String>>,
-    ) -> crate::Result<Rc<String>> {
+        default: impl FnOnce() -> crate::Result<NodeString>,
+    ) -> crate::Result<NodeString> {
         get_value_or_else!(self.string().cloned(), default())
     }
 
@@ -198,15 +185,15 @@ impl NodeValue {
 
 // Optional value retrieval, with defaults
 impl Node {
-    pub fn integer_or(&self, context: &mut Context, default: Integer) -> crate::Result<Integer> {
+    pub fn integer_or(&self, context: &mut Context, default: NodeInteger) -> crate::Result<NodeInteger> {
         self.evaluate(context).map(|v| v.integer_or(default))
     }
 
-    pub fn float_or(&self, context: &mut Context, default: FloatValue) -> crate::Result<FloatValue> {
+    pub fn float_or(&self, context: &mut Context, default: NodeFloat) -> crate::Result<NodeFloat> {
         self.evaluate(context).map(|v| v.float_or(default))
     }
 
-    pub fn number_or(&self, context: &mut Context, default: Number) -> crate::Result<Number> {
+    pub fn number_or(&self, context: &mut Context, default: NodeNumber) -> crate::Result<NodeNumber> {
         self.evaluate(context).map(|v| v.number_or(default))
     }
 
@@ -214,7 +201,7 @@ impl Node {
         self.evaluate(context).map(|v| v.size_integer_or(default))
     }
 
-    pub fn string_or(&self, context: &mut Context, default: &Rc<String>) -> crate::Result<Rc<String>> {
+    pub fn string_or(&self, context: &mut Context, default: &NodeString) -> crate::Result<NodeString> {
         self.evaluate(context).map(|v| v.string_or(default))
     }
 
@@ -253,24 +240,24 @@ impl Node {
     pub fn integer_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
-    ) -> crate::Result<Integer> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeInteger>,
+    ) -> crate::Result<NodeInteger> {
         get_value_or_else!(self.evaluate(context)?.integer(), default(context))
     }
 
     pub fn float_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
-    ) -> crate::Result<FloatValue> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeFloat>,
+    ) -> crate::Result<NodeFloat> {
         get_value_or_else!(self.evaluate(context)?.float(), default(context))
     }
 
     pub fn number_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
-    ) -> crate::Result<Number> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeNumber>,
+    ) -> crate::Result<NodeNumber> {
         get_value_or_else!(self.evaluate(context)?.number(), default(context))
     }
 
@@ -285,8 +272,8 @@ impl Node {
     pub fn string_or_else(
         &self,
         context: &mut Context,
-        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
-    ) -> crate::Result<Rc<String>> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeString>,
+    ) -> crate::Result<NodeString> {
         get_value_or_else!(self.evaluate(context)?.string().cloned(), default(context))
     }
 

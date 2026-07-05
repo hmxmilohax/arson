@@ -4,8 +4,8 @@ use std::cmp::Ordering;
 use std::num::Wrapping;
 use std::rc::Rc;
 
-use crate::prelude::*;
 use crate::primitives::*;
+use crate::Context;
 
 macro_rules! define_node_types {
     (
@@ -286,19 +286,19 @@ macro_rules! define_node_types {
 
 define_node_types! {
     /// An integer value (see [`Integer`]).
-    Integer(Wrapping<IntegerValue>) {
+    Integer(NodeInteger) {
         from: {
-            IntegerValue => |value| Wrapping(value),
+            NodeIntegerValue => |value| Wrapping(value),
 
-            i8 => |value| Wrapping(value as IntegerValue),
-            i16 => |value| Wrapping(value as IntegerValue),
-            i32 => |value| Wrapping(value as IntegerValue),
+            i8 => |value| Wrapping(value as NodeIntegerValue),
+            i16 => |value| Wrapping(value as NodeIntegerValue),
+            i32 => |value| Wrapping(value as NodeIntegerValue),
 
-            u8 => |value| Wrapping(value as IntegerValue),
-            u16 => |value| Wrapping(value as IntegerValue),
-            u32 => |value| Wrapping(value as IntegerValue),
+            u8 => |value| Wrapping(value as NodeIntegerValue),
+            u16 => |value| Wrapping(value as NodeIntegerValue),
+            u32 => |value| Wrapping(value as NodeIntegerValue),
 
-            bool => |value| Wrapping(value as IntegerValue),
+            bool => |value| Wrapping(value as NodeIntegerValue),
 
             NodeKind => |value| {
                 // Convert the kind for Unhandled into its value,
@@ -306,7 +306,7 @@ define_node_types! {
                 if matches!(value, NodeKind::Unhandled) {
                     return NodeValue::Unhandled;
                 }
-                Wrapping(value as IntegerValue)
+                Wrapping(value as NodeIntegerValue)
             },
 
             std::cmp::Ordering => |value| match value {
@@ -316,49 +316,49 @@ define_node_types! {
             },
         },
         try_from: {
-            u64 => |value| match IntegerValue::try_from(value) {
+            u64 => |value| match NodeIntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
                 Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
-            isize => |value| match IntegerValue::try_from(value) {
+            isize => |value| match NodeIntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
                 Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
-            usize => |value| match IntegerValue::try_from(value) {
+            usize => |value| match NodeIntegerValue::try_from(value) {
                 Ok(value) => Wrapping(value),
                 Err(error) => return Err(NumericError::IntegerConversion(error).into()),
             },
         },
         variant_eq: {
-            Float(other) => |value| value.0 as FloatValue == *other,
+            Float(other) => |value| value.0 as NodeFloat == *other,
         },
         variant_cmp: {
             Float(other) => |value| {
-                left: (value.0 as FloatValue).partial_cmp(other),
-                right: other.partial_cmp(&(value.0 as FloatValue)),
+                left: (value.0 as NodeFloat).partial_cmp(other),
+                right: other.partial_cmp(&(value.0 as NodeFloat)),
             },
         },
         variant_total_cmp: {
             Float(other) => |value| {
-                left: (value.0 as FloatValue).total_cmp(other),
-                right: other.total_cmp(&(value.0 as FloatValue)),
+                left: (value.0 as NodeFloat).total_cmp(other),
+                right: other.total_cmp(&(value.0 as NodeFloat)),
             },
         },
         type_eq: {
-            IntegerValue => |left, right| left.0 == *right,
+            NodeIntegerValue => |left, right| left.0 == *right,
         },
     },
     /// A floating-point value (see [`Float`]).
-    Float(FloatValue) {
+    Float(NodeFloat) {
         from: {
-            f32 => |value| value as FloatValue,
+            f32 => |value| value as NodeFloat,
         },
         eq: |left, right| left == right,
         cmp: |left, right| left.partial_cmp(right),
         total_cmp: |left, right| left.total_cmp(right),
     },
     /// An immutable string value.
-    String(Rc<String>) {
+    String(NodeString) {
         from: {
             :default: |value| match super::get_interned_string(&value) {
                 Some(interned) => interned,
@@ -476,26 +476,26 @@ impl NodeValue {
         }
     }
 
-    pub const fn integer(&self) -> Option<Integer> {
+    pub const fn integer(&self) -> Option<NodeInteger> {
         match self {
             Self::Integer(value) => Some(*value),
-            Self::Float(value) => Some(Wrapping(*value as IntegerValue)),
+            Self::Float(value) => Some(Wrapping(*value as NodeIntegerValue)),
             _ => None,
         }
     }
 
-    pub const fn float(&self) -> Option<FloatValue> {
+    pub const fn float(&self) -> Option<NodeFloat> {
         match self {
-            Self::Integer(value) => Some(value.0 as FloatValue),
+            Self::Integer(value) => Some(value.0 as NodeFloat),
             Self::Float(value) => Some(*value),
             _ => None,
         }
     }
 
-    pub const fn number(&self) -> Option<Number> {
+    pub const fn number(&self) -> Option<NodeNumber> {
         match self {
-            Self::Integer(value) => Some(Number::Integer(*value)),
-            Self::Float(value) => Some(Number::Float(*value)),
+            Self::Integer(value) => Some(NodeNumber::Integer(*value)),
+            Self::Float(value) => Some(NodeNumber::Float(*value)),
             _ => None,
         }
     }
@@ -539,7 +539,7 @@ impl NodeValue {
         }
     }
 
-    pub const fn string(&self) -> Option<&Rc<String>> {
+    pub const fn string(&self) -> Option<&NodeString> {
         match self {
             Self::String(value) => Some(value),
             Self::Symbol(value) => Some(value.name()),
@@ -725,6 +725,7 @@ mod tests {
 
     mod display {
         use super::*;
+        use crate::arson_array;
 
         #[test]
         fn integer() {

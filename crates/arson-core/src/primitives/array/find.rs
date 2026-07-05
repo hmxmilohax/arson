@@ -1,30 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::rc::Rc;
-
-use crate::{
-    arson_assert_len,
-    ArrayError,
-    ArrayRef,
-    Context,
-    FloatValue,
-    Integer,
-    IntegerValue,
-    IntoSymbol,
-    Node,
-    NodeCommand,
-    NodeProperty,
-    NodeSlice,
-    NodeValue,
-    Number,
-    ObjectRef,
-    Symbol,
-    Variable,
-};
+use crate::primitives::*;
+use crate::{arson_assert_len, Context, IntoSymbol};
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum ArrayTag {
-    Integer(Integer),
+    Integer(NodeInteger),
     Symbol(Symbol),
 }
 
@@ -38,8 +19,8 @@ impl PartialEq<NodeValue> for ArrayTag {
     }
 }
 
-impl PartialEq<Integer> for ArrayTag {
-    fn eq(&self, other: &Integer) -> bool {
+impl PartialEq<NodeInteger> for ArrayTag {
+    fn eq(&self, other: &NodeInteger) -> bool {
         match self {
             ArrayTag::Integer(value) => value == other,
             _ => false,
@@ -62,7 +43,7 @@ impl PartialEq<ArrayTag> for NodeValue {
     }
 }
 
-impl PartialEq<ArrayTag> for Integer {
+impl PartialEq<ArrayTag> for NodeInteger {
     fn eq(&self, other: &ArrayTag) -> bool {
         other.eq(self)
     }
@@ -133,11 +114,11 @@ find_pred_impl! {
     //     matches: |predicate, value| value == predicate,
     //     err_string: |this| format!("string {this}"),
     // },
-    Integer {
+    NodeInteger {
         matches: |predicate, value| value == predicate,
         err_string: |this| format!("integer {this}"),
     },
-    IntegerValue {
+    NodeIntegerValue {
         matches: |predicate, value| value == predicate,
         err_string: |this| format!("integer {this}"),
     },
@@ -300,7 +281,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> crate::Result<Integer> {
+    ) -> crate::Result<NodeInteger> {
         self.find_data(predicate.into_predicate(context)?)?.integer(context)
     }
 
@@ -308,7 +289,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> crate::Result<FloatValue> {
+    ) -> crate::Result<NodeFloat> {
         self.find_data(predicate.into_predicate(context)?)?.float(context)
     }
 
@@ -316,7 +297,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> crate::Result<Number> {
+    ) -> crate::Result<NodeNumber> {
         self.find_data(predicate.into_predicate(context)?)?.number(context)
     }
 
@@ -340,7 +321,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> crate::Result<Rc<String>> {
+    ) -> crate::Result<NodeString> {
         self.find_data(predicate.into_predicate(context)?)?.string(context)
     }
 
@@ -446,7 +427,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> Option<crate::Result<Integer>> {
+    ) -> Option<crate::Result<NodeInteger>> {
         find_opt!(self, predicate, context)?.integer_opt(context).transpose()
     }
 
@@ -454,7 +435,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> Option<crate::Result<FloatValue>> {
+    ) -> Option<crate::Result<NodeFloat>> {
         find_opt!(self, predicate, context)?.float_opt(context).transpose()
     }
 
@@ -462,7 +443,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> Option<crate::Result<Number>> {
+    ) -> Option<crate::Result<NodeNumber>> {
         find_opt!(self, predicate, context)?.number_opt(context).transpose()
     }
 
@@ -478,7 +459,7 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-    ) -> Option<crate::Result<Rc<String>>> {
+    ) -> Option<crate::Result<NodeString>> {
         find_opt!(self, predicate, context)?.string_opt(context).transpose()
     }
 
@@ -549,8 +530,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: Integer,
-    ) -> crate::Result<Integer> {
+        default: NodeInteger,
+    ) -> crate::Result<NodeInteger> {
         predicate_value_or!(self, context, predicate, Node::integer_or, default)
     }
 
@@ -558,8 +539,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: FloatValue,
-    ) -> crate::Result<FloatValue> {
+        default: NodeFloat,
+    ) -> crate::Result<NodeFloat> {
         predicate_value_or!(self, context, predicate, Node::float_or, default)
     }
 
@@ -567,8 +548,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: Number,
-    ) -> crate::Result<Number> {
+        default: NodeNumber,
+    ) -> crate::Result<NodeNumber> {
         predicate_value_or!(self, context, predicate, Node::number_or, default)
     }
 
@@ -585,8 +566,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: &Rc<String>,
-    ) -> crate::Result<Rc<String>> {
+        default: &NodeString,
+    ) -> crate::Result<NodeString> {
         predicate_value_or!(self, context, predicate, Node::string_or, default)
     }
 
@@ -679,8 +660,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce(&mut Context) -> crate::Result<Integer>,
-    ) -> crate::Result<Integer> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeInteger>,
+    ) -> crate::Result<NodeInteger> {
         predicate_value_or_else!(self, context, predicate, Node::integer_or_else, default)
     }
 
@@ -688,8 +669,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce(&mut Context) -> crate::Result<FloatValue>,
-    ) -> crate::Result<FloatValue> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeFloat>,
+    ) -> crate::Result<NodeFloat> {
         predicate_value_or_else!(self, context, predicate, Node::float_or_else, default)
     }
 
@@ -697,8 +678,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce(&mut Context) -> crate::Result<Number>,
-    ) -> crate::Result<Number> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeNumber>,
+    ) -> crate::Result<NodeNumber> {
         predicate_value_or_else!(self, context, predicate, Node::number_or_else, default)
     }
 
@@ -715,8 +696,8 @@ impl NodeSlice {
         &self,
         context: &mut Context,
         predicate: impl IntoIntoDataPredicate,
-        default: impl FnOnce(&mut Context) -> crate::Result<Rc<String>>,
-    ) -> crate::Result<Rc<String>> {
+        default: impl FnOnce(&mut Context) -> crate::Result<NodeString>,
+    ) -> crate::Result<NodeString> {
         predicate_value_or_else!(self, context, predicate, Node::string_or_else, default)
     }
 

@@ -2,8 +2,7 @@
 
 use std::rc::Rc;
 
-use super::{Node, NodeSlice, NodeValue, Symbol};
-use crate::{arson_assert_len, Context};
+use crate::{arson_assert_len, Context, Node, NodeSlice, NodeValue, Symbol};
 
 #[derive(Clone)]
 pub struct Variable {

@@ -2,10 +2,9 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::rc::Rc;
 
-use crate::prelude::*;
 use crate::primitives::*;
+use crate::{arson_fail, Context};
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
@@ -102,15 +101,15 @@ impl Node {
         Ok(evaluated)
     }
 
-    pub fn integer(&self, context: &mut Context) -> crate::Result<Integer> {
+    pub fn integer(&self, context: &mut Context) -> crate::Result<NodeInteger> {
         match_option!(self.evaluate(context)?, |value| value.integer(), Integer)
     }
 
-    pub fn float(&self, context: &mut Context) -> crate::Result<FloatValue> {
+    pub fn float(&self, context: &mut Context) -> crate::Result<NodeFloat> {
         match_option!(self.evaluate(context)?, |value| value.float(), Float)
     }
 
-    pub fn number(&self, context: &mut Context) -> crate::Result<Number> {
+    pub fn number(&self, context: &mut Context) -> crate::Result<NodeNumber> {
         match_option_with_err!(
             self.evaluate(context)?,
             |value| value.number(),
@@ -133,7 +132,7 @@ impl Node {
         Ok(self.evaluate(context)?.boolean())
     }
 
-    pub fn string(&self, context: &mut Context) -> crate::Result<Rc<String>> {
+    pub fn string(&self, context: &mut Context) -> crate::Result<NodeString> {
         match_option!(self.evaluate(context)?, |value| value.string().cloned(), String)
     }
 
@@ -250,15 +249,15 @@ impl Node {
 
 // Optional value retrieval
 impl Node {
-    pub fn integer_opt(&self, context: &mut Context) -> crate::Result<Option<Integer>> {
+    pub fn integer_opt(&self, context: &mut Context) -> crate::Result<Option<NodeInteger>> {
         self.evaluate(context).map(|n| n.integer())
     }
 
-    pub fn float_opt(&self, context: &mut Context) -> crate::Result<Option<FloatValue>> {
+    pub fn float_opt(&self, context: &mut Context) -> crate::Result<Option<NodeFloat>> {
         self.evaluate(context).map(|n| n.float())
     }
 
-    pub fn number_opt(&self, context: &mut Context) -> crate::Result<Option<Number>> {
+    pub fn number_opt(&self, context: &mut Context) -> crate::Result<Option<NodeNumber>> {
         self.evaluate(context).map(|n| n.number())
     }
 
@@ -266,7 +265,7 @@ impl Node {
         self.evaluate(context).map(|n| n.size_integer_opt())
     }
 
-    pub fn string_opt(&self, context: &mut Context) -> crate::Result<Option<Rc<String>>> {
+    pub fn string_opt(&self, context: &mut Context) -> crate::Result<Option<NodeString>> {
         self.evaluate(context).map(|n| n.string().cloned())
     }
 
