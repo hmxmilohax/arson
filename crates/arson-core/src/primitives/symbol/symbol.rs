@@ -87,7 +87,7 @@ mod tests {
     use super::*;
 
     fn new_symbol(name: &str) -> Symbol {
-        Symbol { name: Rc::new(name.to_owned()) }
+        Symbol { name: Rc::from(name) }
     }
 
     #[test]

@@ -6,7 +6,7 @@ mod table;
 
 pub(crate) use table::*;
 
-pub type NodeString = Rc<String>;
+pub type NodeString = Rc<str>;
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]

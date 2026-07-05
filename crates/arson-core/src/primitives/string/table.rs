@@ -18,7 +18,7 @@ impl StringTable {
         // Default interning
 
         // The empty string
-        table.insert(String::new(), NodeString::new(String::new()));
+        table.insert(String::new(), NodeString::from(""));
 
         #[inline]
         fn insert_chars(table: &mut HashMap<String, NodeString>, chars: impl IntoIterator<Item = char>) {
@@ -49,7 +49,7 @@ impl StringTable {
         }
 
         let owned_str = str.to_owned();
-        let str_ref = NodeString::new(owned_str.clone());
+        let str_ref = NodeString::from(owned_str.as_ref());
         self.table.insert(owned_str, str_ref.clone());
         str_ref
     }

@@ -577,7 +577,7 @@ mod tests {
         impl ContextState for TestState {}
 
         let mut context = Context::new();
-        context.register_state(TestState { autorun_str: NodeString::new(String::new()) });
+        context.register_state(TestState { autorun_str: NodeString::from("") });
 
         context.register_func("autorun_func", |context, args| {
             let text = args.string(context, 0)?;

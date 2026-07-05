@@ -360,8 +360,8 @@ define_node_types! {
     /// An immutable string value.
     String(NodeString) {
         from: {
-            String => |value| NodeString::new(value),
-            &str => |value| NodeString::new(value.to_owned()),
+            String => |value| NodeString::from(value),
+            &str => |value| NodeString::from(value),
         },
         variant_eq: {
             Symbol(other) => |value| value.as_ref() == other.name().as_ref(),
