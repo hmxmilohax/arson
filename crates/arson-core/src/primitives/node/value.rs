@@ -360,21 +360,11 @@ define_node_types! {
     /// An immutable string value.
     String(NodeString) {
         from: {
-            :default: |value| match super::get_interned_string(&value) {
-                Some(interned) => interned,
-                None => value,
-            },
-            String => |value| match super::get_interned_string(&value) {
-                Some(interned) => interned,
-                None => value.into(),
-            },
-            &str => |value| match super::get_interned_string(value) {
-                Some(interned) => interned,
-                None => Rc::new(value.to_owned()),
-            },
+            String => |value| NodeString::new(value),
+            &str => |value| NodeString::new(value.to_owned()),
         },
         variant_eq: {
-            Symbol(other) => |value| value == other.name(),
+            Symbol(other) => |value| value.as_ref() == other.name().as_ref(),
         },
         variant_cmp: {
             Symbol(other) => |value| {
@@ -389,8 +379,8 @@ define_node_types! {
             },
         },
         type_eq: {
-            String => |left, right| left.as_str() == right,
-            str => |left, right| left.as_str() == right,
+            String => |left, right| left.as_ref() == right.as_str(),
+            str => |left, right| left.as_ref() == right,
         },
     },
     /// A unique identifier (see [`Symbol`]).

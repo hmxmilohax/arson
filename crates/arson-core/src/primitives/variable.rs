@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use std::rc::Rc;
-
-use crate::{arson_assert_len, Context, Node, NodeSlice, NodeValue, Symbol};
+use crate::{arson_assert_len, Context, Node, NodeSlice, NodeString, NodeValue, Symbol};
 
 #[derive(Clone)]
 pub struct Variable {
@@ -23,7 +21,7 @@ impl Variable {
         &self.symbol
     }
 
-    pub const fn name(&self) -> &Rc<String> {
+    pub const fn name(&self) -> &NodeString {
         self.symbol.name()
     }
 

@@ -43,6 +43,7 @@ pub enum ExecutionError {
 pub trait ContextState: Any {}
 
 pub struct Context {
+    string_table: StringTable,
     symbol_table: SymbolTable,
 
     macros: SymbolMap<Rc<NodeArray>>,
@@ -63,6 +64,7 @@ impl Context {
         let builtin_state = BuiltinState::new(&mut symbol_table);
 
         let mut context = Self {
+            string_table: StringTable::new(),
             symbol_table,
 
             macros: SymbolMap::new(),
@@ -248,6 +250,10 @@ impl Context {
         }
     }
 
+    pub fn intern_string(&mut self, str: &str) -> NodeString {
+        self.string_table.add(str)
+    }
+
     pub fn execute(&mut self, command: &NodeCommand) -> ExecuteResult {
         let result = match command.evaluate(self, 0)? {
             NodeValue::Symbol(symbol) => {
@@ -263,7 +269,7 @@ impl Context {
             NodeValue::String(name) => {
                 match self.get_symbol(name.as_ref()).and_then(|name| self.objects.get(&name)) {
                     Some(obj) => obj.clone().handle(self, command.slice(1..)?)?,
-                    None => return Err(ExecutionError::HandlerNotFound((*name).clone()).into()),
+                    None => return Err(ExecutionError::HandlerNotFound((*name).to_owned()).into()),
                 }
             },
             NodeValue::Function(function) => function.call(self, command.slice(1..)?)?,

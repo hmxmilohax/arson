@@ -2,6 +2,10 @@
 
 use std::rc::Rc;
 
+mod table;
+
+pub(crate) use table::*;
+
 pub type NodeString = Rc<String>;
 
 #[non_exhaustive]

@@ -25,7 +25,7 @@ mod basic {
         let index = args.size_integer(context, 1)?;
 
         match string.get(index..index + 1) {
-            Some(char) => Ok(crate::intern_string(char).into()),
+            Some(char) => Ok(context.intern_string(char).into()),
             None => {
                 if index > string.len() {
                     Err(NumericError::IndexOutOfRange(index, 0..string.len()).into())
@@ -192,7 +192,7 @@ mod manip {
 
     fn strcat(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
         let string_var = args.variable(0)?;
-        let mut string = string_var.get(context).string(context)?.as_ref().clone();
+        let mut string = string_var.get(context).string(context)?.as_ref().to_owned();
 
         for node in args.get(1..)? {
             let piece = node.string(context)?;

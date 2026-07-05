@@ -333,6 +333,7 @@ mod tests {
 
     use super::*;
     use crate::prelude::*;
+    use crate::NodeString;
 
     fn assert_loaded(context: &mut Context, text: &str, expected: NodeArray) {
         let options = LoadOptions { allow_include: true, allow_autorun: true };
@@ -570,16 +571,16 @@ mod tests {
     #[test]
     fn autorun() {
         struct TestState {
-            autorun_str: String,
+            autorun_str: NodeString,
         }
 
         impl ContextState for TestState {}
 
         let mut context = Context::new();
-        context.register_state(TestState { autorun_str: String::new() });
+        context.register_state(TestState { autorun_str: NodeString::new(String::new()) });
 
         context.register_func("autorun_func", |context, args| {
-            let text = args.string(context, 0)?.as_ref().clone();
+            let text = args.string(context, 0)?;
             context.get_state_mut::<TestState>().unwrap().autorun_str = text;
             Ok(Node::HANDLED)
         });
@@ -590,7 +591,7 @@ mod tests {
             arson_array![],
         );
         let state = context.get_state::<TestState>().unwrap();
-        assert_eq!(state.autorun_str, "Auto-run was run");
+        assert_eq!(state.autorun_str.as_ref(), "Auto-run was run");
     }
 
     #[test]
