@@ -20,10 +20,6 @@ impl NodeArray {
     pub fn with_capacity(capacity: usize) -> Self {
         Self { nodes: Vec::with_capacity(capacity) }
     }
-
-    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
-    }
 }
 
 // Vec forwards
@@ -119,32 +115,6 @@ impl NodeArray {
 
     pub fn shrink_to_fit(&mut self) {
         self.nodes.shrink_to_fit()
-    }
-
-    pub fn deep_clone(&self) -> crate::Result<NodeArray> {
-        let mut array = NodeArray::with_capacity(self.len());
-        for node in self {
-            let cloned = match node.unevaluated() {
-                NodeValue::Array(array) => array.borrow()?.deep_clone()?.into(),
-                _ => node.clone(),
-            };
-            array.push(cloned);
-        }
-
-        Ok(array)
-    }
-
-    pub fn deep_clone_evaluated(&self, context: &mut Context) -> crate::Result<NodeArray> {
-        let mut array = NodeArray::with_capacity(self.len());
-        for node in self {
-            let cloned = match node.evaluate(context)? {
-                NodeValue::Array(array) => array.borrow()?.deep_clone_evaluated(context)?.into(),
-                _ => node.clone(),
-            };
-            array.push(cloned);
-        }
-
-        Ok(array)
     }
 }
 

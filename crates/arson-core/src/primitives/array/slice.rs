@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-use crate::{ArrayDisplay, ArrayDisplayOptions, ArrayKind, Node, NodeArray};
+use crate::{ArrayDisplay, ArrayDisplayOptions, ArrayKind, Context, Node, NodeArray, NodeValue};
 
 /// A contiguous slice of [`Node`]s.
 #[repr(transparent)]
@@ -24,13 +24,32 @@ impl NodeSlice {
         unsafe { &mut *(nodes as *mut [Node] as *mut NodeSlice) }
     }
 
-    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
-        ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
-    }
-}
+    pub fn deep_clone(&self) -> crate::Result<NodeArray> {
+        let mut array = NodeArray::with_capacity(self.len());
+        for node in self {
+            let cloned = match node.unevaluated() {
+                NodeValue::Array(array) => array.borrow()?.deep_clone()?.into(),
+                _ => node.clone(),
+            };
+            array.push(cloned);
+        }
 
-// Sorting
-impl NodeSlice {
+        Ok(array)
+    }
+
+    pub fn deep_clone_evaluated(&self, context: &mut Context) -> crate::Result<NodeArray> {
+        let mut array = NodeArray::with_capacity(self.len());
+        for node in self {
+            let cloned = match node.evaluate(context)? {
+                NodeValue::Array(array) => array.borrow()?.deep_clone_evaluated(context)?.into(),
+                _ => node.clone(),
+            };
+            array.push(cloned);
+        }
+
+        Ok(array)
+    }
+
     pub fn sort(&mut self) {
         self.nodes.sort_by(Node::total_cmp)
     }
@@ -51,6 +70,10 @@ impl NodeSlice {
         }
 
         self.len().cmp(&other.len())
+    }
+
+    pub fn display_with_options(&self, options: ArrayDisplayOptions) -> ArrayDisplay<'_> {
+        ArrayDisplay::new(&self.nodes, ArrayKind::Array, options)
     }
 }
 
