@@ -17,6 +17,8 @@ mod basic {
     pub fn register_funcs(context: &mut Context) {
         context.register_func("str_elem", self::str_elem);
         context.register_func("strlen", self::strlen);
+
+        context.register_func("intern_string", self::intern_string);
     }
 
     fn str_elem(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
@@ -41,6 +43,13 @@ mod basic {
         let string = args.string(context, 0)?;
 
         string.len().try_into()
+    }
+
+    fn intern_string(context: &mut Context, args: &NodeSlice) -> ExecuteResult {
+        arson_assert_len!(args, 1);
+
+        let str = args.string(context, 0)?;
+        Ok(context.intern_string(&str).into())
     }
 }
 
